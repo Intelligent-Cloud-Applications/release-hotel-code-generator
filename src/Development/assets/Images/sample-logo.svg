@@ -1,0 +1,44 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#1e40af" stroke="#1e3a8a" stroke-width="2"/>
+  
+  <!-- Hotel building icon -->
+  <rect x="60" y="80" width="80" height="60" fill="#fbbf24" stroke="#f59e0b" stroke-width="2"/>
+  <rect x="70" y="90" width="15" height="15" fill="#1e40af"/>
+  <rect x="90" y="90" width="15" height="15" fill="#1e40af"/>
+  <rect x="110" y="90" width="15" height="15" fill="#1e40af"/>
+  <rect x="70" y="110" width="15" height="15" fill="#1e40af"/>
+  <rect x="90" y="110" width="15" height="15" fill="#1e40af"/>
+  <rect x="110" y="110" width="15" height="15" fill="#1e40af"/>
+  
+  <!-- Door -->
+  <rect x="85" y="120" width="30" height="20" fill="#92400e"/>
+  
+  <!-- Roof -->
+  <polygon points="50,80 100,50 150,80" fill="#dc2626" stroke="#b91c1c" stroke-width="2"/>
+  
+  <!-- Text -->
+  <text x="100" y="170" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="16" font-weight="bold">HOTEL</text>
+  <text x="100" y="185" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="12">MANAGEMENT</text>
+</svg>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

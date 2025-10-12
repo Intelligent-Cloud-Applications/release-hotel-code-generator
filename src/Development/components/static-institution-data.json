@@ -1,0 +1,302 @@
+{
+  "cnText": "CN",
+  "logoUrl": "https://institution-utils.s3.us-east-1.amazonaws.com/hotel_code_generator/test/logo.png",
+  "companyName": "Company Name",
+  "slogan": "Happy Place To Live",
+  "hero": {
+    "videoUrl": "https://videos.pexels.com/video-files/855139/855139-hd_1920_1080_30fps.mp4"
+  },
+
+  "whyStayHere": {
+    "title": "Why You Should",
+    "titleHighlight": "Stay Here",
+    "introText": "Lorem ipsum dolor sit amet xaasj sdamas saswok consectetur.",
+    "points": [
+      {
+        "title": "Provide the best choice of Room.",
+        "text": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint. Velit officia consequat."
+      },
+      {
+        "title": "Low price with Best Quality",
+        "text": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint. Velit officia consequat."
+      },
+      {
+        "title": "Restaurant Service",
+        "text": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint. Velit officia consequat."
+      }
+    ],
+    "mainImage": "https://plus.unsplash.com/premium_photo-1661964071015-d97428970584?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8aG90ZWx8ZW58MHx8MHx8fDA%3D",
+    "ratings": [
+      {
+        "name": "Cody Fisher",
+        "score": "Give Rating 4.5",
+        "image": "https://randomuser.me/api/portraits/men/1.jpg"
+      },
+      {
+        "name": "Albert Flores",
+        "score": "Give Rating 4.2",
+        "image": "https://randomuser.me/api/portraits/men/32.jpg"
+      },
+      {
+        "name": "Devon Lane",
+        "score": "Give Rating 4.8",
+        "image": "https://randomuser.me/api/portraits/women/44.jpg"
+      }
+    ],
+    "categories": [
+      {
+        "name": "Wellness",
+        "link": "https://images.unsplash.com/photo-1593642532973-d31b6557fa68?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8d2VsbG5lc3N8ZW58MHx8MHx8fDA%3D"
+      },
+      {
+        "name": "Architecture",
+        "link": "https://plus.unsplash.com/premium_photo-1661964071015-d97428970584?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8aG90ZWx8ZW58MHx8MHx8fDA%3D"
+      },
+      {
+        "name": "Cuisine",
+        "link": "https://images.unsplash.com/photo-1529316275402-0462fcc4abd6?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8cmVzb3J0fGVufDB8fDB8fHww"
+      },
+      {
+        "name": "Panoramic location",
+        "link": "https://images.unsplash.com/photo-1593642532973-d31b6557fa68?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8d2VsbG5lc3N8ZW58MHx8MHx8fDA%3D"
+      }
+    ],
+
+    "hashtag": "#companyname",
+    "images": {
+      "main": "https://institution-utils.s3.us-east-1.amazonaws.com/hotel_code_generator/test/whyStayHere/top.png",
+      "floating": [
+        {
+          "src": "https://images.unsplash.com/photo-1529316275402-0462fcc4abd6?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8cmVzb3J0fGVufDB8fDB8fHww",
+          "label": "Any Text Here"
+        },
+        {
+          "src": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8cmVzb3J0fGVufDB8fDB8fHww",
+          "label": "Hotel Room"
+        },
+        {
+          "src": "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=800&q=80",
+          "label": "Hotel Room"
+        },
+        {
+          "src": "https://images.unsplash.com/photo-1698129332802-473eac8d710d?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+          "label": "Hotel Room"
+        }
+      ],
+      "gridBg": "https://images.unsplash.com/photo-1528909514045-2fa4ac7a08ba?auto=format&fit=crop&w=800&q=80",
+      "gridBig": "https://images.unsplash.com/photo-1528909514045-2fa4ac7a08ba?auto=format&fit=crop&w=800&q=80",
+      "grid": [
+        "https://images.unsplash.com/photo-1606402179428-a57976d71fa4?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+        "https://images.unsplash.com/photo-1553440569-bcc63803a83d?auto=format&fit=crop&w=800&q=80",
+        "https://images.unsplash.com/photo-1586611292717-f828b167408c?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+        "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=800&q=80"
+      ]
+    }
+  },
+  "hotelRooms": {
+    "title": {
+      "start": "Our",
+      "highlight": "Best",
+      "end": "Rooms!"
+    },
+    "description": "We offer modern (5-star) hotel facilities for your comfort.",
+    "discount": {
+      "title": "Save 10% Off",
+      "description": "Torem ipsum dolor sit amet, consectetur velit interdum, ac aliquet odio mattis.",
+      "buttonText": "Today Deals"
+    },
+    "images": [
+      "https://plus.unsplash.com/premium_photo-1661964071015-d97428970584?q=80&w=1920&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+      "https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8aG90ZWx8ZW58MHx8MHx8fDA%3D",
+      "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8aG90ZWx8ZW58MHx8MHx8fDA%3D",
+      "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTF8fGhvdGVsfGVufDB8fDB8fHww"
+    ]
+  },
+  "testimonials": {
+    "title": {
+      "start": "Know",
+      "highlight": "From",
+      "end": "Our Customers"
+    },
+    "introText": "sfjahdf kajs sdnbdsbhvhj sdfjhhcbasdnf sdfjbasfmn xcvds",
+    "testimonials": [
+      {
+        "text": "Absolutely amazing stay! The service was top-notch and the rooms were pristine.",
+        "rating": 5,
+        "name": "Millon Zehino",
+        "title": "Customer",
+        "image": "https://randomuser.me/api/portraits/men/45.jpg"
+      },
+      {
+        "text": "A truly luxurious experience! The hospitality was beyond expectations.",
+        "rating": 5,
+        "name": "Delbert Little",
+        "title": "Customer",
+        "image": "https://randomuser.me/api/portraits/women/68.jpg"
+      },
+      {
+        "text": "The best vacation experience I've ever had! Highly recommend to everyone.",
+        "rating": 5,
+        "name": "Leah Stiedemann",
+        "title": "Customer",
+        "image": "https://randomuser.me/api/portraits/men/33.jpg"
+      }
+    ]
+  },
+  "footer": {
+    "quickLinks": {
+      "title": "Quick Links",
+      "links": [
+        {
+          "text": "Home",
+          "url": "/"
+        },
+        {
+          "text": "Services",
+          "url": "/services"
+        },
+        {
+          "text": "About Us",
+          "url": "/about"
+        },
+        {
+          "text": "Contact",
+          "url": "/contact"
+        }
+      ]
+    },
+    "getInTouch": {
+      "title": "Get in Touch",
+      "description": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint.",
+      "emailPlaceholder": "Enter your email",
+      "subscribeButtonText": "Subscribe"
+    },
+    "usefulLinks": {
+      "title": "Useful Links",
+      "links": [
+        {
+          "text": "Privacy Policy",
+          "url": "/privacy"
+        },
+        {
+          "text": "Legal",
+          "url": "/legal"
+        },
+        {
+          "text": "FAQ",
+          "url": "/faq"
+        },
+        {
+          "text": "Blogs",
+          "url": "/blogs"
+        }
+      ]
+    }
+  },
+  "ourFacilities": {
+    "title": {
+      "start": "Our",
+      "highlight": "Facilities"
+    },
+    "description": "We offer modern (5 star) hotel facilities for your comfort.",
+    "facilities": [
+      {
+        "name": "Swimming Pool",
+        "icon": "FaSwimmer"
+      },
+      {
+        "name": "WiFi",
+        "icon": "FaWifi"
+      },
+      {
+        "name": "Breakfast",
+        "icon": "FaCoffee"
+      },
+      {
+        "name": "Gym",
+        "icon": "FaDumbbell"
+      },
+      {
+        "name": "Game Center",
+        "icon": "FaGamepad"
+      },
+      {
+        "name": "24/7 Light",
+        "icon": "FaLightbulb"
+      },
+      {
+        "name": "Laundry",
+        "icon": "FaBath"
+      },
+      {
+        "name": "Parking Space",
+        "icon": "FaParking"
+      }
+    ]
+  },
+  "legacySection": {
+    "title": {
+      "start": "A Legacy of ",
+      "highlight": "Excellence"
+    },
+    "description": "Lorem ipsum dolor sit amet consectetur. Egestas vel arcu neque enim odio porttitor. Dictum nulla vulputate mauris aliquam donee. Pellentesque risus mattis fames aliquabbm cursus eget ornare fringilla. Amet turpis tristiqujyde hghj sodales.cursus eget ornare fringilla. Amet turpis tristique sodales. marjfhris fames aliquam cursus eget ornarejch daf fringilla. Amet turpis tristique Amkjgfdet sodales.cursus",
+    "stats": [
+      {
+        "number": "18",
+        "label": "Countries"
+      },
+      {
+        "number": "56",
+        "label": "Skilled Staff"
+      },
+      {
+        "number": "479",
+        "label": "Cities"
+      },
+      {
+        "number": "15",
+        "label": "Years of Service"
+      },
+      {
+        "number": "250",
+        "label": "Luxury Rooms"
+      },
+      {
+        "number": "4.9",
+        "label": "Star Rating"
+      }
+    ],
+    "images": {
+      "topLeft": "img_2",
+      "topRight": "img_3",
+      "bottomRight": "img_4",
+      "bottom": "img_1"
+    }
+  },
+  "topPicksSection": {
+    "title": {
+      "start": "Top ",
+      "highlight": "Pics"
+    },
+    "description": "Lorem ipsum dolor sit amet xaasj sdamas saswok consectetur.",
+    "images": {
+      "left": "img_2",
+      "middle": "img_3",
+      "right": "img_4"
+    }
+  },
+  "contactDetails": {
+    "address": "123 Main St, Anytown, USA",
+    "phone": "+1 (555) 123-4567",
+    "email": "info@hotel.com",
+    "socialLinks": {
+      "facebook": "https://www.facebook.com/hotel",
+      "twitter": "https://www.twitter.com/hotel",
+      "instagram": "https://www.instagram.com/hotel",
+      "linkedin": "https://www.linkedin.com/company/hotel"
+    },
+    "upiId": "companyname@upi",
+    "ownerName": "John Doe",
+    "ownerEmailId": "john.doe@hotel.com"
+  }
+}

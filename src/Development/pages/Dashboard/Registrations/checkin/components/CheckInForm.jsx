@@ -1,0 +1,1483 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Input } from "../../../../../components/ui/input.js";
+import { Label } from "../../../../../components/ui/label.js";
+import { Button } from "../../../../../components/ui/button.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../../components/ui/select.js";
+import { Checkbox } from "../../../../../components/ui/checkbox.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../../../components/ui/dialog.js";
+import {
+  User,
+  Phone,
+  Upload,
+  X,
+  Calendar,
+  Users,
+  Building,
+  CreditCard as CreditCardIcon,
+  Clock,
+  Bed,
+  PlusCircle,
+  Plus,
+} from "lucide-react";
+import { useAppContext } from "../../../../../context/AppContext.jsx";
+
+const CheckInForm = ({
+                       checkInData,
+                       handleInputChange,
+                       validationErrors,
+                       formatToLocalDateTime,
+                       parseLocalDateTime,
+                       getVacantRooms,
+                       staffs,
+                       ratePlans,
+                       numberOfNights,
+                       onRoomSelectionChange,
+                     }) => {
+  const { companies = [], createCompany } = useAppContext?.() || {
+    companies: [],
+    createCompany: null
+  };
+
+  // Create Company Dialog state
+  const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
+  const [newCompany, setNewCompany] = useState({
+    name: "",
+    gst_no: "",
+  });
+  const [isCreatingCompany, setIsCreatingCompany] = useState(false);
+  const [createCompanyError, setCreateCompanyError] = useState("");
+
+  const ErrorMessage = ({ error }) => {
+    if (!error) return null;
+    return (
+      <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
+        <span className="w-1 h-1 bg-red-500 rounded-full"></span>
+        {error}
+      </p>
+    );
+  };
+
+  // Helper to normalize company object properties
+  const getCompanyName = (c) =>
+    c?.name || c?.company_name || c?.companyName || "";
+  const getCompanyId = (c) => c?.company_id || c?.id || c?.companyId;
+  const getCompanyGst = (c) => c?.gst_no || c?.gst_number || c?.gstNo || "";
+  const getCompanyNameById = (id) => {
+    if (!id) return "";
+    const c = companies.find((cc) => getCompanyId(cc) === id);
+    return c ? getCompanyName(c) : "";
+  };
+  const getCompanyGstById = (id) => {
+    if (!id) return "";
+    const c = companies.find((cc) => getCompanyId(cc) === id);
+    return c ? getCompanyGst(c) : "";
+  };
+
+  // Company field (autocomplete) state/behavior
+  const [companyQuery, setCompanyQuery] = useState("");
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const companyFieldRef = useRef(null);
+
+  // Initialize/keep input text in sync when company_id changes
+  useEffect(() => {
+    if (checkInData?.company_id) {
+      const name = getCompanyNameById(checkInData.company_id);
+      const gst = getCompanyGstById(checkInData.company_id);
+
+      if (name) setCompanyQuery(name);
+
+      // Auto-fill GST field if company has GST number and current GST field is empty
+      if (gst && !checkInData.gst_no) {
+        handleInputChange("gst_no", gst);
+      }
+    }
+  }, [checkInData?.company_id, companies]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (
+        companyFieldRef.current &&
+        !companyFieldRef.current.contains(e.target)
+      ) {
+        setShowCompanyDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filteredCompanies = useMemo(() => {
+    const q = companyQuery.trim().toLowerCase();
+    if (!q) return companies.slice(0, 8); // show some by default
+    return companies
+      .filter((c) => getCompanyName(c).toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [companies, companyQuery]);
+
+  const handleCompanySelect = (company) => {
+    const name = getCompanyName(company);
+    const id = getCompanyId(company);
+    const gst = getCompanyGst(company);
+
+    setCompanyQuery(name);
+    setShowCompanyDropdown(false);
+    handleInputChange("company_id", id);
+
+    // Auto-fill GST field when company is selected
+    if (gst) {
+      handleInputChange("gst_no", gst);
+    }
+  };
+
+  const clearSelectedCompany = () => {
+    setCompanyQuery("");
+    handleInputChange("company_id", "");
+    // Optionally clear GST field when company is cleared
+    handleInputChange("gst_no", "");
+    setShowCompanyDropdown(false);
+  };
+
+  const handleCompanyInputChange = (value) => {
+    setCompanyQuery(value);
+    setShowCompanyDropdown(true);
+    if (checkInData?.company_id) {
+      handleInputChange("company_id", "");
+      // Clear GST when user starts typing a new company
+      handleInputChange("gst_no", "");
+    }
+  };
+
+  // Create Company Dialog handlers
+  const handleCreateCompany = async () => {
+    // Reset any previous errors
+    setCreateCompanyError("");
+
+    // Validate required fields
+    if (!newCompany.name.trim()) {
+      setCreateCompanyError("Company name is required");
+      return;
+    }
+
+    // Check if createCompany function is available
+    if (!createCompany || typeof createCompany !== 'function') {
+      setCreateCompanyError("Company creation is not available");
+      return;
+    }
+
+    setIsCreatingCompany(true);
+
+    try {
+      // Call createCompany from AppContext with the company data
+      const createdCompany = await createCompany({
+        name: newCompany.name.trim(),
+        gst_no: newCompany.gst_no.trim(),
+      });
+
+      // Check if company was created successfully
+      if (createdCompany) {
+        // Automatically select the newly created company (this will auto-fill GST too)
+        handleCompanySelect(createdCompany);
+
+        // Reset form and close dialog
+        setNewCompany({ name: "", gst_no: "" });
+        setIsCreateCompanyOpen(false);
+        setCreateCompanyError("");
+
+        // Optional: Show success message
+        console.log("Company created successfully:", createdCompany);
+      } else {
+        setCreateCompanyError("Failed to create company. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error creating company:", error);
+      setCreateCompanyError(
+        error.message || "Failed to create company. Please try again."
+      );
+    } finally {
+      setIsCreatingCompany(false);
+    }
+  };
+
+  const openCreateCompanyDialog = () => {
+    // Pre-fill with search query and reset error
+    setNewCompany({ name: companyQuery, gst_no: "" });
+    setCreateCompanyError("");
+    setIsCreateCompanyOpen(true);
+    setShowCompanyDropdown(false);
+  };
+
+  const closeCreateCompanyDialog = () => {
+    setIsCreateCompanyOpen(false);
+    setNewCompany({ name: "", gst_no: "" });
+    setCreateCompanyError("");
+  };
+
+  // ... (rest of your existing handlers remain the same)
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      handleInputChange("id_proof_image_url", url);
+    }
+  };
+
+  const handleRoomSelection = (roomId) => {
+    const currentSelectedRoomIds = checkInData.room_id || [];
+
+    if (!currentSelectedRoomIds.includes(roomId)) {
+      const updatedRoomIds = [...currentSelectedRoomIds, roomId];
+      handleInputChange("room_id", updatedRoomIds);
+
+      if (onRoomSelectionChange) {
+        const selectedRooms = getVacantRooms.filter((room) =>
+          updatedRoomIds.includes(room.room_id)
+        );
+        const totalTariff = selectedRooms.reduce(
+          (total, room) => total + room.tariff,
+          0
+        );
+        onRoomSelectionChange(updatedRoomIds, totalTariff);
+      }
+    }
+  };
+
+  const removeRoom = (roomId) => {
+    const currentSelectedRoomIds = checkInData.room_id || [];
+    const updatedRoomIds = currentSelectedRoomIds.filter((id) => id !== roomId);
+    handleInputChange("room_id", updatedRoomIds);
+
+    if (onRoomSelectionChange) {
+      const selectedRooms = getVacantRooms.filter((room) =>
+        updatedRoomIds.includes(room.room_id)
+      );
+      const totalTariff = selectedRooms.reduce(
+        (total, room) => total + room.tariff,
+        0
+      );
+      onRoomSelectionChange(updatedRoomIds, totalTariff);
+    }
+  };
+
+  const isRoomSelected = (roomId) => {
+    const selectedRoomIds = checkInData.room_id || [];
+    return selectedRoomIds.includes(roomId);
+  };
+
+  const getSelectedRooms = () => {
+    const selectedRoomIds = checkInData.room_id || [];
+    return getVacantRooms.filter((room) =>
+      selectedRoomIds.includes(room.room_id)
+    );
+  };
+
+  const getAvailableRooms = () => {
+    const selectedRoomIds = checkInData.room_id || [];
+    return getVacantRooms.filter(
+      (room) => !selectedRoomIds.includes(room.room_id)
+    );
+  };
+
+  const getTotalRoomTariff = () => {
+    const selectedRooms = getSelectedRooms();
+    return selectedRooms.reduce((total, room) => total + room.tariff, 0);
+  };
+
+  const getSelectedRoomsCount = () => {
+    return checkInData.room_id ? checkInData.room_id.length : 0;
+  };
+
+  // PAX management for Check-In form
+  const addPax = () => {
+    const defaultRoomId = (checkInData?.room_id && checkInData.room_id[0]) || "";
+    const newPax = { full_name: "", gender: "", age: "", extra_pax_amount: 0, room_id: defaultRoomId };
+    const updated = [...(checkInData?.extra_pax || []), newPax];
+    handleInputChange("extra_pax", updated);
+  };
+  const updatePaxField = (index, field, value) => {
+    const current = [...(checkInData?.extra_pax || [])];
+    current[index] = { ...current[index], [field]: value };
+    handleInputChange("extra_pax", current);
+  };
+
+  // Auto-adjust PAX room assignment when room selection changes
+  useEffect(() => {
+    if (!Array.isArray(checkInData?.extra_pax)) return;
+    const validRoomIds = checkInData?.room_id || [];
+    const adjusted = checkInData.extra_pax.map(p => {
+      if (!p) return p;
+      const paxRoomId = p.room_id;
+      if (!paxRoomId || !validRoomIds.includes(paxRoomId)) {
+        return { ...p, room_id: validRoomIds[0] || "" };
+      }
+      return p;
+    });
+    // Only update if changed
+    if (JSON.stringify(adjusted) !== JSON.stringify(checkInData.extra_pax)) {
+      handleInputChange("extra_pax", adjusted);
+    }
+  }, [checkInData?.room_id]);
+
+  // Recalculate discount when discount type changes or room selection changes
+  useEffect(() => {
+    if (checkInData.discount_type === "percentage" && checkInData.discount_input > 0) {
+      const totalRoomCost = getTotalRoomTariff();
+      const discountInRupees = (totalRoomCost * parseFloat(checkInData.discount_input || 0)) / 100;
+      handleInputChange("discount", discountInRupees);
+    }
+  }, [checkInData?.discount_type, checkInData?.discount_input, checkInData?.room_id]);
+  const removePax = (index) => {
+    const current = [...(checkInData?.extra_pax || [])];
+    current.splice(index, 1);
+    handleInputChange("extra_pax", current);
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Guest Details Section */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-100 rounded-lg">
+              <User className="h-4 w-4 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">
+                Guest Details
+              </h3>
+              <p className="text-xs text-gray-600">
+                Enter the guest's personal information
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <User className="h-3 w-3 text-gray-500" />
+                Full Name <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter full name"
+                value={checkInData.full_name || ""}
+                onChange={(e) => handleInputChange("full_name", e.target.value)}
+                className={`h-8 text-sm ${
+                  validationErrors.full_name
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
+                required
+              />
+              <ErrorMessage error={validationErrors.full_name} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Phone className="h-3 w-3 text-gray-500" />
+                Mobile Number <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter mobile number"
+                value={checkInData.mobile || ""}
+                onChange={(e) => handleInputChange("mobile", e.target.value)}
+                className={`h-8 text-sm ${
+                  validationErrors.mobile
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
+                required
+              />
+              <ErrorMessage error={validationErrors.mobile} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Users className="h-3 w-3 text-gray-500" />
+                Gender <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                onValueChange={(value) => handleInputChange("gender", value)}
+                value={checkInData.gender || ""}
+              >
+                <SelectTrigger
+                  className={`h-8 text-sm ${
+                    validationErrors.gender
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : "focus:border-blue-500 focus:ring-blue-500"
+                  } transition-colors duration-200`}
+                >
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              <ErrorMessage error={validationErrors.gender} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <CreditCardIcon className="h-3 w-3 text-gray-500" />
+                ID Proof Type <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                onValueChange={(value) =>
+                  handleInputChange("id_proof_type", value)
+                }
+                value={checkInData.id_proof_type || ""}
+              >
+                <SelectTrigger
+                  className={`h-8 text-sm ${
+                    validationErrors.id_proof_type
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : "focus:border-blue-500 focus:ring-blue-500"
+                  } transition-colors duration-200`}
+                >
+                  <SelectValue placeholder="Select ID type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Aadhar">Aadhar Card</SelectItem>
+                  <SelectItem value="PAN">PAN Card</SelectItem>
+                  <SelectItem value="Passport">Passport</SelectItem>
+                  <SelectItem value="Driving License">
+                    Driving License
+                  </SelectItem>
+                  <SelectItem value="Voter ID">Voter ID</SelectItem>
+                </SelectContent>
+              </Select>
+              <ErrorMessage error={validationErrors.id_proof_type} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                ID Proof Number <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter ID number"
+                value={checkInData.id_proof_number || ""}
+                onChange={(e) =>
+                  handleInputChange("id_proof_number", e.target.value)
+                }
+                className={`h-8 text-sm ${
+                  validationErrors.id_proof_number
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
+                required
+              />
+              <ErrorMessage error={validationErrors.id_proof_number} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Upload className="h-3 w-3 text-gray-500" />
+                ID Proof Image
+              </Label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Nationality <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Nationality"
+                value={checkInData.nationality || ""}
+                onChange={(e) => handleInputChange("nationality", e.target.value)}
+                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+              />
+              <ErrorMessage error={validationErrors.nationality} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Address <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter full address"
+                value={checkInData.address || ""}
+                onChange={(e) => handleInputChange("address", e.target.value)}
+                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+              />
+              <ErrorMessage error={validationErrors.address} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                City <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter city"
+                value={checkInData.city || ""}
+                onChange={(e) => handleInputChange("city", e.target.value)}
+                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+              />
+              <ErrorMessage error={validationErrors.city} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                State <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter state"
+                value={checkInData.state || ""}
+                onChange={(e) => handleInputChange("state", e.target.value)}
+                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+              />
+              <ErrorMessage error={validationErrors.state} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Country <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter country"
+                value={checkInData.country || ""}
+                onChange={(e) => handleInputChange("country", e.target.value)}
+                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+              />
+              <ErrorMessage error={validationErrors.country} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Pincode <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter pincode"
+                value={checkInData.pincode || ""}
+                onChange={(e) => handleInputChange("pincode", e.target.value)}
+                className={`h-8 text-sm ${
+                  validationErrors.pincode
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
+              />
+              <ErrorMessage error={validationErrors.pincode} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Guest Category <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                onValueChange={(value) =>
+                  handleInputChange("guest_category", value)
+                }
+                value={checkInData.guest_category || ""}
+              >
+                <SelectTrigger
+                  className={`h-8 text-sm ${
+                    validationErrors.guest_category
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : "focus:border-blue-500 focus:ring-blue-500"
+                  } transition-colors duration-200`}
+                >
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="VIP">VIP</SelectItem>
+                  <SelectItem value="Regular">Regular</SelectItem>
+                  <SelectItem value="New">New</SelectItem>
+                </SelectContent>
+              </Select>
+              <ErrorMessage error={validationErrors.guest_category} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Marital Status <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                onValueChange={(value) =>
+                  handleInputChange("marital_status", value)
+                }
+                value={checkInData.marital_status || "Unmarried"}
+              >
+                <SelectTrigger
+                  className={`h-8 text-sm ${
+                    validationErrors.marital_status
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : "focus:border-blue-500 focus:ring-blue-500"
+                  } transition-colors duration-200`}
+                >
+                  <SelectValue placeholder="Select marital status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Married">Married</SelectItem>
+                  <SelectItem value="Unmarried">Unmarried</SelectItem>
+                  <SelectItem value="Divorced">Divorced</SelectItem>
+                  <SelectItem value="Widowed">Widowed</SelectItem>
+                </SelectContent>
+              </Select>
+              <ErrorMessage error={validationErrors.marital_status} />
+            </div>
+
+            {checkInData.marital_status === "Married" && (
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                  <Calendar className="h-3 w-3 text-gray-500" />
+                  Anniversary Date
+                </Label>
+                <Input
+                  type="date"
+                  value={checkInData.anniversary_date ? checkInData.anniversary_date.split('T')[0] : ""}
+                  onChange={(e) => {
+                    const dateValue = e.target.value;
+                    if (dateValue) {
+                      // Convert to ISO string format
+                      const isoDate = new Date(dateValue + 'T00:00:00').toISOString();
+                      handleInputChange("anniversary_date", isoDate);
+                    } else {
+                      handleInputChange("anniversary_date", "");
+                    }
+                  }}
+                  className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                />
+                <ErrorMessage error={validationErrors.anniversary_date} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Check-In Details Section */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-green-100 rounded-lg">
+              <Calendar className="h-4 w-4 text-green-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">
+                Check-In Details
+              </h3>
+              <p className="text-xs text-gray-600">
+                Configure booking and room information
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Check-in Type <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                onValueChange={(value) =>
+                  handleInputChange("booking_type", value)
+                }
+                value={checkInData.booking_type}
+              >
+                <SelectTrigger
+                  className={`h-8 text-sm ${
+                    validationErrors.booking_type
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : "focus:border-green-500 focus:ring-green-500"
+                  } transition-colors duration-200`}
+                >
+                  <SelectValue placeholder="Select booking type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Walk-in">Walk-in</SelectItem>
+                  <SelectItem value="Advance">Advance</SelectItem>
+                </SelectContent>
+              </Select>
+              <ErrorMessage error={validationErrors.booking_type} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Booking Source
+              </Label>
+              <Select
+                onValueChange={(value) =>
+                  handleInputChange("booking_source", value)
+                }
+                value={checkInData.booking_source}
+              >
+                <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                  <SelectValue placeholder="Select booking source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Direct">Direct</SelectItem>
+                  <SelectItem value="MakemyTrip">MakemyTrip</SelectItem>
+                  <SelectItem value="Booking.com">Booking.com</SelectItem>
+                  <SelectItem value="Agoda">Agoda</SelectItem>
+                  <SelectItem value="Goibibo">Goibibo</SelectItem>
+                  <SelectItem value="Yatra">Yatra</SelectItem>
+                  <SelectItem value="Cleartrip">Cleartrip</SelectItem>
+                  <SelectItem value="OYO">OYO</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Users className="h-3 w-3 text-gray-500" />
+                Number of Adults <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                max="10"
+                value={checkInData.no_of_adults || ""}
+                onChange={(e) =>
+                  handleInputChange("no_of_adults", parseInt(e.target.value) || 0)
+                }
+                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+              />
+              <ErrorMessage error={validationErrors.no_of_adults} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Number of Children
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                max="5"
+                value={checkInData.no_of_children || 0}
+                onChange={(e) =>
+                  handleInputChange(
+                    "no_of_children",
+                    parseInt(e.target.value) || 0
+                  )
+                }
+                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+              />
+            </div>
+
+            {/* Company - Autocomplete, stores company_id, displays name from AppContext */}
+            <div className="space-y-1" ref={companyFieldRef}>
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Building className="h-3 w-3 text-gray-500" />
+                Company
+              </Label>
+              <div className="relative">
+                <Input
+                  value={companyQuery}
+                  onChange={(e) => handleCompanyInputChange(e.target.value)}
+                  onFocus={() => setShowCompanyDropdown(true)}
+                  placeholder="Search company (optional)"
+                  className="h-8 text-sm pr-7 focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                />
+                {(companyQuery || checkInData?.company_id) && (
+                  <button
+                    type="button"
+                    aria-label="Clear selected company"
+                    onClick={clearSelectedCompany}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+
+                {showCompanyDropdown && (
+                  <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
+                    <ul className="max-h-56 overflow-auto py-1">
+                      {filteredCompanies.length > 0 ? (
+                        filteredCompanies.map((c) => {
+                          const name = getCompanyName(c);
+                          const gst = getCompanyGst(c);
+                          return (
+                            <li
+                              key={getCompanyId(c)}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleCompanySelect(c);
+                              }}
+                              className="cursor-pointer px-3 py-2 hover:bg-gray-50"
+                            >
+                              <div className="text-sm text-gray-900">
+                                {name}
+                              </div>
+                              {gst && (
+                                <div className="text-xs text-gray-500">
+                                  GST: {gst}
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })
+                      ) : (
+                        <>
+                          <li className="px-3 py-2 text-sm text-gray-500">
+                            No companies found
+                          </li>
+                          {companyQuery.trim() && createCompany && (
+                            <li
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                openCreateCompanyDialog();
+                              }}
+                              className="cursor-pointer px-3 py-2 hover:bg-blue-50 border-t border-gray-100"
+                            >
+                              <div className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
+                                <Plus className="h-4 w-4" />
+                                <span>Create "{companyQuery}"</span>
+                              </div>
+                            </li>
+                          )}
+                        </>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              <ErrorMessage error={validationErrors.company_id} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                GST Number
+                {checkInData?.company_id && getCompanyGstById(checkInData.company_id) && (
+                  <span className="text-xs text-green-600 ml-1">(Auto-filled)</span>
+                )}
+              </Label>
+              <Input
+                value={checkInData.gst_no || ""}
+                onChange={(e) => handleInputChange("gst_no", e.target.value)}
+                placeholder="Enter GST number (optional)"
+                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700">
+                Rate Plan <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                onValueChange={(value) => handleInputChange("rate_plan_id", value)}
+                value={checkInData.rate_plan_id}
+              >
+                <SelectTrigger
+                  className={`h-8 text-sm ${
+                    validationErrors.rate_plan_id
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : "focus:border-green-500 focus:ring-green-500"
+                  } transition-colors duration-200`}
+                >
+                  <SelectValue placeholder="Select rate plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ratePlans && ratePlans.length > 0 ? (
+                    ratePlans.map((plan) => (
+                      <SelectItem key={plan.plan_id} value={plan.plan_id}>
+                        {plan.name} - ₹
+                        {(plan.base_tariff).toLocaleString()}
+                        <span className="text-sm text-gray-500 ml-2">
+                          ({plan.meal_plan})
+                        </span>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-plans" disabled>
+                      No rate plans available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <ErrorMessage error={validationErrors.rate_plan_id} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Clock className="h-3 w-3 text-gray-500" />
+                Check-in Date & Time <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                type="datetime-local"
+                value={formatToLocalDateTime(checkInData.checkin_date)}
+                onChange={(e) => {
+                  const timestamp = parseLocalDateTime(e.target.value);
+                  handleInputChange("checkin_date", timestamp);
+                }}
+                disabled
+                className="h-8 text-sm opacity-70 bg-gray-50"
+              />
+              <ErrorMessage error={validationErrors.checkin_date} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Clock className="h-3 w-3 text-gray-500" />
+                Check-out Date & Time <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                type="datetime-local"
+                value={formatToLocalDateTime(checkInData.checkout_date)}
+                onChange={(e) => {
+                  const timestamp = parseLocalDateTime(e.target.value);
+                  handleInputChange("checkout_date", timestamp);
+                }}
+                min={new Date().toISOString().slice(0, 16)}
+                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+              />
+              <ErrorMessage error={validationErrors.checkout_date} />
+              {numberOfNights > 0 && (
+                <p className="text-xs text-green-600 font-medium">
+                  Duration: {numberOfNights} night
+                  {numberOfNights > 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+
+            <div className="md:col-span-2 lg:col-span-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                    <Bed className="h-3 w-3 text-gray-500" />
+                    Select Rooms <span className="text-red-500">*</span>
+                  </Label>
+
+                  <div className="relative">
+                    <Select onValueChange={handleRoomSelection}>
+                      <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                        <div className="flex items-center justify-between w-full">
+                          <span
+                            className={
+                              checkInData.room_id && checkInData.room_id.length > 0
+                                ? "text-gray-900"
+                                : "text-gray-500"
+                            }
+                          >
+                            {checkInData.room_id && checkInData.room_id.length > 0
+                              ? "Assign More Rooms"
+                              : "Select rooms..."}
+                          </span>
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {getAvailableRooms().length > 0 ? (
+                          getAvailableRooms().map((room) => (
+                            <SelectItem key={room.room_id} value={room.room_id}>
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={isRoomSelected(room.room_id)}
+                                  className="mr-2"
+                                />
+                                <span>
+                                  Room {room.room_number} - {room.room_type} (₹
+                                  {room.tariff})
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-rooms" disabled>
+                            {checkInData.room_id && checkInData.room_id.length > 0
+                              ? "All available rooms selected"
+                              : "No vacant rooms available"}
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {checkInData.room_id && checkInData.room_id.length > 0 && (
+                    <div className="mt-1">
+                      <p className="text-xs text-gray-600 mb-1">
+                        Selected: {checkInData.room_id.length} room
+                        {checkInData.room_id.length > 1 ? "s" : ""}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {getSelectedRooms().map((room) => (
+                          <div
+                            key={room.room_id}
+                            className="inline-flex items-center px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs"
+                          >
+                            <span>Room {room.room_number}</span>
+                            <span className="ml-1 text-green-700">
+                              (₹{room.tariff})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeRoom(room.room_id)}
+                              className="ml-1 text-green-600 hover:text-green-800"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      {getSelectedRoomsCount() > 1 && (
+                        <div className="mt-1 text-xs text-green-700 font-medium">
+                          Total Room Cost: ₹{getTotalRoomTariff().toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <ErrorMessage error={validationErrors.room_id} />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-gray-700">
+                    Discount Type
+                  </Label>
+                  <Select
+                    onValueChange={(value) => {
+                      handleInputChange("discount_type", value);
+                      
+                      // When switching discount types, preserve the current discount amount
+                      if (checkInData.discount > 0) {
+                        if (value === "percentage") {
+                          // Convert rupees to percentage
+                          const totalRoomCost = getTotalRoomTariff();
+                          if (totalRoomCost > 0) {
+                            const percentage = (parseFloat(checkInData.discount || 0) / totalRoomCost) * 100;
+                            handleInputChange("discount_input", percentage);
+                          }
+                        } else {
+                          // Convert percentage to rupees (already stored in discount)
+                          handleInputChange("discount_input", parseFloat(checkInData.discount || 0));
+                        }
+                      }
+                    }}
+                    value={checkInData.discount_type || "rupees"}
+                  >
+                    <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                      <SelectValue placeholder="Select discount type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="rupees">Rupees (₹)</SelectItem>
+                      <SelectItem value="percentage">Percentage (%)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-gray-700">
+                    Discount {checkInData.discount_type === "percentage" ? "(%)" : "(₹)"}
+                  </Label>
+                  <Input
+                    type="text"
+                    value={
+                      checkInData.discount_input !== undefined &&
+                      checkInData.discount_input !== null
+                        ? checkInData.discount_input
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const inputValue = e.target.value;
+                      // Allow only numbers and decimal point
+                      if (inputValue === "" || /^\d*\.?\d*$/.test(inputValue)) {
+                        if (inputValue === "") {
+                          handleInputChange("discount_input", "");
+                          handleInputChange("discount", 0);
+                        } else {
+                          const value = parseFloat(inputValue) || 0;
+                          handleInputChange("discount_input", value);
+                          
+                          // Calculate actual discount in rupees based on type
+                          let discountInRupees = 0;
+                          if (checkInData.discount_type === "percentage") {
+                            const totalRoomCost = getTotalRoomTariff();
+                            discountInRupees = (totalRoomCost * value) / 100;
+                          } else {
+                            discountInRupees = value;
+                          }
+                          handleInputChange("discount", discountInRupees);
+                        }
+                      }
+                    }}
+                    placeholder={
+                      checkInData.discount_type === "percentage" 
+                        ? "Enter discount percentage" 
+                        : "Enter discount amount in rupees"
+                    }
+                    className={`h-8 text-sm ${
+                      validationErrors.discount
+                        ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                        : "focus:border-green-500 focus:ring-green-500"
+                    } transition-colors duration-200`}
+                  />
+                  <ErrorMessage error={validationErrors.discount} />
+                  <p className="text-xs text-gray-500">
+                    {checkInData.discount_type === "percentage" 
+                      ? "Enter discount percentage (0-100%)" 
+                      : "Enter discount amount in rupees"
+                    }
+                  </p>
+                  {checkInData.discount_type === "percentage" && checkInData.discount_input > 0 && (
+                    <p className="text-xs text-green-600 font-medium">
+                      Discount Amount: ₹{parseFloat(checkInData.discount || 0).toFixed(2)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-gray-700">
+                    Partial Payment Amount
+                  </Label>
+                  <Input
+                    type="text"
+                    value={checkInData.partial_payment_amount || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Allow only numbers and decimal point
+                      if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                        handleInputChange(
+                          "partial_payment_amount",
+                          value === "" ? 0 : parseFloat(value) || 0
+                        );
+                      }
+                    }}
+                    placeholder="Enter partial payment amount..."
+                    className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                  />
+                  <ErrorMessage error={validationErrors.partial_payment_amount} />
+                </div>
+
+                {/* Payment Mode Dropdown - Only show when partial payment amount > 0 */}
+                {checkInData.partial_payment_amount > 0 && (
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                      <CreditCardIcon className="h-3 w-3 text-gray-500" />
+                      Advance Payment Mode <span className="text-red-500">*</span>
+                    </Label>
+                    <Select
+                      onValueChange={(value) =>
+                        handleInputChange("advance_payment_mode", value)
+                      }
+                      value={checkInData.advance_payment_mode || ""}
+                    >
+                      <SelectTrigger
+                        className={`h-8 text-sm ${
+                          validationErrors.advance_payment_mode
+                            ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                            : "focus:border-green-500 focus:ring-green-500"
+                        } transition-colors duration-200`}
+                      >
+                        <SelectValue placeholder="Select payment mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="UPI">UPI</SelectItem>
+                        <SelectItem value="Credit Card">Credit Card</SelectItem>
+                        <SelectItem value="Debit Card">Debit Card</SelectItem>
+                        <SelectItem value="Net Banking">Net Banking</SelectItem>
+                        <SelectItem value="Wallet">Wallet</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <ErrorMessage error={validationErrors.advance_payment_mode} />
+                  </div>
+                )}
+
+                {/* UPI Platform Dropdown - Only show when UPI is selected */}
+                {checkInData.partial_payment_amount > 0 && checkInData.advance_payment_mode === "UPI" && (
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                      <CreditCardIcon className="h-3 w-3 text-gray-500" />
+                      UPI Platform <span className="text-red-500">*</span>
+                    </Label>
+                    <Select
+                      onValueChange={(value) =>
+                        handleInputChange("advance_payment_upi_mode", value)
+                      }
+                      value={checkInData.advance_payment_upi_mode || ""}
+                    >
+                      <SelectTrigger
+                        className={`h-8 text-sm ${
+                          validationErrors.advance_payment_upi_mode
+                            ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                            : "focus:border-green-500 focus:ring-green-500"
+                        } transition-colors duration-200`}
+                      >
+                        <SelectValue placeholder="Select UPI platform" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Paytm">Paytm</SelectItem>
+                        <SelectItem value="PhonePe">PhonePe</SelectItem>
+                        <SelectItem value="Google Pay">Google Pay</SelectItem>
+                        <SelectItem value="Amazon Pay">Amazon Pay</SelectItem>
+                        <SelectItem value="BHIM">BHIM</SelectItem>
+                        <SelectItem value="Mobikwik">Mobikwik</SelectItem>
+                        <SelectItem value="Freecharge">Freecharge</SelectItem>
+                        <SelectItem value="Others">Others</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <ErrorMessage error={validationErrors.advance_payment_upi_mode} />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Special Requests with big Add PAX button taking part of the row */}
+            <div className="md:col-span-2 lg:col-span-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div className="md:col-span-3">
+                  <Label className="text-xs font-medium text-gray-700">
+                    Special Requests
+                  </Label>
+                  <Input
+                    value={checkInData.special_requests || ""}
+                    onChange={(e) =>
+                      handleInputChange("special_requests", e.target.value)
+                    }
+                    placeholder="Any special requests or notes..."
+                    className="h-10 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                  />
+                </div>
+                <div className="md:col-span-1">
+                  <Label className="text-transparent select-none">.</Label>
+                  <Button
+                    type="button"
+                    onClick={addPax}
+                    className="w-full h-10 md:h-11 bg-gray-900 hover:bg-gray-800 cursor-pointer text-white shadow font-medium"
+                  >
+                    <PlusCircle className="h-5 w-5 mr-2" />
+                    Add Extra PAX
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* PAX details list */}
+            {Array.isArray(checkInData?.extra_pax) && checkInData.extra_pax.length > 0 && (
+              <div className="md:col-span-2 lg:col-span-3 mt-2 space-y-2">
+                <h4 className="text-sm font-semibold text-gray-800">
+                  PAX Details
+                </h4>
+                {checkInData.extra_pax.map((p, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-md border border-gray-200 bg-gray-50 p-3"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-700">
+                        PAX {idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removePax(idx)}
+                        className="text-gray-500 hover:text-red-600"
+                        aria-label={`Remove PAX ${idx + 1}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium text-gray-700">
+                          Full Name
+                        </Label>
+                        <Input
+                          value={p.full_name || ""}
+                          onChange={(e) =>
+                            updatePaxField(idx, "full_name", e.target.value)
+                          }
+                          placeholder="Enter full name"
+                          className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium text-gray-700">
+                          Gender
+                        </Label>
+                        <Select
+                          onValueChange={(value) =>
+                            updatePaxField(idx, "gender", value)
+                          }
+                          value={p.gender || ""}
+                        >
+                          <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                            <SelectValue placeholder="Select gender" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium text-gray-700">
+                          Age
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="120"
+                          value={p.age ?? ""}
+                          onChange={(e) =>
+                            updatePaxField(
+                              idx,
+                              "age",
+                              e.target.value === ""
+                                ? ""
+                                : Math.max(0, parseInt(e.target.value) || 0)
+                            )
+                          }
+                          placeholder="Age"
+                          className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium text-gray-700">
+                          PAX Amount (₹)
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={p.extra_pax_amount ?? 0}
+                          onChange={(e) =>
+                            updatePaxField(
+                              idx,
+                              "extra_pax_amount",
+                              e.target.value === ""
+                                ? ""
+                                : parseFloat(e.target.value) || 0
+                            )
+                          }
+                          placeholder="Enter amount"
+                          className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium text-gray-700">
+                          Room
+                        </Label>
+                        <Select
+                          value={p.room_id || ""}
+                          onValueChange={(value) => updatePaxField(idx, "room_id", value)}
+                        >
+                          <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                            <SelectValue placeholder="Select room" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(checkInData?.room_id || []).map((rid) => {
+                              const r = getSelectedRooms().find(room => room.room_id === rid) || {};
+                              return (
+                                <SelectItem key={rid} value={rid}>
+                                  Room {r.room_number || rid}
+                                  <span className="text-xs text-gray-500 ml-1">({r.room_type || "Room"})</span>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Create Company Dialog */}
+      <Dialog open={isCreateCompanyOpen} onOpenChange={setIsCreateCompanyOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building className="h-5 w-5 text-blue-600" />
+              Create New Company
+            </DialogTitle>
+            <DialogDescription>
+              Add a new company to the system. This company will be available for future bookings.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Show error message if any */}
+            {createCompanyError && (
+              <div className="p-3 rounded-md bg-red-50 border border-red-200">
+                <p className="text-sm text-red-600">{createCompanyError}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="company-name" className="text-sm font-medium">
+                Company Name <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="company-name"
+                placeholder="Enter company name"
+                value={newCompany.name}
+                onChange={(e) =>
+                  setNewCompany({ ...newCompany, name: e.target.value })
+                }
+                className="focus:border-blue-500 focus:ring-blue-500"
+                disabled={isCreatingCompany}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gst-number" className="text-sm font-medium">
+                GST Number
+              </Label>
+              <Input
+                id="gst-number"
+                placeholder="Enter GST number (optional)"
+                value={newCompany.gst_no}
+                onChange={(e) =>
+                  setNewCompany({ ...newCompany, gst_no: e.target.value })
+                }
+                className="focus:border-blue-500 focus:ring-blue-500"
+                disabled={isCreatingCompany}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeCreateCompanyDialog}
+              disabled={isCreatingCompany}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateCompany}
+              disabled={isCreatingCompany || !newCompany.name.trim()}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isCreatingCompany ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Company
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default CheckInForm;

@@ -1,0 +1,11 @@
+
+aws s3 sync ./dist s3://hotelamrapaliclassic.tekkzy.com --delete
+aws cloudfront create-invalidation --distribution-id EACPRXSDLAO1V --paths "/*"
+
+aws s3 sync ./dist s3://templatehm.awsaiapp.com  --delete
+aws cloudfront create-invalidation --distribution-id E2MTGS0B7WKXTR --paths "/*"
+
+aws s3 sync ./dist s3://amrapaliclassic.tekkzy.com --delete
+aws cloudfront create-invalidation --distribution-id E3OKPC7K2BHFJO --paths "/*"
+
+

@@ -1,0 +1,86 @@
+import { createContext, useState, useContext, useEffect } from "react";
+import { get, put } from "aws-amplify/api";
+import { institutionId } from "../../Operation/data.json";
+import { GlobalLoader } from "../components/LoadingStates.jsx";
+
+const InstitutionContext = createContext();
+
+export const useInstitutionContext = () => {
+  return useContext(InstitutionContext);
+};
+
+export const InstitutionProvider = ({ children }) => {
+  const [institutionData, setInstitutionData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  console.log("InstitutionProvider component rendered");
+
+  async function fetchInstitutionData() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await get({
+        apiName: "common",
+        path: `/any/${institutionId}/get-institution-data`,
+      }).response;
+
+      console.log("Response received:", response);
+
+      const data = await response.body.json();
+      console.log("Institution data fetched:", data);
+      setInstitutionData(data);
+    } catch (error) {
+      console.log("Error fetching institution data:", error);
+      console.error("Full error details:", error);
+      setError(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateInstitutionData() {
+    try {
+      console.log("Updating institution data:", institutionData);
+      const restOperation = await put({
+        apiName: "common",
+        path: `/any/${institutionId}/update-institution-data`,
+        options: {
+          body: institutionData,
+        },
+      });
+      const response = await restOperation.response;
+      const data = await response.body.json();
+      console.log("API Response (Institution):", data);
+      setInstitutionData(data);
+      setError(null);
+    } catch (error) {
+      console.error("Error updating institution data:", error);
+      setError("Failed to update institution data");
+    }
+  }
+
+  useEffect(() => {
+    fetchInstitutionData().then(() => {
+      console.log("fetchInstitutionData completed");
+    }).catch((err) => {
+      console.error("fetchInstitutionData failed:", err);
+    });
+  }, []);
+
+  return (
+    <InstitutionContext.Provider
+      value={{
+        institutionData,
+        setInstitutionData,
+        updateInstitutionData,
+        loading,
+        error,
+        fetchInstitutionData,
+      }}
+    >
+      {loading ? <GlobalLoader type="INSTITUTION_LOADING" /> : children}
+    </InstitutionContext.Provider>
+  );
+};

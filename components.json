@@ -1,0 +1,170 @@
+{
+  "updated_at": 1757743229170,
+  "created_at": 1757743229170,
+  "bill": {
+      "finalSummary": {
+          "amountInWords": "Three Thousand Two Hundred Eighty Four Rupees Only",
+          "totalAmount": 3284
+      },
+      "legalSignature": {
+          "foodServiceSac": "996313",
+          "roomStaySac": "996311",
+          "roomServiceSac": "996312",
+          "cashierSignature": "Cashier Signature & Seal",
+          "guestSignature": "Guest Signature",
+          "gstIn": "22AAAAA0000A1Z6",
+          "laundryClause": "Subject to Aimer jurisdiction. No claim for loss of valuables unless deposited.",
+          "guestName": "kiran"
+      },
+      "footer": {
+          "tagline": "We appreciate your stay at Tekkzy Hotel",
+          "thankYou": "Thank You"
+      },
+      "guestDetails": {
+          "country": "India",
+          "address": "VHR boys hostel GCEK Bhawanipatna",
+          "gender": "Male",
+          "nationality": "Indian",
+          "idProofNumber": "45979413",
+          "city": "Kalahandi",
+          "pinCode": "766002",
+          "mobile": "8770944214",
+          "idProofType": "Aadhar",
+          "state": "Odisha",
+          "email": "---",
+          "guestName": "kiran"
+      },
+      "billingSummary": {
+          "balanceDue": 2784,
+          "discountAmount": 0,
+          "subTotal": 3099,
+          "partialPayment": 500,
+          "serviceTaxRate": 2.5,
+          "totalRoomServices": 3000,
+          "extraPaxCharges": 0,
+          "roomTaxAmount": 180,
+          "serviceTaxAmount": 5,
+          "totalServiceCharges": 199,
+          "totalDiscount": 100,
+          "totalTaxAmount": 185,
+          "roomTaxRate": 6
+      },
+      "serviceChargesByDate": [
+          {
+              "2025-09-12": [
+                  {
+                      "date": "2025-09-12",
+                      "charges": {
+                          "dailyTotal": 1500,
+                          "minibarCharges": 0,
+                          "roomCharges": 1500,
+                          "extraPaxCharges": 0,
+                          "manualCharges": 0,
+                          "extraBedCharges": 0,
+                          "ratePlanCharges": 0,
+                          "laundryCharges": 0,
+                          "foodCharges": 0
+                      },
+                      "roomNumber": "203",
+                      "roomType": "Suite"
+                  }
+              ]
+          },
+          {
+              "2025-09-13": [
+                  {
+                      "date": "2025-09-13",
+                      "charges": {
+                          "dailyTotal": 1699,
+                          "minibarCharges": 99,
+                          "roomCharges": 1500,
+                          "extraPaxCharges": 0,
+                          "manualCharges": 0,
+                          "extraBedCharges": 0,
+                          "ratePlanCharges": 0,
+                          "laundryCharges": 0,
+                          "foodCharges": 100
+                      },
+                      "roomNumber": "203",
+                      "roomType": "Suite"
+                  }
+              ]
+          }
+      ],
+      "billHeader": {
+          "address": "2nd Lane, Hill Town, Bhawanipatna, Odisha",
+          "contact": "+919692064432",
+          "billDate": 1757743229169,
+          "bookingRef": "8770944214_12092025_1512",
+          "gstIn": "22AAAAA0000A1Z6",
+          "hotelName": "Tekkzy Hotel",
+          "email": "contact@tekkzy.com"
+      },
+      "bookingDetails": {
+          "bookingSource": "Direct",
+          "roomNumber": "203",
+          "detailedServices": {
+              "203": {
+                  "2025-09-13": [
+                      {
+                          "manual_charges": 0,
+                          "minibar_charges": 0,
+                          "laundry_charges": 0,
+                          "order_id": "250913002",
+                          "extra_bed_charges": 0,
+                          "food_charges": 100
+                      },
+                      {
+                          "manual_charges": 0,
+                          "minibar_charges": 99,
+                          "laundry_charges": 0,
+                          "order_id": "250913003",
+                          "extra_bed_charges": 0,
+                          "food_charges": 0
+                      }
+                  ]
+              }
+          },
+          "ratePlanId": "RP1001",
+          "numberOfNights": 2,
+          "gstNo": "12644",
+          "ratePlanTariffVariation": 0,
+          "services": {
+              "203": {
+                  "2025-09-13": {
+                      "minibar_charges": 99,
+                      "manual_charges": 0,
+                      "laundry_charges": 0,
+                      "extra_bed_charges": 0,
+                      "food_charges": 100
+                  },
+                  "2025-09-12": {
+                      "manual_charges": 0,
+                      "minibar_charges": 0,
+                      "laundry_charges": 0,
+                      "extra_bed_charges": 0,
+                      "food_charges": 0
+                  }
+              }
+          },
+          "no_of_children": 0,
+          "bookingId": "8770944214_12092025_1512",
+          "no_of_adults": 1,
+          "companyId": "N/A",
+          "checkIn": 1757670074616,
+          "extra_pax": [],
+          "bookingType": "Walk-in",
+          "ratePlanName": "European Plan",
+          "ratePlanBaseTariff": 0,
+          "specialRequests": "i want proper clean room",
+          "checkOut": 1757743229072,
+          "roomType": "Suite",
+          "remarks": ""
+      }
+  },
+  "version_history": [],
+  "generated_by_staff_id": "583f3850-01de-41b4-bed3-8db7443bc641",
+  "institutionId": "HOTEL001",
+  "bill_id": "8770944214_12092025_1512",
+  "payment_mode": "Cash"
+},
