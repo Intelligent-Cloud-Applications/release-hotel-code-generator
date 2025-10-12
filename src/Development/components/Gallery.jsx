@@ -12,9 +12,10 @@ import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import { Edit2 } from "lucide-react";
 import ImageUploadModal from "./ui/ImageUploadModal.jsx";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const Gallery = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
   const gallerySection = institutionData.homeSection.heroSection7;
 

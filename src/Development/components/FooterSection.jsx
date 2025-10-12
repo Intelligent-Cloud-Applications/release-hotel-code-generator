@@ -11,9 +11,10 @@ import { Edit2, Settings } from "lucide-react";
 import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import LinkManagementModal from "./LinkManagementModal.jsx";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const FooterSection = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
   
   // Get footer data with fallbacks

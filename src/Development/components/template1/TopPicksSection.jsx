@@ -1,7 +1,7 @@
 import React from "react";
-import { useEditContext } from "../context/EditModeContext.jsx";
-import ImageUploadModal from "./ui/ImageUploadModal.jsx";
-import { useInstitutionContext } from "../context/InstitutionContext.jsx";
+import { useEditContext } from "../../context/EditModeContext.jsx";
+import ImageUploadModal from "../../components/ui/ImageUploadModal.jsx";
+import { useInstitutionContext } from "../../context/InstitutionContext.jsx";
 
 const TopPicksSection = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();

@@ -7,9 +7,10 @@ import avatar3 from "../assets/Images/heroTest3.jpg";
 import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import ImageUploadModal from "./ui/ImageUploadModal.jsx";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const Reviews = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
   const reviewsSection = institutionData.homeSection.homeSection6;
 

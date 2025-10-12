@@ -8,9 +8,10 @@ import { EditModeProvider, useEditContext } from "../context/EditModeContext.jsx
 import { useAppContext } from "../context/AppContext.jsx";
 import { useEffect } from "react";
 import { Edit2 } from "lucide-react";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const HeroSection2 = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
 
   const heroSection2 = institutionData.homeSection.homeSection2;

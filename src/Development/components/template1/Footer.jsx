@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useEditContext } from '../context/EditModeContext.jsx';
-import { useAppContext } from '../context/AppContext.jsx';
-import { useInstitutionContext } from '../context/InstitutionContext.jsx';
+import { useEditContext } from '../../context/EditModeContext.jsx';
+import { useAppContext } from '../../context/AppContext.jsx';
+import { useInstitutionContext } from '../../context/InstitutionContext.jsx';
 
 const Footer = () => {
 

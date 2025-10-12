@@ -29,8 +29,10 @@
  */
 
 import { Routes, Route, Navigate } from "react-router";
-import Home from "./pages/Home.jsx";
-import AboutUs from "./pages/AboutUs.jsx";
+import Home1 from "./pages/Home1.jsx";
+import Home2 from "./pages/Home2.jsx";
+import AboutUs1 from "../Development/components/template1/AboutUs.jsx"
+import AboutUs2 from "./pages/AboutUs.jsx";
 import Login from "@/Development/pages/Auth/Login.jsx";
 import LogOut from "@/Development/pages/Auth/Logout.jsx";
 import DashboardLayout from "./layouts/DashboardLayout.jsx";
@@ -61,7 +63,8 @@ import Profile from "./pages/Dashboard/Profile.jsx";
 import Settings from "./pages/Dashboard/Settings.jsx";
 import Bill from "./pages/Dashboard/Registrations/Bill.jsx";
 import BillView from "./pages/Dashboard/Registrations/BillView.jsx";
-import Contact from "./pages/Contact.jsx";
+import Contact1 from "../Development/components/template1/Contact.jsx";
+import Contact2 from "./pages/Contact.jsx";
 import Faq from "@/Development/pages/Faq.jsx";
 import Legal from "@/Development/pages/Legal.jsx";
 import Privacy from "@/Development/pages/Privacy.jsx";
@@ -81,17 +84,18 @@ import CheckIn from "./pages/Dashboard/Registrations/checkin/index.jsx";
 import LoadingDemo from "./pages/LoadingDemo.jsx";
 import RoomsPage from "@/Development/pages/Rooms.jsx";
 import Restaurant from "@/Development/pages/Restaurant.jsx";
+import { template } from "../Operation/data.json"
 
 const AppRoutes = () => {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/about" element={<AboutUs />} />
+      <Route path="/" element={template === "template1" ? <Home1 /> : <Home2 />} />
+      <Route path="/about" element={template === "template1" ? <AboutUs1 /> : <AboutUs2 />} />
       <Route path="/rooms" element={<RoomsPage />} />
       <Route path="/restaurant" element={<Restaurant />} />
       <Route path="/book-now" element={<HomeBooking />} />
       <Route path="/blogs" element={<Blogs />} />
-      <Route path="/contact" element={<Contact />} />
+      <Route path="/contact" element={template === "template1" ? <Contact1 /> : <Contact2 />} />
       <Route path="/faq" element={<Faq />} />
       <Route path="/legal" element={<Legal />} />
       <Route path="/privacy" element={<Privacy />} />

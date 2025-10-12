@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { get, post, patch, put, del } from "aws-amplify/api";
 import { useAuthContext } from "./AuthContext.jsx";
-import { institutionId, product } from "../../Operation/data.json";
-import institution from "../../data.js";
+import { institutionId, product, template } from "../../Operation/data.json";
+
 
 const AppContext = createContext({});
 
@@ -19,7 +19,7 @@ export const AppContextProvider = ({ children }) => {
   const [staffs, setStaffs] = useState([]);
   const [payments, setPayments] = useState([]);
   const [bills, setBills] = useState([]);
-  const [institutionData, setInstitutionData] = useState(institution.template2);
+  const [institutionData, setInstitutionData] = useState(null);
   const [orders, setOrders] = useState({
     food: [],
     laundry: [],
@@ -37,6 +37,59 @@ export const AppContextProvider = ({ children }) => {
 
   // Store notification timeouts to clear them if needed
   const notificationTimeoutsRef = useRef([]);
+
+  async function fetchInstitutionData() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await get({
+        apiName: "common",
+        path: `/any/${institutionId}/get-institution-data`,
+      }).response;
+
+      console.log("Response received:", response);
+
+      const data = await response.body.json();
+      console.log("Institution data fetched:", data);
+      if (template === "template1") {
+        setInstitutionData(data.template1);
+      } else if (template === "template2") {
+        setInstitutionData(data.template2);
+      }
+      
+      
+    } catch (error) {
+      console.log("Error fetching institution data:", error);
+      console.error("Full error details:", error);
+      setError(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateInstitutionData() {
+      try {
+        console.log("Updating institution data:", institutionData);
+        const restOperation = await put({
+          apiName: "common",
+          path: `/any/${institutionId}/update-institution-data`,
+          options: {
+            body: institutionData,
+          },
+        });
+        const response = await restOperation.response;
+        const data = await response.body.json();
+        console.log("API Response (Institution):", data);
+        setInstitutionData(data);
+        setError(null);
+      } catch (error) {
+        console.error("Error updating institution data:", error);
+        setError("Failed to update institution data");
+      }
+    }
+
+
 
   // Rooms Section
   async function fetchRooms() {
@@ -1230,6 +1283,9 @@ export const AppContextProvider = ({ children }) => {
   }, [bookings]);
 
   useEffect(() => {
+    // Always fetch institution data for website display
+    fetchInstitutionData();
+    
     if (userData && userData.cognitoId && product === "dashboard-booking") {
       fetchRooms();
       fetchRatePlans();
@@ -1249,6 +1305,8 @@ export const AppContextProvider = ({ children }) => {
       value={{
         institutionData,
         setInstitutionData,
+        fetchInstitutionData,
+        updateInstitutionData,
         loading,
         setLoading,
         error,

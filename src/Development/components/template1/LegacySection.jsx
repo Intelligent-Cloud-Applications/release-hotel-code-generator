@@ -1,8 +1,8 @@
 import React from "react";
-import { useEditContext } from "../context/EditModeContext.jsx";
-import { useAuthContext } from "../context/AuthContext.jsx";
-import ImageUploadModal from "./ui/ImageUploadModal.jsx";
-import { useInstitutionContext } from "../context/InstitutionContext.jsx";
+import { useEditContext } from "../../context/EditModeContext.jsx";
+import { useAuthContext } from "../../context/AuthContext.jsx";
+import ImageUploadModal from "../ui/ImageUploadModal.jsx";
+import { useInstitutionContext } from "../../context/InstitutionContext.jsx";
 
 const LegacySection = () => {
   const { institutionData, setInstitutionData, updateInstitutionData } = useInstitutionContext();

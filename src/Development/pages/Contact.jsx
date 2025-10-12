@@ -12,9 +12,10 @@ import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import ImageUploadModal from "../components/ui/ImageUploadModal.jsx";
 import { motion } from "framer-motion";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const Contact = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
   const [isImageEdit, setIsImageEdit] = useState(false);
   const [imageMetaData, setImageMetaData] = useState({});

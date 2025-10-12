@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useEditContext } from "../context/EditModeContext.jsx";
+import { useEditContext } from "../../context/EditModeContext.jsx";
 import {
   FaSwimmer,
   FaWifi,
@@ -14,7 +14,7 @@ import {
   FaTv,
   FaConciergeBell,
 } from "react-icons/fa";
-import { useInstitutionContext } from "../context/InstitutionContext.jsx";
+import { useInstitutionContext } from "../../context/InstitutionContext.jsx";
 
 const OurFacilities = () => {
   const { institutionData } = useInstitutionContext();

@@ -14,9 +14,10 @@ import room3 from "../assets/Images/s3_3.png";
 import { Edit2 } from "lucide-react";
 import ImageUploadModal from "../components/ui/ImageUploadModal.jsx";
 import { motion } from "framer-motion";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const Rooms = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
   const [isImageEdit, setIsImageEdit] = React.useState(false);
   const [imageMetaData, setImageMetaData] = React.useState({});

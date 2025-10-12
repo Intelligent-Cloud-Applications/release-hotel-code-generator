@@ -1,7 +1,7 @@
 import React from "react";
-import { useEditContext } from "../context/EditModeContext.jsx";
-import ImageUploadModal from "./ui/ImageUploadModal.jsx";
-import { useInstitutionContext } from "../context/InstitutionContext.jsx";
+import { useEditContext } from "../../context/EditModeContext.jsx";
+import ImageUploadModal from "../ui/ImageUploadModal.jsx";
+import { useInstitutionContext } from "../../context/InstitutionContext.jsx";
 
 export default function HotelRooms() {
   const { institutionData, setInstitutionData } = useInstitutionContext();

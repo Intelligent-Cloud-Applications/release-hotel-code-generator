@@ -17,10 +17,11 @@ import { useEffect, useState } from "react";
 import { Edit2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog.js";
 import ImageUploadModal from "./ui/ImageUploadModal.jsx";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const Hero = () => {
   const { institutionData, setInstitutionData, updateInstitutionData } =
-    useAppContext();
+    useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
   const { homeSection, footerSection } = institutionData || {};
 

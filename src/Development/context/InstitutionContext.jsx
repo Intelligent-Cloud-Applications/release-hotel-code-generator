@@ -1,6 +1,6 @@
 import { createContext, useState, useContext, useEffect } from "react";
 import { get, put } from "aws-amplify/api";
-import { institutionId } from "../../Operation/data.json";
+import { institutionId, template } from "../../Operation/data.json";
 import { GlobalLoader } from "../components/LoadingStates.jsx";
 
 const InstitutionContext = createContext();
@@ -17,28 +17,34 @@ export const InstitutionProvider = ({ children }) => {
   console.log("InstitutionProvider component rendered");
 
   async function fetchInstitutionData() {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await get({
-        apiName: "common",
-        path: `/any/${institutionId}/get-institution-data`,
-      }).response;
-
-      console.log("Response received:", response);
-
-      const data = await response.body.json();
-      console.log("Institution data fetched:", data);
-      setInstitutionData(data);
-    } catch (error) {
-      console.log("Error fetching institution data:", error);
-      console.error("Full error details:", error);
-      setError(error);
-    } finally {
-      setLoading(false);
+      setLoading(true);
+      setError(null);
+  
+      try {
+        const response = await get({
+          apiName: "common",
+          path: `/any/${institutionId}/get-institution-data`,
+        }).response;
+  
+        console.log("Response received:", response);
+  
+        const data = await response.body.json();
+        console.log("Institution data fetched:", data);
+        if (template === "template1") {
+          setInstitutionData(data.template1);
+        } else if (template === "template2") {
+          setInstitutionData(data.template2);
+        }
+        
+        
+      } catch (error) {
+        console.log("Error fetching institution data:", error);
+        console.error("Full error details:", error);
+        setError(error);
+      } finally {
+        setLoading(false);
+      }
     }
-  }
 
   async function updateInstitutionData() {
     try {

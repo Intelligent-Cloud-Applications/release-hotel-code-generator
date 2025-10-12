@@ -1,8 +1,8 @@
 import React from "react";
 import { Quote } from "lucide-react";
-import { useEditContext } from "../context/EditModeContext.jsx";
-import ImageUploadModal from "./ui/ImageUploadModal.jsx";
-import { useInstitutionContext } from "../context/InstitutionContext.jsx";
+import { useEditContext } from "../../context/EditModeContext.jsx";
+import ImageUploadModal from "../ui/ImageUploadModal.jsx";
+import { useInstitutionContext } from "../../context/InstitutionContext.jsx";
 
 export default function Testimonials() {
   const { institutionData, setInstitutionData } = useInstitutionContext();

@@ -1,0 +1,556 @@
+{
+  "institutionId": "Hotel Amrapalli Classic",
+  "index": 0,
+  "template1": {
+    "cnText": "CN",
+    "institutionid": "HOTEL001",
+    "companyName": "Tekkzy Hotel",
+    "contactDetails": {
+      "address": "2nd Lane, Hill Town, Bhawanipatna, Odisha",
+      "email": "contact@tekkzy.com",
+      "ownerEmailId": "sai@tekkzy.com",
+      "ownerName": "Sai Swaroop",
+      "phone": "+919692064432",
+      "socialLinks": {
+        "facebook": "https://www.facebook.com/hotel",
+        "instagram": "https://www.instagram.com/hotel",
+        "linkedin": "https://www.linkedin.com/company/hotel",
+        "twitter": "https://www.twitter.com/hotel"
+      },
+      "upiId": "tekkzy@upi"
+    },
+    "dateId": "251012",
+    "dayStart": false,
+    "footer": {
+      "getInTouch": {
+        "description": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint.",
+        "emailPlaceholder": "Enter your email",
+        "subscribeButtonText": "Subscribe",
+        "title": "Get in Touch"
+      },
+      "quickLinks": {
+        "links": [
+          {
+            "text": "Home",
+            "url": "/"
+          },
+          {
+            "text": "Services",
+            "url": "/services"
+          },
+          {
+            "text": "About Us",
+            "url": "/about"
+          },
+          {
+            "text": "Contact",
+            "url": "/contact"
+          }
+        ],
+        "title": "Quick Links"
+      },
+      "usefulLinks": {
+        "links": [
+          {
+            "text": "Privacy Policy",
+            "url": "/privacy"
+          },
+          {
+            "text": "Legal",
+            "url": "/legal"
+          },
+          {
+            "text": "FAQ",
+            "url": "/faq"
+          },
+          {
+            "text": "Blogs",
+            "url": "/blogs"
+          }
+        ],
+        "title": "Useful Links"
+      }
+    },
+    "hero": {
+      "videoUrl": "https://videos.pexels.com/video-files/855139/855139-hd_1920_1080_30fps.mp4"
+    },
+    "hotelRooms": {
+      "description": "We offer modern (5-star) hotel facilities for your comfort.",
+      "discount": {
+        "buttonText": "Today Deals",
+        "description": "Torem ipsum dolor sit amet, consectetur velit interdum, ac aliquet odio mattis.",
+        "title": "Save 10% Off"
+      },
+      "images": [
+        "https://plus.unsplash.com/premium_photo-1661964071015-d97428970584?q=80&w=1920&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+        "https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8aG90ZWx8ZW58MHx8MHx8fDA%3D",
+        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8aG90ZWx8ZW58MHx8MHx8fDA%3D",
+        "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTF8fGhvdGVsfGVufDB8fDB8fHww"
+      ],
+      "title": {
+        "end": "Rooms!",
+        "highlight": "Best",
+        "start": "Our"
+      }
+    },
+    "legacySection": {
+      "description": "Lorem ipsum dolor sit amet consectetur. Egestas vel arcu neque enim odio porttitor. Dictum nulla vulputate mauris aliquam donee. Pellentesque risus mattis fames aliquabbm cursus eget ornare fringilla. Amet turpis tristiqujyde hghj sodales.cursus eget ornare fringilla. Amet turpis tristique sodales. marjfhris fames aliquam cursus eget ornarejch daf fringilla. Amet turpis tristique Amkjgfdet sodales.cursus",
+      "images": {
+        "bottom": "img_1",
+        "bottomRight": "img_4",
+        "topLeft": "https://institution-utils.s3.amazonaws.com/hotel_code_generator%2FHOTEL001%2FlegacySection%2FScreenshot+2025-06-13+190252.png",
+        "topRight": "img_3"
+      },
+      "stats": [
+        {
+          "label": "Countries",
+          "number": "18"
+        },
+        {
+          "label": "Skilled Staff",
+          "number": "56"
+        },
+        {
+          "label": "Cities",
+          "number": "479"
+        },
+        {
+          "label": "Years of Service",
+          "number": "15"
+        },
+        {
+          "label": "Luxury Rooms",
+          "number": "250"
+        },
+        {
+          "label": "Star Rating",
+          "number": "4.9"
+        }
+      ],
+      "title": {
+        "highlight": "Excellence",
+        "start": "A Legacy of"
+      }
+    },
+    "logoUrl": "https://institution-utils.s3.us-east-1.amazonaws.com/hotel_code_generator/test/logo.png",
+    "ourFacilities": {
+      "description": "We offer modern (5 star) hotel facilities for your comfort.",
+      "facilities": [
+        {
+          "icon": "FaSwimmer",
+          "name": "Swimming Pool"
+        },
+        {
+          "icon": "FaWifi",
+          "name": "WiFi"
+        },
+        {
+          "icon": "FaCoffee",
+          "name": "Breakfast"
+        },
+        {
+          "icon": "FaDumbbell",
+          "name": "Gym"
+        },
+        {
+          "icon": "FaGamepad",
+          "name": "Game Center"
+        },
+        {
+          "icon": "FaLightbulb",
+          "name": "24/7 Light"
+        },
+        {
+          "icon": "FaBath",
+          "name": "Laundry"
+        },
+        {
+          "icon": "FaParking",
+          "name": "Parking Space"
+        }
+      ],
+      "title": {
+        "highlight": "Facilities",
+        "start": "Our"
+      }
+    },
+    "slogan": "Happy Place To Live",
+    "sms": true,
+    "Table": [
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/1-1755061933321.html",
+        "tableNo": "1"
+      },
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/2-1755061936440.html",
+        "tableNo": "2"
+      },
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/3-1755061937488.html",
+        "tableNo": "3"
+      },
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/4-1755061938523.html",
+        "tableNo": "4"
+      },
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/5-1755061939539.html",
+        "tableNo": "5"
+      },
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/6-1755061940808.html",
+        "tableNo": "6"
+      },
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/8-1755061942871.html",
+        "tableNo": "8"
+      },
+      {
+        "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/HOTEL001/qr-pages/9-1755061943891.html",
+        "tableNo": "9"
+      }
+    ],
+    "taxNumber": "22AAAAA0000A1Z6",
+    "taxPercent": "18",
+    "taxType": "GST",
+    "testimonials": {
+      "introText": "sfjahdf kajs sdnbdsbhvhj sdfjhhcbasdnf sdfjbasfmn xcvds",
+      "testimonials": [
+        {
+          "image": "https://randomuser.me/api/portraits/men/45.jpg",
+          "name": "Millon Zehino",
+          "rating": 5,
+          "text": "Absolutely amazing stay! The service was top-notch and the rooms were pristine.",
+          "title": "Customer"
+        },
+        {
+          "image": "https://randomuser.me/api/portraits/women/68.jpg",
+          "name": "Delbert Little",
+          "rating": 5,
+          "text": "A truly luxurious experience! The hospitality was beyond expectations.",
+          "title": "Customer"
+        },
+        {
+          "image": "https://randomuser.me/api/portraits/men/33.jpg",
+          "name": "Leah Stiedemann",
+          "rating": 5,
+          "text": "The best vacation experience I've ever had! Highly recommend to everyone.",
+          "title": "Customer"
+        }
+      ],
+      "title": {
+        "end": "Our Customers",
+        "highlight": "From",
+        "start": "Know"
+      }
+    },
+    "topPicksSection": {
+      "description": "Lorem ipsum dolor sit amet xaasj sdamas saswok consectetur.",
+      "images": {
+        "left": "img_2",
+        "middle": "img_3",
+        "right": "img_4"
+      },
+      "title": {
+        "highlight": "Pics",
+        "start": "Top "
+      }
+    },
+    "whyStayHere": {
+      "categories": [
+        {
+          "link": "https://images.unsplash.com/photo-1593642532973-d31b6557fa68?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8d2VsbG5lc3N8ZW58MHx8MHx8fDA%3D",
+          "name": "Wellness"
+        },
+        {
+          "link": "https://plus.unsplash.com/premium_photo-1661964071015-d97428970584?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8aG90ZWx8ZW58MHx8MHx8fDA%3D",
+          "name": "Architecture"
+        },
+        {
+          "link": "https://images.unsplash.com/photo-1529316275402-0462fcc4abd6?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8cmVzb3J0fGVufDB8fDB8fHww",
+          "name": "Cuisine"
+        },
+        {
+          "link": "https://images.unsplash.com/photo-1593642532973-d31b6557fa68?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8d2VsbG5lc3N8ZW58MHx8MHx8fDA%3D",
+          "name": "Panoramic location"
+        }
+      ],
+      "hashtag": "#companyname",
+      "images": {
+        "floating": [
+          {
+            "label": "Any Text Here",
+            "src": "https://images.unsplash.com/photo-1529316275402-0462fcc4abd6?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8cmVzb3J0fGVufDB8fDB8fHww"
+          },
+          {
+            "label": "Hotel Room",
+            "src": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8cmVzb3J0fGVufDB8fDB8fHww"
+          },
+          {
+            "label": "Hotel Room",
+            "src": "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=800&q=80"
+          },
+          {
+            "label": "Hotel Room",
+            "src": "https://images.unsplash.com/photo-1698129332802-473eac8d710d?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+          }
+        ],
+        "grid": [
+          "https://images.unsplash.com/photo-1606402179428-a57976d71fa4?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+          "https://images.unsplash.com/photo-1553440569-bcc63803a83d?auto=format&fit=crop&w=800&q=80",
+          "https://images.unsplash.com/photo-1586611292717-f828b167408c?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+          "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=800&q=80"
+        ],
+        "gridBg": "https://images.unsplash.com/photo-1528909514045-2fa4ac7a08ba?auto=format&fit=crop&w=800&q=80",
+        "gridBig": "https://images.unsplash.com/photo-1528909514045-2fa4ac7a08ba?auto=format&fit=crop&w=800&q=80",
+        "main": "https://institution-utils.s3.us-east-1.amazonaws.com/hotel_code_generator/test/whyStayHere/top.png"
+      },
+      "introText": "Lorem ipsum dolor sit amet xaasj sdamas saswok consectetur.",
+      "mainImage": "https://plus.unsplash.com/premium_photo-1661964071015-d97428970584?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8aG90ZWx8ZW58MHx8MHx8fDA%3D",
+      "points": [
+        {
+          "text": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint. Velit officia consequat.",
+          "title": "Provide the best choice of Room."
+        },
+        {
+          "text": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint. Velit officia consequat.",
+          "title": "Low price with Best Quality"
+        },
+        {
+          "text": "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint. Velit officia consequat.",
+          "title": "Restaurant Service"
+        }
+      ],
+      "ratings": [
+        {
+          "image": "https://randomuser.me/api/portraits/men/1.jpg",
+          "name": "Cody Fisher",
+          "score": "Give Rating 4.5"
+        },
+        {
+          "image": "https://randomuser.me/api/portraits/men/32.jpg",
+          "name": "Albert Flores",
+          "score": "Give Rating 4.2"
+        },
+        {
+          "image": "https://randomuser.me/api/portraits/women/44.jpg",
+          "name": "Devon Lane",
+          "score": "Give Rating 4.8"
+        }
+      ],
+      "title": "Why You Should",
+      "titleHighlight": "Stay Here"
+    }
+  },
+  "template2": {
+    "homeSection": {
+      "homeSection1": {
+        "tagline1": "Hotel",
+        "tagline2": "Amrapalli Classic",
+        "img": null,
+        "rightBox": {
+          "buttonText": "Book Now",
+          "tagline": "Discover a stay that feels personal, refined, and unforgettable."
+        },
+        "leftBox": {
+          "rating": "4.8",
+          "tagline": "From over 1200+ reviews",
+          "img1": null,
+          "img2": null,
+          "img3": null
+        }
+      },
+      "homeSection2": {
+        "img": null,
+        "title": "Hotel Amrapalli Classic",
+        "subtitle": "Set in the charm of Hilltown, our hotel blends with comfort, offering stunning views of nature. Where elegance feels natural"
+      },
+      "homeSection3": {
+        "title": "We Accommodate",
+        "img1": null,
+        "text1": "Restaurant",
+        "img2": null,
+        "text2": "Spoon Room",
+        "img3": null,
+        "text3": "AC Rooms with Wifi",
+        "description": "Welcome to Amrapalli Classic Hotel, where modern design blends seamlessly with timeless hospitality. Set in Bhawanipatna's cultural heart, we offer more than just a place to stay — we create moments of warmth, relaxation, and understated luxury."
+      },
+      "homeSection4": {
+        "title1": "We're",
+        "title2": "THE",
+        "title3": "BEST",
+        "img1": null,
+        "img2": null,
+        "textRight": "Hotel is accessible and approachable With Interior designed.",
+        "textLeft": "We are best Hotel re-imagined for the wonderful stay • a Desire with a sharp vision and commitment to the future."
+      },
+      "homeSection5": {
+        "title": "Rooms & Rates",
+        "rooms": [
+          {
+            "img": null,
+            "type": "Deluxe Room",
+            "description": "Our Deluxe Rooms offer a perfect blend of comfort and style, featuring modern amenities and elegant decor to ensure a relaxing stay.",
+            "price": "₹ 2,500 / Night"
+          },
+          {
+            "img": null,
+            "type": "Suite Room",
+            "description": "Experience luxury in our Suite Rooms, complete with spacious living areas, premium furnishings, and top-notch amenities for an unforgettable stay.",
+            "price": "₹ 4,000 / Night"
+          },
+          {
+            "img": null,
+            "type": "Standard Room",
+            "description": "Our Standard Rooms provide a cozy and comfortable environment, equipped with essential amenities to make your stay pleasant and enjoyable.",
+            "price": "₹ 1,800 / Night"
+          }
+        ],
+        "bottomBox": {
+          "title": "Culinary Excellence",
+          "description": "Experience world-class cuisine in our glassmorphism-designed dining spaces",
+          "buttonText": "Make Reservation"
+        }
+      },
+      "homeSection6": {
+        "title": "Our Reviews",
+        "reviews": [
+          {
+            "name": "John Doe",
+            "position": "Guest",
+            "img": null,
+            "rating": 5,
+            "comment": "Amazing stay! The service was excellent and the rooms were very comfortable."
+          },
+          {
+            "name": "Jane Smith",
+            "position": "Guest",
+            "img": null,
+            "rating": 4,
+            "comment": "Great location and friendly staff. Would definitely come back!"
+          },
+          {
+            "name": "Emily Johnson",
+            "position": "Guest",
+            "img": null,
+            "rating": 5,
+            "comment": "A wonderful experience from start to finish. Highly recommend!"
+          }
+        ]
+      },
+      "heroSection7": {
+        "title": "View Our Gallery",
+        "images": [
+          {
+            "img": null,
+            "title": "Hotel Amrapalli Classic"
+          },
+          {
+            "img": null,
+            "title": "Hotel Amrapalli Classic"
+          },
+          {
+            "img": null,
+            "title": "Hotel Amrapalli Classic"
+          },
+          {
+            "img": null,
+            "title": "Hotel Amrapalli Classic"
+          },
+          {
+            "img": null,
+            "title": "Hotel Amrapalli Classic"
+          },
+          {
+            "img": null,
+            "title": "Hotel Amrapalli Classic"
+          }
+        ]
+      }
+    },
+    "aboutusSection": {
+      "tagline1": "About",
+      "tagline2": "Amrapalli Classic",
+      "img": null,
+      "description": "We at Hotel Amrapalli Classic(A unit of SKGG Hotels Pvt Ltd) take immense pleasure to offer a newest luxurious and premium Hotel at Bhawanipatna. Located in a peaceful location of Hilltown,Hotel Amrapalli Classic offers serene atmosphere with great scenic views. Our motto is to provide Superior class luxury with great comfort at very affordable price. We have luxurious and spacious Air-conditioned rooms, Centrally Air-conditioned conference and party halls and restaurant and Bar offering great cuisines. Experience premium class service at Hotel Amrapalli Classic,Bhawanipatna"
+    },
+    "restaurantSection": {
+      "tagline1": "Restaurant at",
+      "tagline2": "Amrapalli Classic",
+      "img": null,
+      "description": "Indulge in a culinary journey at our restaurant, where we serve a blend of local and international cuisines prepared by our expert chefs. Experience fine dining in a luxurious setting with impeccable service."
+    },
+    "roomsSection": {
+      "tagline1": "Rooms at",
+      "tagline2": "Amrapalli Classic",
+      "description": "Experience unparalleled comfort and luxury in our well-appointed rooms, designed to provide a serene retreat for our guests."
+    },
+    "contactSection": {
+      "tagline1": "Contact",
+      "tagline2": "Amrapalli Classic",
+      "img": null,
+      "description": "For inquiries and reservations, please contact us at the following:"
+    },
+    "footerSection": {
+      "tagline": "Amrapalli Classic",
+      "footerSection1": {
+        "title": "Amrapalli Hotel",
+        "description": "Experience luxury redefined through innovative glassmorphism architecture."
+      },
+      "footerSection2": {
+        "title": "Accomodation",
+        "links": [
+          {
+            "name": "Deluxe Room",
+            "url": "#"
+          },
+          {
+            "name": "Suite Room",
+            "url": "#"
+          },
+          {
+            "name": "Standard Room",
+            "url": "#"
+          },
+          {
+            "name": "Family Room",
+            "url": "#"
+          }
+        ]
+      },
+      "footerSection3": {
+        "title": "Amenities",
+        "links": [
+          {
+            "name": "Free Wifi",
+            "url": "#"
+          },
+          {
+            "name": "Swimming Pool",
+            "url": "#"
+          },
+          {
+            "name": "Spa Services",
+            "url": "#"
+          },
+          {
+            "name": "Fitness Center",
+            "url": "#"
+          }
+        ]
+      },
+      "footerSection4": {
+        "title": "Contact",
+        "address": "123 Main Street, Hilltown, Country",
+        "phone": "+1 234 567 890",
+        "email": "info@amrapalliclassic.com"
+      },
+      "socialMedia": {
+        "facebook": "https://www.facebook.com",
+        "instagram": "https://www.instagram.com",
+        "twitter": "https://www.twitter.com",
+        "linkedin": "https://www.linkedin.com"
+      }
+    }
+  }
+}

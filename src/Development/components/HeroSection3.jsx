@@ -6,9 +6,10 @@ import image2 from "../assets/Images/img2.jpg";
 import scribble from "../assets/Images/scribble.png";
 import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const HeroSection3 = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
 
   const heroSection3 = institutionData?.homeSection?.homeSection4 || {};

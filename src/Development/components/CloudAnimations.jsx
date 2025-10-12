@@ -3,9 +3,10 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
+import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
 const CloudAnimation = () => {
-  const { institutionData, setInstitutionData } = useAppContext();
+  const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== "undefined" ? window.innerWidth : 1024
