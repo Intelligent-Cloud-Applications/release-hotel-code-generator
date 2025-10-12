@@ -12,7 +12,7 @@ import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 const RoomRates = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
-  const roomRatesSection = institutionData.homeSection.homeSection5;
+  const roomRatesSection = institutionData?.homeSection?.homeSection5;
 
   const [isImageEdit, setIsImageEdit] = useState(false);
   const [imageMetaData, setImageMetaData] = useState(null);

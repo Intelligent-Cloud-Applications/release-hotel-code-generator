@@ -12,7 +12,7 @@ import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 const Reviews = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
-  const reviewsSection = institutionData.homeSection.homeSection6;
+  const reviewsSection = institutionData?.homeSection?.homeSection6;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(0);
@@ -258,12 +258,12 @@ const Reviews = () => {
                 >
                   "
                   {window.innerWidth < 768
-                    ? testimonials[currentIndex].text.length > 300
-                      ? testimonials[currentIndex].text.substring(0, 300) + "..."
-                      : testimonials[currentIndex].text
-                    : testimonials[currentIndex].text.length > 500
-                    ? testimonials[currentIndex].text.substring(0, 500) + "..."
-                    : testimonials[currentIndex].text}
+                    ? testimonials[currentIndex]?.text.length > 300
+                      ? testimonials[currentIndex]?.text.substring(0, 300) + "..."
+                      : testimonials[currentIndex]?.text
+                    : testimonials[currentIndex]?.text.length > 500
+                    ? testimonials[currentIndex]?.text.substring(0, 500) + "..."
+                    : testimonials[currentIndex]?.text}
                   "
                 </motion.p>
               )}
@@ -354,7 +354,7 @@ const Reviews = () => {
                         lineHeight: "1.4",
                       }}
                     >
-                      {testimonials[currentIndex].name}
+                      {testimonials[currentIndex]?.name}
                     </p>
                   )}
                   {isEditMode ? (
@@ -394,7 +394,7 @@ const Reviews = () => {
                         lineHeight: "1.4",
                       }}
                     >
-                      {testimonials[currentIndex].position}
+                      {testimonials[currentIndex]?.position}
                     </p>
                   )}
                 </div>

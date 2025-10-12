@@ -17,49 +17,70 @@ export const InstitutionProvider = ({ children }) => {
   console.log("InstitutionProvider component rendered");
 
   async function fetchInstitutionData() {
-      setLoading(true);
-      setError(null);
-  
-      try {
-        const response = await get({
-          apiName: "common",
-          path: `/any/${institutionId}/get-institution-data`,
-        }).response;
-  
-        console.log("Response received:", response);
-  
-        const data = await response.body.json();
-        console.log("Institution data fetched:", data);
-        if (template === "template1") {
-          setInstitutionData(data.template1);
-        } else if (template === "template2") {
-          setInstitutionData(data.template2);
-        }
-        
-        
-      } catch (error) {
-        console.log("Error fetching institution data:", error);
-        console.error("Full error details:", error);
-        setError(error);
-      } finally {
-        setLoading(false);
+    // setLoading(true);
+    setError(null);
+
+    try {
+      const response = await get({
+        apiName: "common",
+        path: `/any/${institutionId}/get-institution-data`,
+      }).response;
+
+      console.log("Response received:", response);
+
+      const data = await response.body.json();
+      console.log("Institution data fetched:", data);
+      if (template === "template1") {
+        setInstitutionData(data.template1);
+      } else if (template === "template2") {
+        setInstitutionData(data.template2);
       }
+    } catch (error) {
+      console.log("Error fetching institution data:", error);
+      console.error("Full error details:", error);
+      setError(error);
+    } finally {
+      setLoading(false);
     }
+  }
 
   async function updateInstitutionData() {
     try {
       console.log("Updating institution data:", institutionData);
+      const res = await get({
+        apiName: "common",
+        path: `/any/${institutionId}/get-institution-data`,
+      }).response;
+      const existingData = await res.body.json();
+      console.log("Existing institution data:", existingData);
+      let updatedData = {};
+
+      if (template === "template1") {
+        updatedData = {
+          ...existingData,
+          template1: institutionData,
+        };
+      } else if (template === "template2") {
+        updatedData = {
+          ...existingData,
+          template2: institutionData,
+        };
+      }
+      console.log("Updated data: ", updatedData);
+
+      console.log("Merged institution data to be sent:", updatedData);
+
       const restOperation = await put({
         apiName: "common",
         path: `/any/${institutionId}/update-institution-data`,
         options: {
-          body: institutionData,
+          body: updatedData,
         },
       });
       const response = await restOperation.response;
       const data = await response.body.json();
       console.log("API Response (Institution):", data);
-      setInstitutionData(data);
+      await fetchInstitutionData();
       setError(null);
     } catch (error) {
       console.error("Error updating institution data:", error);
@@ -68,11 +89,13 @@ export const InstitutionProvider = ({ children }) => {
   }
 
   useEffect(() => {
-    fetchInstitutionData().then(() => {
-      console.log("fetchInstitutionData completed");
-    }).catch((err) => {
-      console.error("fetchInstitutionData failed:", err);
-    });
+    fetchInstitutionData()
+      .then(() => {
+        console.log("fetchInstitutionData completed");
+      })
+      .catch((err) => {
+        console.error("fetchInstitutionData failed:", err);
+      });
   }, []);
 
   return (

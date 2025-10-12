@@ -17,7 +17,7 @@ import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 const Gallery = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
-  const gallerySection = institutionData.homeSection.heroSection7;
+  const gallerySection = institutionData?.homeSection?.heroSection7;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isImageEdit, setIsImageEdit] = useState(false);

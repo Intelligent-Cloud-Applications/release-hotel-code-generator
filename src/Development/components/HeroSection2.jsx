@@ -14,7 +14,7 @@ const HeroSection2 = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
 
-  const heroSection2 = institutionData.homeSection.homeSection2;
+  const heroSection2 = institutionData?.homeSection?.homeSection2;
 
 
   return (

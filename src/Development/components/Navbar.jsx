@@ -121,7 +121,10 @@ const Navbar = () => {
             </label>
             {isEditMode && (
               <button
-                onClick={updateInstitutionData}
+                onClick={() => {
+                  updateInstitutionData();
+                  setIsEditMode(false);
+                }}
                 className="ml-2 px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 transition-colors"
               >
                 Save

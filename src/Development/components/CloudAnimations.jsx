@@ -16,7 +16,7 @@ const CloudAnimation = () => {
     setIsEditMode(false);
   }, []);
 
-  const homeSection = institutionData.homeSection.homeSection1;
+  const homeSection = institutionData?.homeSection?.homeSection1 || {};
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -394,9 +394,9 @@ const CloudAnimation = () => {
                 setInstitutionData({
                   ...institutionData,
                   homeSection: {
-                    ...homeSection,
+                    ...institutionData.homeSection,
                     homeSection1: {
-                      ...homeSection.homeSection1,
+                      ...institutionData.homeSection.homeSection1,
                       tagline1: e.target.value,
                     },
                   },
@@ -445,9 +445,9 @@ const CloudAnimation = () => {
                 setInstitutionData({
                   ...institutionData,
                   homeSection: {
-                    ...homeSection,
+                    ...institutionData?.homeSection,
                     homeSection1: {
-                      ...homeSection.homeSection1,
+                      ...institutionData?.homeSection?.homeSection1,
                       tagline2: e.target.value,
                     },
                   },

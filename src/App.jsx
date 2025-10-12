@@ -1,16 +1,10 @@
-import { BrowserRouter } from "react-router";
+
 import AppRoutes from "./Development/AppRoutes.jsx";
 import { Amplify } from "aws-amplify";
-import { AppContextProvider } from "@/Development/context/AppContext.jsx";
-import { AuthContextProvider } from "@/Development/context/AuthContext.jsx";
-import { LoadingProvider } from "@/Development/context/LoadingContext.jsx";
-import { Toaster } from "@/Development/components/ui/sonner";
 import {
-  InstitutionProvider,
   useInstitutionContext,
 } from "./Development/context/InstitutionContext";
 import { useEffect } from "react";
-import { EditModeProvider } from "./Development/context/EditModeContext";
 import metaTagsData from "./Operation/metaTags.json";
 
 Amplify.configure({
@@ -145,22 +139,7 @@ const App = () => {
     document.body.appendChild(noscript);
   }, [gtmId]);
 
-  return (
-    <LoadingProvider>
-      <InstitutionProvider>
-        <EditModeProvider>
-          <AuthContextProvider>
-            <AppContextProvider>
-              <BrowserRouter>
-                <AppRoutes />
-                <Toaster />
-              </BrowserRouter>
-            </AppContextProvider>
-          </AuthContextProvider>
-        </EditModeProvider>
-      </InstitutionProvider>
-    </LoadingProvider>
-  );
+  return <AppRoutes />;
 };
 
 export default App;

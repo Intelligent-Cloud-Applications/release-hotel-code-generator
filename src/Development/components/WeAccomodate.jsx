@@ -15,7 +15,7 @@ import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 const WeAccomodate = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
-  const weAccomodate = institutionData.homeSection.homeSection3;
+  const weAccomodate = institutionData?.homeSection?.homeSection3;
 
   const [isImageEdit, setIsImageEdit] = useState(false);
   const [imageMetaData, setImageMetaData] = useState(null);
