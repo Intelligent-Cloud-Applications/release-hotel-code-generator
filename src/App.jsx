@@ -5,7 +5,7 @@ import {
   useInstitutionContext,
 } from "./Development/context/InstitutionContext";
 import { useEffect } from "react";
-import metaTagsData from "./Operation/metaTags.json";
+import metaTagsData from "./Operation/metatags.json";
 
 Amplify.configure({
   API: {
