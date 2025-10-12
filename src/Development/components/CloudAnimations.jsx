@@ -5,6 +5,23 @@ import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 
+import cloud01 from "../assets/Images/clouds01.png";
+import cloud02 from "../assets/Images/clouds02.png";
+import cloud03 from "../assets/Images/clouds03.png";
+import cloud04 from "../assets/Images/clouds04.png";
+import cloud05 from "../assets/Images/clouds05.png";
+import cloud06 from "../assets/Images/clouds06.png";
+import cloud07 from "../assets/Images/clouds07.png";
+import cloud08 from "../assets/Images/clouds08.png";
+import cloud09 from "../assets/Images/clouds09.png";
+import cloud10 from "../assets/Images/clouds10.png";
+import cloud11 from "../assets/Images/clouds11.png";
+import cloud12 from "../assets/Images/clouds12.png";
+import cloud13 from "../assets/Images/clouds13.png";
+import cloud14 from "../assets/Images/clouds14.png";
+import cloud15 from "../assets/Images/clouds15.png";
+
+
 const CloudAnimation = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode, setIsEditMode } = useEditContext();
@@ -26,7 +43,7 @@ const CloudAnimation = () => {
   // Array of cloud images (you can adjust which clouds to use)
   const clouds = [
     {
-      src: "/src/Development/assets/Images/clouds01.png",
+      src: cloud01,
       delay: 0,
       duration: 1.2,
       top: "2%",
@@ -41,7 +58,7 @@ const CloudAnimation = () => {
       animateX: 100, // Move from right to left
     },
     {
-      src: "/src/Development/assets/Images/clouds02.png",
+      src: cloud02,
       delay: 0,
       duration: 1.2,
       top: "3%",
@@ -56,7 +73,7 @@ const CloudAnimation = () => {
       animateX: -150, // Move from left to right
     },
     {
-      src: "/src/Development/assets/Images/clouds03.png",
+      src: cloud03,
       delay: 0,
       duration: 1.2,
       top: "-10%",
@@ -71,7 +88,7 @@ const CloudAnimation = () => {
       animateX: 80,
     },
     {
-      src: "/src/Development/assets/Images/clouds04.png",
+      src: cloud04,
       delay: 0,
       duration: 1.2,
       top: "0%",
@@ -86,7 +103,7 @@ const CloudAnimation = () => {
       animateX: -120,
     },
     {
-      src: "/src/Development/assets/Images/clouds05.png",
+      src: cloud05,
       delay: 0,
       duration: 1.2,
       top: "2%",
@@ -101,7 +118,7 @@ const CloudAnimation = () => {
       animateX: 90,
     },
     {
-      src: "/src/Development/assets/Images/clouds06.png",
+      src: cloud06,
       delay: 0,
       duration: 1.2,
       top: "0%",
@@ -116,7 +133,7 @@ const CloudAnimation = () => {
       animateX: -100,
     },
     {
-      src: "/src/Development/assets/Images/clouds06.png",
+      src: cloud07,
       delay: 0,
       duration: 1.2,
       top: "8%",
@@ -131,7 +148,7 @@ const CloudAnimation = () => {
       animateX: 110,
     },
     {
-      src: "/src/Development/assets/Images/clouds07.png",
+      src: cloud08,
       delay: 0,
       duration: 1.2,
       top: "5%",
@@ -146,7 +163,7 @@ const CloudAnimation = () => {
       animateX: 130,
     },
     {
-      src: "/src/Development/assets/Images/clouds08.png",
+      src: cloud09,
       delay: 0,
       duration: 1.2,
       top: "-5%",
@@ -161,7 +178,7 @@ const CloudAnimation = () => {
       animateX: -90,
     },
     {
-      src: "/src/Development/assets/Images/clouds09.png",
+      src: cloud09,
       delay: 0,
       duration: 1.2,
       top: "3%",
@@ -176,7 +193,7 @@ const CloudAnimation = () => {
       animateX: 95,
     },
     {
-      src: "/src/Development/assets/Images/clouds09.png",
+      src: cloud09,
       delay: 0,
       duration: 1.2,
       top: "6%",
@@ -191,7 +208,7 @@ const CloudAnimation = () => {
       animateX: -85,
     },
     {
-      src: "/src/Development/assets/Images/clouds09.png",
+      src: cloud09,
       delay: 0,
       duration: 1.2,
       top: "-1%",
@@ -206,7 +223,7 @@ const CloudAnimation = () => {
       animateX: 105,
     },
     {
-      src: "/src/Development/assets/Images/clouds09.png",
+      src: cloud09,
       delay: 0,
       duration: 1.2,
       top: "9%",
@@ -221,7 +238,7 @@ const CloudAnimation = () => {
       animateX: -110,
     },
     {
-      src: "/src/Development/assets/Images/clouds10.png",
+      src: cloud10,
       delay: 0,
       duration: 1.2,
       top: "10%",
@@ -236,7 +253,7 @@ const CloudAnimation = () => {
       animateX: 120,
     },
     {
-      src: "/src/Development/assets/Images/clouds11.png",
+      src: cloud11,
       delay: 0,
       duration: 1.2,
       top: "-10%",
@@ -251,7 +268,7 @@ const CloudAnimation = () => {
       animateX: -95,
     },
     {
-      src: "/src/Development/assets/Images/clouds12.png",
+      src: cloud12,
       delay: 0,
       duration: 1.2,
       top: "-10%",
@@ -266,7 +283,7 @@ const CloudAnimation = () => {
       animateX: 140,
     },
     {
-      src: "/src/Development/assets/Images/clouds13.png",
+      src: cloud13,
       delay: 0,
       duration: 1.2,
       top: "12%",
@@ -281,7 +298,7 @@ const CloudAnimation = () => {
       animateX: -130,
     },
     {
-      src: "/src/Development/assets/Images/clouds14.png",
+      src: cloud14,
       delay: 0,
       duration: 1.2,
       top: "4%",
@@ -296,7 +313,7 @@ const CloudAnimation = () => {
       animateX: 100,
     },
     {
-      src: "/src/Development/assets/Images/clouds15.png",
+      src: cloud15,
       delay: 0,
       duration: 1.2,
       top: "-10%",
@@ -311,7 +328,7 @@ const CloudAnimation = () => {
       animateX: -140,
     },
     {
-      src: "/src/Development/assets/Images/clouds15.png",
+      src: cloud15,
       delay: 0,
       duration: 1.2,
       top: "15%",
