@@ -1,6 +1,6 @@
 import React from 'react';
-import Navbar from '../components/Navbar.jsx';
-import Footer from '../components/Footer.jsx';
+import Navbar from '../components/template1/Navbar.jsx';
+import Footer from '../components/template1/Footer.jsx';
 import { EditModeProvider } from "../context/EditModeContext.jsx";
 
 const Privacy = () => (

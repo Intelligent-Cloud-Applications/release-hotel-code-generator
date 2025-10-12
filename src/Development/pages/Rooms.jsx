@@ -1,13 +1,8 @@
 import React from "react";
-import LegacySection from "../components/LegacySection.jsx";
-import TopPicksSection from "../components/TopPicksSection.jsx";
 import Navbar from "../components/Navbar.jsx";
-import Footer from "../components/Footer.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import FooterSection from "../components/FooterSection.jsx";
 import bgTexture from "../assets/Images/bgTexture.png"; // Add a subtle noise texture image
-import img from "../assets/Images/s3_1.png";
-import { useAppContext } from "../context/AppContext.jsx";
 import room1 from "../assets/Images/s3_1.png";
 import room2 from "../assets/Images/s3_2.png";
 import room3 from "../assets/Images/s3_3.png";

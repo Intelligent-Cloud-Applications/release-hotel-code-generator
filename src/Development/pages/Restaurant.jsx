@@ -1,14 +1,10 @@
 
-import React, { useState } from "react";
-import LegacySection from "../components/LegacySection.jsx";
-import TopPicksSection from "../components/TopPicksSection.jsx";
+import { useState } from "react";
 import Navbar from "../components/Navbar.jsx";
-import Footer from "../components/Footer.jsx";
 import FooterSection from "../components/FooterSection.jsx";
 import bgTexture from "../assets/Images/bgTexture.png"; // Add a subtle noise texture image
 import img from "../assets/Images/s3_2.png";
 import { Edit2 } from "lucide-react";
-import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import ImageUploadModal from "../components/ui/ImageUploadModal.jsx";
 import { motion } from "framer-motion";

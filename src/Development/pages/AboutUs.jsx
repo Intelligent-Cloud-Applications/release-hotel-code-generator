@@ -1,18 +1,13 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import LegacySection from "../components/LegacySection.jsx";
-import TopPicksSection from "../components/TopPicksSection.jsx";
 import Navbar from "../components/Navbar.jsx";
-import Footer from "../components/Footer.jsx";
 import FooterSection from "../components/FooterSection.jsx";
 import bgTexture from "../assets/Images/bgTexture.png"; // Add a subtle noise texture image
 import img from "../assets/Images/s3_1.png";
 import { Edit2 } from "lucide-react";
-import { useAppContext } from "../context/AppContext.jsx";
 import { useEditContext } from "../context/EditModeContext.jsx";
 import ImageUploadModal from "../components/ui/ImageUploadModal.jsx";
 import { useInstitutionContext } from "../context/InstitutionContext.jsx";
-
 
 const AboutUs = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
@@ -24,16 +19,16 @@ const AboutUs = () => {
   const aboutusSection = institutionData?.template2?.aboutusSection || {};
 
   return (
-      <>
-        {isImageEdit && imageMetaData && (
-          <ImageUploadModal
-            onClose={() => setIsImageEdit(false)}
-            onUploadComplete={imageMetaData.onUploadComplete}
-            folderName={imageMetaData.folderName}
-            acceptedTypes={imageMetaData.acceptedTypes}
-            title={imageMetaData.title}
-          />
-        )}
+    <>
+      {isImageEdit && imageMetaData && (
+        <ImageUploadModal
+          onClose={() => setIsImageEdit(false)}
+          onUploadComplete={imageMetaData.onUploadComplete}
+          folderName={imageMetaData.folderName}
+          acceptedTypes={imageMetaData.acceptedTypes}
+          title={imageMetaData.title}
+        />
+      )}
       <div className="relative bg-[#FBF6F0] z-50 ">
         {/* Noise texture overlay using actual texture image */}
         <div
@@ -217,7 +212,8 @@ const AboutUs = () => {
                     textJustify: "inter-word",
                   }}
                 >
-                  {aboutusSection?.description || "We at Hotel Amrapalli Classic(A unit of SKGG Hotels Pvt Ltd) take immense pleasure to offer a newest luxurious and premium Hotel at Bhawanipatna. Located in a peaceful location of Hilltown,Hotel Amrapalli Classic offers serene atmosphere with great scenic views. Our motto is to provide Superior class luxury with great comfort at very affordable price. We have luxurious and spacious Air-conditioned rooms, Centrally Air-conditioned conference and party halls and restaurant and Bar offering great cuisines. Experience premium class service at Hotel Amrapalli Classic,Bhawanipatna"}
+                  {aboutusSection?.description ||
+                    "We at Hotel Amrapalli Classic(A unit of SKGG Hotels Pvt Ltd) take immense pleasure to offer a newest luxurious and premium Hotel at Bhawanipatna. Located in a peaceful location of Hilltown,Hotel Amrapalli Classic offers serene atmosphere with great scenic views. Our motto is to provide Superior class luxury with great comfort at very affordable price. We have luxurious and spacious Air-conditioned rooms, Centrally Air-conditioned conference and party halls and restaurant and Bar offering great cuisines. Experience premium class service at Hotel Amrapalli Classic,Bhawanipatna"}
                 </p>
               )}
             </motion.div>
@@ -226,7 +222,7 @@ const AboutUs = () => {
 
         <FooterSection />
       </div>
-      </>
+    </>
   );
 };
 
