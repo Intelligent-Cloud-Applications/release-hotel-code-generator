@@ -3,7 +3,6 @@ import { get, post, patch, put, del } from "aws-amplify/api";
 import { useAuthContext } from "./AuthContext.jsx";
 import { institutionId, product, template } from "../../Operation/data.json";
 
-
 const AppContext = createContext({});
 
 export const useAppContext = () => {
@@ -57,8 +56,6 @@ export const AppContextProvider = ({ children }) => {
       } else if (template === "template2") {
         setInstitutionData(data.template2);
       }
-      
-      
     } catch (error) {
       console.log("Error fetching institution data:", error);
       console.error("Full error details:", error);
@@ -69,27 +66,45 @@ export const AppContextProvider = ({ children }) => {
   }
 
   async function updateInstitutionData() {
-      try {
-        console.log("Updating institution data:", institutionData);
-        const restOperation = await put({
-          apiName: "common",
-          path: `/any/${institutionId}/update-institution-data`,
-          options: {
-            body: institutionData,
-          },
-        });
-        const response = await restOperation.response;
-        const data = await response.body.json();
-        console.log("API Response (Institution):", data);
-        setInstitutionData(data);
-        setError(null);
-      } catch (error) {
-        console.error("Error updating institution data:", error);
-        setError("Failed to update institution data");
-      }
+    try {
+      console.log("Updating institution data:", institutionData);
+      const restOperation = await put({
+        apiName: "common",
+        path: `/any/${institutionId}/update-institution-data`,
+        options: {
+          body: institutionData,
+        },
+      });
+      const response = await restOperation.response;
+      const data = await response.body.json();
+      console.log("API Response (Institution):", data);
+      setInstitutionData(data);
+      setError(null);
+    } catch (error) {
+      console.error("Error updating institution data:", error);
+      setError("Failed to update institution data");
     }
+  }
 
-
+   async function handleDailyEnd() {
+    try {
+      const { body } = await post({
+        apiName: "common",
+        path: `/report/daily-end`,
+        options: {
+          body: {
+            date: new Date().toISOString(),
+            institutionId: institutionId,
+          },
+        },
+      }).response;
+      const data = await body.json();
+      console.log("Daily end processed:", data);
+    } catch (error) {
+      console.error("Error handling daily end:", error);
+      setError("Failed to handle daily end");
+    }
+  }
 
   // Rooms Section
   async function fetchRooms() {
@@ -1285,7 +1300,7 @@ export const AppContextProvider = ({ children }) => {
   useEffect(() => {
     // Always fetch institution data for website display
     fetchInstitutionData();
-    
+
     if (userData && userData.cognitoId && product === "dashboard-booking") {
       fetchRooms();
       fetchRatePlans();
@@ -1369,6 +1384,7 @@ export const AppContextProvider = ({ children }) => {
         updateClosingBalance,
         restaurantOrders,
         fetchRestaurantOrders,
+        handleDailyEnd
       }}
     >
       {children}

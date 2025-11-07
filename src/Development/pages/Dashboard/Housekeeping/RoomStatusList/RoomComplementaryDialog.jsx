@@ -25,7 +25,7 @@ import { useAppContext } from "@/Development/context/AppContext.jsx";
 
 // Constants for current data (for internal use only)
 const CURRENT_DATE = new Date().toISOString().split('T')[0];
-const CURRENT_USER = "MarkWolf257";
+const CURRENT_USER = "";
 
 const RoomComplementaryDialog = ({ roomNumber, booking = {} }) => {
   const { updateComplementaryServices } = useAppContext();

@@ -1,53 +1,101 @@
-
 import AppRoutes from "./Development/AppRoutes.jsx";
 import { Amplify } from "aws-amplify";
-import {
-  useInstitutionContext,
-} from "./Development/context/InstitutionContext";
+import { useInstitutionContext } from "./Development/context/InstitutionContext";
 import { useEffect } from "react";
 import metaTagsData from "./Operation/metatags.json";
+
+const STAGE = import.meta.env.VITE_STAGE || "DEV";
+
+console.log(STAGE);
+
 
 Amplify.configure({
   API: {
     REST: {
       main: {
-        endpoint: import.meta.env.VITE_MAIN_ENDPOINT,
-        region: import.meta.env.VITE_REGION,
+        endpoint:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_MAIN_ENDPOINT
+            : import.meta.env.VITE_PROD_MAIN_ENDPOINT,
+        region:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_REGION
+            : import.meta.env.VITE_PROD_REGION,
       },
 
       frontdesk: {
-        endpoint: import.meta.env.VITE_FRONTDESK_ENDPOINT,
-        region: import.meta.env.VITE_REGION,
+        endpoint:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_FRONTDESK_ENDPOINT
+            : import.meta.env.VITE_PROD_FRONTDESK_ENDPOINT,
+        region:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_REGION
+            : import.meta.env.VITE_PROD_REGION,
       },
 
       common: {
-        endpoint: import.meta.env.VITE_COMMON_ENDPOINT,
-        region: import.meta.env.VITE_REGION,
+        endpoint:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_COMMON_ENDPOINT
+            : import.meta.env.VITE_PROD_COMMON_ENDPOINT,
+        region:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_REGION
+            : import.meta.env.VITE_PROD_REGION,
       },
 
       housekeeping: {
-        endpoint: import.meta.env.VITE_HOUSEKEEPING_ENDPOINT,
-        region: import.meta.env.VITE_REGION,
+        endpoint:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_HOUSEKEEPING_ENDPOINT
+            : import.meta.env.VITE_PROD_HOUSEKEEPING_ENDPOINT,
+        region:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_REGION
+            : import.meta.env.VITE_PROD_REGION,
       },
 
       admin: {
-        endpoint: import.meta.env.VITE_ADMIN_ENDPOINT,
-        region: import.meta.env.VITE_REGION,
+        endpoint:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_ADMIN_ENDPOINT
+            : import.meta.env.VITE_PROD_ADMIN_ENDPOINT,
+        region:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_REGION
+            : import.meta.env.VITE_PROD_REGION,
       },
       restaurant: {
-        endpoint: import.meta.env.VITE_restaurant_ENDPOINT,
-        region: import.meta.env.VITE_REGION,
-        // endpoint: 'https://ppf65ueuea.execute-api.us-east-2.amazonaws.com/dev',
-        // region: 'us-east-2',
+        endpoint:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_RESTAURANT_ENDPOINT
+            : import.meta.env.VITE_PROD_RESTAURANT_ENDPOINT,
+        region:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_REGION
+            : import.meta.env.VITE_PROD_REGION,
       },
     },
   },
   Auth: {
     Cognito: {
-      identityPoolId: import.meta.env.VITE_IDENTITY_POOL_ID,
-      userPoolClientId: import.meta.env.VITE_USER_POOL_CLIENT_ID,
-      userPoolId: import.meta.env.VITE_USER_POOL_ID,
-      region: import.meta.env.VITE_REGION,
+      identityPoolId:
+        STAGE === "DEV"
+          ? import.meta.env.VITE_IDENTITY_POOL_ID
+          : import.meta.env.VITE_PROD_IDENTITY_POOL_ID,
+      userPoolClientId:
+        STAGE === "DEV"
+          ? import.meta.env.VITE_USER_POOL_CLIENT_ID
+          : import.meta.env.VITE_PROD_USER_POOL_CLIENT_ID,
+      userPoolId:
+        STAGE === "DEV"
+          ? import.meta.env.VITE_USER_POOL_ID
+          : import.meta.env.VITE_PROD_USER_POOL_ID,
+      region:
+        STAGE === "DEV"
+          ? import.meta.env.VITE_REGION
+          : import.meta.env.VITE_PROD_REGION,
     },
   },
 });
