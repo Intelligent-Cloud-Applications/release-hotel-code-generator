@@ -31,7 +31,7 @@ import { useAppContext } from "@/Development/context/AppContext.jsx";
 
 const CURRENT_DATE = new Date().toISOString().split('T')[0];
 const CURRENT_DATETIME = new Date().toISOString().replace('T', ' ').split('.')[0];
-const CURRENT_USER = "MarkWolf257";
+const CURRENT_USER = "";
 
 const serviceTypes = [
   { value: "food_charges", label: "Food", icon: Coffee },

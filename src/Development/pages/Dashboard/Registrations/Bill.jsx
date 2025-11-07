@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "../../../components/ui/button.js";
-import { Printer, Download, ArrowLeft, X, Edit2 } from "lucide-react";
+import { Printer, Download, ArrowLeft, X, Edit2, CheckCircle, LogOut } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAppContext } from "../../../context/AppContext.jsx";
 import { useInstitutionContext } from "../../../context/InstitutionContext.jsx";
@@ -18,6 +18,24 @@ import {
   RestaurantBill
 } from "./components/index.js";
 import SplitBill from "./components/SplitBill.jsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../../../components/ui/dialog.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select.tsx";
+import { Input } from "../../../components/ui/input.tsx";
+import { Label } from "../../../components/ui/label.tsx";
+import { Textarea } from "../../../components/ui/textarea.tsx";
+import { toast } from "sonner";
 
 const Bill = () => {
   const navigate = useNavigate();
@@ -30,7 +48,8 @@ const Bill = () => {
     updateGuest,
     updateBooking,
     calculateTotalBill,
-    companies
+    companies,
+    checkoutGuest
   } = useAppContext();
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
@@ -94,6 +113,22 @@ const Bill = () => {
     country: "",
   });
 
+  // Checkout modal state
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [checkoutFormData, setCheckoutFormData] = useState({
+    payment_mode: "",
+    upi_platform: "",
+    custom_upi_platform: "",
+    received_by_staff_id: userData.cognitoId || "",
+    notes: "",
+  });
+  const [validationErrors, setValidationErrors] = useState({
+    payment_mode: "",
+    upi_platform: "",
+    custom_upi_platform: "",
+    received_by_staff_id: "",
+  });
+
   // Charge type definitions (removed roomCharges)
   const CHARGE_TYPES = [
     { key: "foodCharges", label: "Food Charges" },
@@ -122,6 +157,230 @@ const Bill = () => {
   // Function to check if a charge should be excluded
   const isChargeExcluded = (chargeType) => {
     return excludedCharges.includes(chargeType);
+  };
+
+  // Validation function for checkout form
+  const validateCheckoutForm = () => {
+    const errors = {
+      payment_mode: "",
+      upi_platform: "",
+      custom_upi_platform: "",
+      received_by_staff_id: "",
+    };
+
+    if (!checkoutFormData.payment_mode.trim()) {
+      errors.payment_mode = "Payment mode is required";
+    }
+
+    if (
+      checkoutFormData.payment_mode === "UPI" &&
+      !checkoutFormData.upi_platform.trim()
+    ) {
+      errors.upi_platform = "UPI platform is required";
+    }
+
+    if (
+      checkoutFormData.payment_mode === "UPI" &&
+      checkoutFormData.upi_platform === "Others" &&
+      !checkoutFormData.custom_upi_platform.trim()
+    ) {
+      errors.custom_upi_platform = "Custom UPI platform is required";
+    }
+
+    if (!checkoutFormData.received_by_staff_id.trim()) {
+      errors.received_by_staff_id = "Staff ID is required";
+    }
+
+    setValidationErrors(errors);
+    return !Object.values(errors).some((error) => error !== "");
+  };
+
+  // Extract bill data for checkout
+  const extractBillDataForCheckout = () => {
+    if (!billData) return null;
+
+    return {
+      totalRoomCharges: billData.billingSummary?.totalRoomServices || 0,
+      totalServiceCharges: billData.billingSummary?.totalServiceCharges || 0,
+      discountAmount: billData.billingSummary?.totalDiscount || 0,
+      advanceReceived: billData.billingSummary?.partialPayment || 0,
+      totalTaxAmount: billData.billingSummary?.totalTaxAmount || 0,
+      grandTotal: billData.finalSummary?.totalAmount || 0,
+    };
+  };
+
+  // Handle checkout button click
+  const handleCheckoutClick = () => {
+    if (!booking) {
+      toast.error("Booking data not available");
+      return;
+    }
+    setIsCheckoutModalOpen(true);
+  };
+
+  // Process checkout
+  const processCheckout = async () => {
+    if (!booking || !validateCheckoutForm()) {
+      return;
+    }
+
+    const billDataExtracted = extractBillDataForCheckout();
+    const finalUpiPlatform =
+      checkoutFormData.upi_platform === "Others"
+        ? checkoutFormData.custom_upi_platform
+        : checkoutFormData.upi_platform;
+
+    // Build services object from billData
+    const services = {};
+    if (billData?.serviceChargesByDate) {
+      billData.serviceChargesByDate.forEach((dayData) => {
+        const date = Object.keys(dayData)[0];
+        const roomEntries = dayData[date];
+        
+        roomEntries.forEach((roomEntry) => {
+          const roomNumber = roomEntry.roomNumber;
+          
+          if (!services[roomNumber]) {
+            services[roomNumber] = {};
+          }
+          
+          services[roomNumber][date] = {
+            room_charges: roomEntry.charges.roomCharges || 0,
+            food_charges: roomEntry.charges.foodCharges || 0,
+            laundry_charges: roomEntry.charges.laundryCharges || 0,
+            minibar_charges: roomEntry.charges.minibarCharges || 0,
+            extra_bed_charges: roomEntry.charges.extraBedCharges || 0,
+            manual_charges: roomEntry.charges.manualCharges || 0,
+            extra_pax_charges: roomEntry.charges.extraPaxCharges || 0,
+          };
+        });
+      });
+    }
+
+    // Calculate total service charges
+    let totalFoodCharges = 0;
+    let totalLaundryCharges = 0;
+    let totalMinibarCharges = 0;
+    let totalExtraBedCharges = 0;
+    let totalManualCharges = 0;
+    let totalExtraPaxCharges = 0;
+
+    Object.values(services).forEach((roomDates) => {
+      Object.values(roomDates).forEach((charges) => {
+        totalFoodCharges += charges.food_charges || 0;
+        totalLaundryCharges += charges.laundry_charges || 0;
+        totalMinibarCharges += charges.minibar_charges || 0;
+        totalExtraBedCharges += charges.extra_bed_charges || 0;
+        totalManualCharges += charges.manual_charges || 0;
+        totalExtraPaxCharges += charges.extra_pax_charges || 0;
+      });
+    });
+
+    const totalServiceCharges = totalFoodCharges + totalLaundryCharges + totalMinibarCharges + 
+                                totalExtraBedCharges + totalManualCharges + totalExtraPaxCharges;
+
+    // Calculate discount percent
+    const roomCharges = billDataExtracted.totalRoomCharges || 0;
+    const discountAmount = billDataExtracted.discountAmount || 0;
+    const discountPercent = roomCharges > 0 ? ((discountAmount / roomCharges) * 100).toFixed(2) : 0;
+
+    // Get tax type from booking or default to IGST
+    const taxType = booking?.breakdown?.booking?.gst_type || "IGST";
+
+    // Build bill_summary
+    const billSummary = {
+      roomCharges: roomCharges,
+      serviceCharges: totalServiceCharges,
+      foodCharges: totalFoodCharges,
+      laundryCharges: totalLaundryCharges,
+      minibarCharges: totalMinibarCharges,
+      manualCharges: totalManualCharges,
+      extraBedCharges: totalExtraBedCharges,
+      extraPaxCharges: totalExtraPaxCharges,
+      discountAmount: discountAmount,
+      advanceReceived: billDataExtracted.advanceReceived || 0,
+      taxAmount: billDataExtracted.totalTaxAmount || 0,
+      subTotal: roomCharges + totalServiceCharges - discountAmount,
+      grandTotal: billDataExtracted.grandTotal || 0,
+      services: services,
+    };
+
+    const checkoutData = {
+      booking_id: booking.breakdown.booking.booking_id,
+      guest_id: booking.breakdown.booking.guest_id,
+      room_id: booking.breakdown.rooms.map((r) => r.room_id),
+      payment_mode: checkoutFormData.payment_mode,
+      upi_platform:
+        checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
+      received_by_staff_id: userData.cognitoId || checkoutFormData.received_by_staff_id,
+      notes: checkoutFormData.notes,
+      room_charges: roomCharges,
+      laundry_charges: totalLaundryCharges,
+      food_charges: totalFoodCharges,
+      minibar_charges: totalMinibarCharges,
+      manual_charges: totalManualCharges,
+      extra_bed_charges: totalExtraBedCharges,
+      extra_pax_charges: totalExtraPaxCharges,
+      discount_amount: discountAmount,
+      discount_percent: parseFloat(discountPercent),
+      tax_type: taxType,
+      tax_amount: billDataExtracted.totalTaxAmount || 0,
+      advance_received: billDataExtracted.advanceReceived || 0,
+      total_amount: billDataExtracted.grandTotal || 0,
+      refund_amount: 0,
+      services: services,
+      company_id: booking.breakdown.booking.company_id || null,
+      gst_no: booking.breakdown.booking.gst_no || "N/A",
+      bill_summary: billSummary,
+      original_bill_data: booking,
+    };
+
+    try {
+      await checkoutGuest({ bookingDetails: checkoutData });
+      toast.success("Guest checked out successfully!");
+      setIsCheckoutModalOpen(false);
+      setCheckoutFormData({
+        payment_mode: "",
+        upi_platform: "",
+        custom_upi_platform: "",
+        received_by_staff_id: userData.cognitoId || "",
+        notes: "",
+      });
+      navigate("/dashboard/frontdesk/check_out");
+    } catch (error) {
+      console.error("Checkout error:", error);
+      toast.error("Failed to checkout guest");
+    }
+  };
+
+  // Handle form field changes
+  const handleFieldChange = (field, value) => {
+    setCheckoutFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    if (validationErrors[field]) {
+      setValidationErrors((prev) => ({
+        ...prev,
+        [field]: "",
+      }));
+    }
+
+    if (field === "upi_platform" && value !== "Others") {
+      setCheckoutFormData((prev) => ({
+        ...prev,
+        custom_upi_platform: "",
+      }));
+    }
+
+    if (field === "payment_mode" && value !== "UPI") {
+      setCheckoutFormData((prev) => ({
+        ...prev,
+        upi_platform: "",
+        custom_upi_platform: "",
+      }));
+    }
   };
 
   // Function to toggle charge exclusion (only in edit mode)
@@ -1931,6 +2190,152 @@ const Bill = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Checkout Modal */}
+      <Dialog open={isCheckoutModalOpen} onOpenChange={setIsCheckoutModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LogOut className="h-5 w-5 text-green-600" />
+              Guest Check-Out
+            </DialogTitle>
+            <DialogDescription>
+              Complete the checkout process and process payment
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Payment Mode */}
+            <div className="space-y-2">
+              <Label htmlFor="payment_mode">
+                Payment Mode <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={checkoutFormData.payment_mode}
+                onValueChange={(value) => handleFieldChange("payment_mode", value)}
+              >
+                <SelectTrigger
+                  className={validationErrors.payment_mode ? "border-red-500" : ""}
+                >
+                  <SelectValue placeholder="Select Payment Mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Cash">Cash</SelectItem>
+                  <SelectItem value="QR">QR</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="Credit Card">Credit Card</SelectItem>
+                  <SelectItem value="Debit Card">Debit Card</SelectItem>
+                  <SelectItem value="BTC">BTC</SelectItem>
+                </SelectContent>
+              </Select>
+              {validationErrors.payment_mode && (
+                <p className="text-red-500 text-xs">{validationErrors.payment_mode}</p>
+              )}
+            </div>
+
+            {/* UPI Platform */}
+            {checkoutFormData.payment_mode === "UPI" && (
+              <div className="space-y-2">
+                <Label htmlFor="upi_platform">
+                  UPI Platform <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={checkoutFormData.upi_platform}
+                  onValueChange={(value) => handleFieldChange("upi_platform", value)}
+                >
+                  <SelectTrigger
+                    className={validationErrors.upi_platform ? "border-red-500" : ""}
+                  >
+                    <SelectValue placeholder="Select UPI Platform" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Google Pay">Google Pay</SelectItem>
+                    <SelectItem value="Amazon Pay">Amazon Pay</SelectItem>
+                    <SelectItem value="PhonePe">PhonePe</SelectItem>
+                    <SelectItem value="BHIM">BHIM</SelectItem>
+                    <SelectItem value="Paytm">Paytm</SelectItem>
+                    <SelectItem value="Others">Others</SelectItem>
+                  </SelectContent>
+                </Select>
+                {validationErrors.upi_platform && (
+                  <p className="text-red-500 text-xs">{validationErrors.upi_platform}</p>
+                )}
+              </div>
+            )}
+
+            {/* Custom UPI Platform */}
+            {checkoutFormData.payment_mode === "UPI" &&
+              checkoutFormData.upi_platform === "Others" && (
+                <div className="space-y-2">
+                  <Label htmlFor="custom_upi_platform">
+                    Specify UPI Platform <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="custom_upi_platform"
+                    placeholder="Enter UPI platform name"
+                    value={checkoutFormData.custom_upi_platform}
+                    onChange={(e) =>
+                      handleFieldChange("custom_upi_platform", e.target.value)
+                    }
+                    className={
+                      validationErrors.custom_upi_platform ? "border-red-500" : ""
+                    }
+                  />
+                  {validationErrors.custom_upi_platform && (
+                    <p className="text-red-500 text-xs">
+                      {validationErrors.custom_upi_platform}
+                    </p>
+                  )}
+                </div>
+              )}
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                placeholder="Any additional notes or comments"
+                value={checkoutFormData.notes}
+                onChange={(e) =>
+                  setCheckoutFormData((prev) => ({
+                    ...prev,
+                    notes: e.target.value,
+                  }))
+                }
+                className="resize-none"
+                rows={3}
+              />
+            </div>
+
+            {/* Bill Summary */}
+            {billData && (
+              <div className="border-t pt-3 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium">Total Amount:</span>
+                  <span className="font-bold text-lg text-green-600">
+                    ₹{billData.finalSummary?.totalAmount?.toLocaleString() || 0}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-2 pt-3 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsCheckoutModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" onClick={processCheckout}>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Complete Check-Out
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Print/Download Controls - Hidden in print */}
       <style>{`
         @media print {
@@ -2049,11 +2454,11 @@ const Bill = () => {
           </Button>
 
           <div className="flex space-x-3">
-            <RefreshButton
+            {/* <RefreshButton
               onRefresh={handleRefresh}
               loading={refreshing}
               size="sm"
-            />
+            /> */}
             <Button
               variant="outline"
               onClick={() => setShowExcludePanel(!showExcludePanel)}
@@ -2140,18 +2545,6 @@ const Bill = () => {
             >
               <span>Sync Data</span>
             </Button>
-            
-            {/* Force Refresh Button */}
-            <Button 
-              onClick={() => {
-                console.log('=== FORCE REFRESHING BILL DATA ===');
-                setForceRefresh(prev => prev + 1);
-              }}
-              variant="outline"
-              className="flex items-center space-x-2 bg-yellow-50 border-yellow-300 text-yellow-700"
-            >
-              <span>Force Refresh</span>
-            </Button>
 
             {/* Main Print Bill Button - Show when no restaurant orders or as fallback */}
             {(!booking?.breakdown?.charges?.serviceCharges?.orderDetails || 
@@ -2164,6 +2557,15 @@ const Bill = () => {
               <span>Print Bill</span>
             </Button>
             )}
+
+            {/* Add a checkout button here */}
+            <Button
+              onClick={handleCheckoutClick}
+              className="flex items-center space-x-2"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Checkout</span>
+            </Button>
           </div>
         </div>
 

@@ -26,7 +26,7 @@ import {useAppContext} from "@/Development/context/AppContext.jsx";
 // Constants for current data (for internal use only)
 const CURRENT_DATE = new Date().toISOString().split('T')[0];
 const CURRENT_TIMESTAMP = "2025-06-18 07:05:22";
-const CURRENT_USER = "MarkWolf257";
+const CURRENT_USER = "";
 
 const RoomServicesDialog = ({ roomNumber, booking = {} }) => {
   console.log("booking", booking);

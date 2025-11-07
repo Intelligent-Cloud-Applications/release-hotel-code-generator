@@ -464,8 +464,8 @@ function calculateDayEndData(
     Vacant: 0,
     Occupied: 0,
     Dirty: 0,
-    Reserved: [],
-    "Under Maintenance": 0,
+    Reserved: 0,
+    UnderMaintenance: 0,
   };
 
   // Detail collections
@@ -672,6 +672,9 @@ function calculateDayEndData(
       roomTypeDetails[type].push(detail);
     }
 
+    if (!roomStatusDetails[status]) {
+      roomStatusDetails[status] = [];
+    }
     roomStatusDetails[status].push(detail);
   });
 
@@ -1097,6 +1100,7 @@ const DayEnd = () => {
     listExpenses,
     expenses: allExpenses,
     institutionId = "HOTEL001",
+    handleDailyEnd
   } = useAppContext();
 
   const { withLoading, isKeyLoading } = useLoading();
@@ -1308,6 +1312,7 @@ const DayEnd = () => {
 
           const recentDateStr = recentDateReportData.date;
           const recentDate = parseUSDateString(recentDateStr);
+          
           if (!recentDate) return;
           recentDate.setHours(0, 0, 0, 0);
 
@@ -1330,7 +1335,7 @@ const DayEnd = () => {
           );
 
           // Check if day end is already closed for the recent date
-          const isDayEndClosed = recentDateReportData?.dayEndStatus === true;
+          const isDayEndClosed = recentDateReportData?.dayEndStatus === "completed";
           
           // Check if today's day-end is already closed
           const isTodayClosed = isSameDay(recentDate, today) && isDayEndClosed;
@@ -1373,7 +1378,9 @@ const DayEnd = () => {
     await withLoading(
       "day-end-process",
       async () => {
-        await processDayEndInternal(dateForAPI);
+        await handleDailyEnd();
+
+        // await processDayEndInternal(dateForAPI);
         // Set today's day-end as closed after manual processing
         setTodayDayEndClosed(true);
       },
@@ -1382,187 +1389,15 @@ const DayEnd = () => {
     );
   };
 
-  function formatDateTimeYYYYMMDDHHMMSS(d) {
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-      d.getDate()
-    )} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  }
+  // const processDayEndInternal = async () => {
 
-  const processDayEndInternal = async (dateForAPI) => {
-    function calculateOccupancyRate(occupiedRooms, roomStatusDetails) {
-      if (!roomStatusDetails) return 0;
-      const totalRooms = Object.values(roomStatusDetails).reduce(
-        (sum, rms) => sum + (Array.isArray(rms) ? rms.length : 0),
-        0
-      );
-      return totalRooms > 0
-        ? ((occupiedRooms / totalRooms) * 100).toFixed(2)
-        : 0;
-    }
-    function calculateRevPAR(roomRevenue, roomStatusDetails) {
-      if (!roomStatusDetails) return 0;
-      const totalRooms = Object.values(roomStatusDetails).reduce(
-        (sum, rms) => sum + (Array.isArray(rms) ? rms.length : 0),
-        0
-      );
-      return totalRooms > 0 ? (roomRevenue / totalRooms).toFixed(2) : 0;
-    }
-    function getBookingSourceBreakdown(newBookings) {
-      if (!newBookings || !Array.isArray(newBookings)) return {};
-      return newBookings.reduce((acc, b) => {
-        const s = b.bookingSource || "Unknown";
-        acc[s] = (acc[s] || 0) + 1;
-        return acc;
-      }, {});
-    }
-    function getRoomTypePerformance(occupiedRooms, roomRevenueDetailsList) {
-      if (!occupiedRooms || !roomRevenueDetailsList) return {};
-      const perf = {};
-      occupiedRooms.forEach((rm) => {
-        const rt = rm.roomType || "Unknown";
-        if (!perf[rt])
-          perf[rt] = { occupiedCount: 0, totalRevenue: 0, averageRate: 0 };
-        perf[rt].occupiedCount++;
-      });
-      roomRevenueDetailsList.forEach((r) => {
-        const rt = r.roomType || "Unknown";
-        if (perf[rt]) perf[rt].totalRevenue += Number(r.roomRevenue) || 0;
-      });
-      Object.keys(perf).forEach((rt) => {
-        const d = perf[rt];
-        d.averageRate =
-          d.occupiedCount > 0
-            ? (d.totalRevenue / d.occupiedCount).toFixed(2)
-            : 0;
-      });
-      return perf;
-    }
-    function extractGuestMetrics(details) {
-      if (!details || !details.occupiedRooms) return {};
-      const occ = details.occupiedRooms;
-      const totalAdults = occ.reduce((s, r) => s + (r.adults || 0), 0);
-      const totalChildren = occ.reduce((s, r) => s + (r.children || 0), 0);
-      const totalGuests = totalAdults + totalChildren;
-      return {
-        totalGuests,
-        totalAdults,
-        totalChildren,
-        averageGuestsPerRoom: occ.length
-          ? (totalGuests / occ.length).toFixed(2)
-          : 0,
-        adultToChildRatio:
-          totalChildren > 0
-            ? (totalAdults / totalChildren).toFixed(2)
-            : totalAdults,
-        multiRoomBookings: occ.filter((r) => r.isMultiRoom).length,
-      };
-    }
-
-    try {
-      await processdayEnd({
-        date: dateForAPI,
-        dayEndStatus: true, // Mark day-end as completed
-        listData: {
-          roomStatus: true,
-          revenue: true,
-          checkouts: true,
-          reports: true,
-        },
-        calculatedData: {
-          summary: {
-            bookingCount: dayEndData?.bookingCount || 0,
-            checkInCount: dayEndData?.checkInCount || 0,
-            checkOutsCount: dayEndData?.checkOutsCount || 0,
-            occupiedRoomCount: dayEndData?.occupiedRoomCount || 0,
-            roomRevenue: dayEndData?.roomRevenue || 0,
-            totalRevenue: dayEndData?.totalRevenue || 0,
-            totalExpenses: dayEndData?.totalExpenses || 0,
-            occupiedRoomTypeCounts: dayEndData?.occupiedRoomTypeCounts || {},
-            roomStatusCounts: dayEndData?.roomStatusCounts || {},
-          },
-          details: {
-            newBookings: dayEndData?.details?.newBookings || [],
-            checkIns: dayEndData?.details?.checkIns || [],
-            checkOuts: dayEndData?.details?.checkOuts || [],
-            occupiedRooms: dayEndData?.details?.occupiedRooms || [],
-            roomRevenue: dayEndData?.details?.roomRevenue || [],
-            roomStatus: dayEndData?.details?.roomStatus || {},
-            roomTypes: dayEndData?.details?.roomTypes || {},
-            revenueBreakdown: dayEndData?.details?.revenueBreakdown || {},
-            expenses: dayEndData?.details?.expenses || [],
-          },
-          analytics: {
-            occupancyRate:
-              dayEndData?.occupiedRoomCount && dayEndData?.details?.roomStatus
-                ? calculateOccupancyRate(
-                    dayEndData.occupiedRoomCount,
-                    dayEndData.details.roomStatus
-                  )
-                : 0,
-            averageDailyRate:
-              dayEndData?.occupiedRoomCount > 0
-                ? (
-                    dayEndData.roomRevenue / dayEndData.occupiedRoomCount
-                  ).toFixed(2)
-                : 0,
-            revenuePerAvailableRoom: dayEndData?.details?.roomStatus
-              ? calculateRevPAR(
-                  dayEndData.roomRevenue,
-                  dayEndData.details.roomStatus
-                )
-              : 0,
-            bookingSourceBreakdown: getBookingSourceBreakdown(
-              dayEndData?.details?.newBookings
-            ),
-            roomTypePerformance: getRoomTypePerformance(
-              dayEndData?.details?.occupiedRooms,
-              dayEndData?.details?.roomRevenue
-            ),
-            guestMetrics: extractGuestMetrics(dayEndData?.details),
-          },
-          metadata: {
-            processedAt: new Date().toISOString(),
-            processedBy: "MarkWolf257",
-            dataSource: "hybrid_calculation",
-            calculationVersion: "2.0",
-            targetDate: dateToProcess.toISOString(),
-            institutionId: institutionId,
-            currentDateTime: formatDateTimeYYYYMMDDHHMMSS(new Date()),
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-          },
-          dataValidation: {
-            totalRecordsProcessed: {
-              bookings: bookings?.length || 0,
-              bills: bills?.length || 0,
-              rooms: rooms?.length || 0,
-              guests: guests?.length || 0,
-              expenses: expenses?.length || 0,
-            },
-            dataIntegrity: {
-              hasBookingData: Array.isArray(bookings) && bookings.length > 0,
-              hasBillData: Array.isArray(bills) && bills.length > 0,
-              hasRoomData: Array.isArray(rooms) && rooms.length > 0,
-              hasGuestData: Array.isArray(guests) && guests.length > 0,
-              hasExpenseData: Array.isArray(expenses) && expenses.length > 0,
-              calculatedSuccessfully: !!dayEndData,
-            },
-          },
-          dataSource: {
-            approach:
-              "Hybrid - Bookings for activities, Rooms for occupancy, Bills for revenue",
-            occupancySource: "Room status + Checked-in bookings",
-            revenueSource: "Bills data (checkout date only)",
-            roomStatusSource: "Rooms management data",
-            calculationMethod: "Real-time hybrid processing",
-          },
-        },
-      });
-      setTimeout(() => window.location.reload(), 1000);
-    } catch (e) {
-      console.error("Error processing day end:", e);
-    }
-  };
+  //   try {
+  //     await processdayEnd();
+  //     setTimeout(() => window.location.reload(), 1000);
+  //   } catch (e) {
+  //     console.error("Error processing day end:", e);
+  //   }
+  // };
 
   /* ========= UI helpers/components ========= */
 
@@ -2444,7 +2279,7 @@ const DayEnd = () => {
               <SimpleApiButton
                 onClick={handleDayEnd}
                 disabled={
-                  loading || dataLoading || isKeyLoading("day-end-process")
+                  loading || dataLoading || isKeyLoading("day-end-process") || todayDayEndClosed
                 }
                 size="lg"
                 className="px-8 py-3 text-lg font-semibold"
@@ -2490,7 +2325,7 @@ const DayEnd = () => {
           )}
         </div>
 
-        {process.env.NODE_ENV === "development" && dayEndData && (
+        {/* {process.env.NODE_ENV === "development" && dayEndData && (
           <div className="mt-8 p-4 bg-gray-100 rounded-lg border">
             <details className="cursor-pointer">
               <summary className="font-medium text-gray-700 mb-2">
@@ -2521,7 +2356,7 @@ const DayEnd = () => {
               </div>
             </details>
           </div>
-        )}
+        )} */}
       </div>
     </div>
   );
