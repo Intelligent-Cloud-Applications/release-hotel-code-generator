@@ -1675,18 +1675,18 @@ const Bill = () => {
       );
 
       // Auto-update booking data automatically without any checks
-      console.log("🚀 Auto-updating booking data automatically...");
-      setTimeout(async () => {
-        // Use the current billData state for auto-update
-        const currentBillData = {
-          serviceChargesByDate: billData?.serviceChargesByDate || [],
-          breakdown: booking?.breakdown,
-          summary: booking?.summary,
-          billingSummary: billData?.billingSummary,
-        };
-        console.log("📞 Calling autoUpdateBookingData with:", currentBillData);
-        await autoUpdateBookingData(currentBillData);
-      }, 1000); // 1 second delay to ensure everything is set
+      // console.log("🚀 Auto-updating booking data automatically...");
+      // setTimeout(async () => {
+      //   // Use the current billData state for auto-update
+      //   const currentBillData = {
+      //     serviceChargesByDate: billData?.serviceChargesByDate || [],
+      //     breakdown: booking?.breakdown,
+      //     summary: booking?.summary,
+      //     billingSummary: billData?.billingSummary,
+      //   };
+      //   console.log("📞 Calling autoUpdateBookingData with:", currentBillData);
+      //   await autoUpdateBookingData(currentBillData);
+      // }, 1000); 
     }
   }, [booking, guests, companies, forceRefresh]);
 
