@@ -519,7 +519,7 @@ return (
                 className="text-center text-xs md:text-sm text-gray-400 tracking-wider"
                 style={{ fontFamily: "Poppins", fontWeight: 300 }}
             >
-                © 2025 Amrapalli Hotel. All rights reserved. | Designed with Tekkzy
+                © 2025 Disha Hotel and Restaurant. All rights reserved. | Designed with Tekkzy
             </p>
         </div>
 
