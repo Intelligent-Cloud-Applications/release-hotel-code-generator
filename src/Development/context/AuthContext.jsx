@@ -52,7 +52,7 @@ export const AuthContextProvider = ({ children }) => {
 
     if (Array.isArray(returnVal.userType)) {
       returnVal.userTypes = returnVal.userType.map((userType) => userType.toLowerCase());
-      returnVal.userType = returnVal.userType[0];
+      returnVal.userType = returnVal?.userTypes.includes("admin") ? "admin" : returnVal?.userTypes[0];
     }
     else {
       returnVal.userType = returnVal.userType.toLowerCase();
