@@ -2,7 +2,7 @@
   "institutionId": "DISH5877",
   "product": "dashboard-booking",
   "template": "template2",
-  "s3BucketName": "",
-  "cloudFrontId": "",
-  "domain": "" 
+  "s3BucketName": "dishahotel.tekkzy.com",
+  "cloudFrontId": "E3TSW2BKF9KLNS",
+  "domain": "https://dishahotel.tekkzy.com" 
 }
