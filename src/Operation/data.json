@@ -1,8 +1,8 @@
 {
-  "institutionId": "HOTEL001",
+  "institutionId": "DISH5877",
   "product": "dashboard-booking",
   "template": "template2",
   "s3BucketName": "",
   "cloudFrontId": "",
-  "domain": ""
+  "domain": "" 
 }
