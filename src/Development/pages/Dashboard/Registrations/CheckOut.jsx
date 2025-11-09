@@ -426,7 +426,7 @@ const CheckOut = () => {
     const discountedRoomCharges = totalRoomCharges - discountAmount;
     const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
     const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-    const totalTaxAmount = cgstAmount + sgstAmount;
+    let totalTaxAmount = cgstAmount + sgstAmount;
 
     // Calculate totals
     const subTotal = totalRoomCharges + totalServiceCharges - discountAmount;
