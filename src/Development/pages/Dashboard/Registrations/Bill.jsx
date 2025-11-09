@@ -2905,13 +2905,13 @@ const Bill = () => {
             )}
 
             {/* Sync Data Button for testing */}
-            <Button
+            {/* <Button
               onClick={triggerAutoUpdate}
               variant="outline"
               className="flex items-center space-x-2"
             >
               <span>Sync Data</span>
-            </Button>
+            </Button> */}
 
             {/* Main Print Bill Button - Show when no restaurant orders or as fallback */}
             {(!booking?.breakdown?.charges?.serviceCharges?.orderDetails ||
