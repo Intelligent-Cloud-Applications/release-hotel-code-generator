@@ -514,30 +514,30 @@ const Bill = () => {
   };
 
   // Function to manually trigger auto-update (for testing)
-  const triggerAutoUpdate = async () => {
-    console.log("Manual trigger of auto-update...");
-    try {
-      const billData = await calculateTotalBill({
-        bookingDetails: {
-          booking_id: bookingId,
-          guest_id: guestId,
-          room_id: roomId ? roomId.split(",").map((id) => id.trim()) : [],
-          rate_plan_id: ratePlanId,
-          checkin_date: Number(checkInDate),
-          checkout_date: checkoutDate,
-          gst_type: "IGST",
-        },
-      });
-      console.log("Manual trigger - bill data received:", billData);
-      console.log(
-        "Manual trigger - serviceChargesByDate:",
-        billData?.serviceChargesByDate
-      );
-      await autoUpdateBookingData(billData);
-    } catch (error) {
-      console.error("Error in manual trigger:", error);
-    }
-  };
+  // const triggerAutoUpdate = async () => {
+  //   console.log("Manual trigger of auto-update...");
+  //   try {
+  //     const billData = await calculateTotalBill({
+  //       bookingDetails: {
+  //         booking_id: bookingId,
+  //         guest_id: guestId,
+  //         room_id: roomId ? roomId.split(",").map((id) => id.trim()) : [],
+  //         rate_plan_id: ratePlanId,
+  //         checkin_date: Number(checkInDate),
+  //         checkout_date: checkoutDate,
+  //         gst_type: "IGST",
+  //       },
+  //     });
+  //     console.log("Manual trigger - bill data received:", billData);
+  //     console.log(
+  //       "Manual trigger - serviceChargesByDate:",
+  //       billData?.serviceChargesByDate
+  //     );
+  //     await autoUpdateBookingData(billData);
+  //   } catch (error) {
+  //     console.error("Error in manual trigger:", error);
+  //   }
+  // };
 
   // Function to automatically update booking data to match bill display
   // const autoUpdateBookingData = async (billData) => {
