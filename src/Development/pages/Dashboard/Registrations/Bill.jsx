@@ -540,195 +540,195 @@ const Bill = () => {
   };
 
   // Function to automatically update booking data to match bill display
-  const autoUpdateBookingData = async (billData) => {
-    try {
-      console.log("=== AUTO UPDATING BOOKING DATA ===");
-      console.log(
-        "📞 autoUpdateBookingData function called with billData:",
-        billData
-      );
+  // const autoUpdateBookingData = async (billData) => {
+  //   try {
+  //     console.log("=== AUTO UPDATING BOOKING DATA ===");
+  //     console.log(
+  //       "📞 autoUpdateBookingData function called with billData:",
+  //       billData
+  //     );
 
-      // Find the current booking data
-      const currentBookingData = bookings.find(
-        (b) => b.booking_id === bookingId
-      );
-      if (!currentBookingData) {
-        console.log("No booking data found for auto-update");
-        return;
-      }
+  //     // Find the current booking data
+  //     const currentBookingData = bookings.find(
+  //       (b) => b.booking_id === bookingId
+  //     );
+  //     if (!currentBookingData) {
+  //       console.log("No booking data found for auto-update");
+  //       return;
+  //     }
 
-      // Calculate the correct totals from the bill data
-      let totalRoomCharges = 0;
-      let totalServiceCharges = 0;
-      let services = {};
+  //     // Calculate the correct totals from the bill data
+  //     let totalRoomCharges = 0;
+  //     let totalServiceCharges = 0;
+  //     let services = {};
 
-      // Wait for billData to be fully processed before updating
-      if (!billData?.serviceChargesByDate) {
-        console.log("Bill data not ready for auto-update, skipping...");
-        return;
-      }
+  //     // Wait for billData to be fully processed before updating
+  //     if (!billData?.serviceChargesByDate) {
+  //       console.log("Bill data not ready for auto-update, skipping...");
+  //       return;
+  //     }
 
-      // Use the API response data for extra pax charges instead of static booking data
-      console.log("Using API response data for extra pax charges");
+  //     // Use the API response data for extra pax charges instead of static booking data
+  //     console.log("Using API response data for extra pax charges");
 
-      console.log("Bill serviceChargesByDate:", billData.serviceChargesByDate);
+  //     console.log("Bill serviceChargesByDate:", billData.serviceChargesByDate);
 
-      // Calculate from serviceChargesByDate - this contains all the dates from charges breakdown
-      billData.serviceChargesByDate.forEach((dayData) => {
-        const date = Object.keys(dayData)[0];
-        const roomEntries = dayData[date];
+  //     // Calculate from serviceChargesByDate - this contains all the dates from charges breakdown
+  //     billData.serviceChargesByDate.forEach((dayData) => {
+  //       const date = Object.keys(dayData)[0];
+  //       const roomEntries = dayData[date];
 
-        console.log(
-          `Processing date ${date} with ${roomEntries.length} room entries`
-        );
+  //       console.log(
+  //         `Processing date ${date} with ${roomEntries.length} room entries`
+  //       );
 
-        roomEntries.forEach((roomEntry) => {
-          const roomNumber = roomEntry.roomNumber;
-          const charges = roomEntry.charges;
+  //       roomEntries.forEach((roomEntry) => {
+  //         const roomNumber = roomEntry.roomNumber;
+  //         const charges = roomEntry.charges;
 
-          // Initialize room services if not exists
-          if (!services[roomNumber]) {
-            services[roomNumber] = {};
-          }
+  //         // Initialize room services if not exists
+  //         if (!services[roomNumber]) {
+  //           services[roomNumber] = {};
+  //         }
 
-          // Add to services with proper date format (YYYY-MM-DD)
-          const formattedDate = new Date(date).toISOString().split("T")[0];
-          services[roomNumber][formattedDate] = {
-            room_charges: charges.roomCharges || 0,
-            food_charges: charges.foodCharges || 0,
-            laundry_charges: charges.laundryCharges || 0,
-            minibar_charges: charges.minibarCharges || 0,
-            extra_bed_charges: charges.extraBedCharges || 0,
-            manual_charges: charges.manualCharges || 0,
-            extra_pax_charges: charges.extraPaxCharges || 0, // Add extra pax charges
-          };
+  //         // Add to services with proper date format (YYYY-MM-DD)
+  //         const formattedDate = new Date(date).toISOString().split("T")[0];
+  //         services[roomNumber][formattedDate] = {
+  //           room_charges: charges.roomCharges || 0,
+  //           food_charges: charges.foodCharges || 0,
+  //           laundry_charges: charges.laundryCharges || 0,
+  //           minibar_charges: charges.minibarCharges || 0,
+  //           extra_bed_charges: charges.extraBedCharges || 0,
+  //           manual_charges: charges.manualCharges || 0,
+  //           extra_pax_charges: charges.extraPaxCharges || 0, // Add extra pax charges
+  //         };
 
-          console.log(
-            `Added services for room ${roomNumber} on ${formattedDate}:`,
-            services[roomNumber][formattedDate]
-          );
-          console.log(`Charges breakdown for room ${roomNumber}:`, {
-            roomCharges: charges.roomCharges,
-            foodCharges: charges.foodCharges,
-            laundryCharges: charges.laundryCharges,
-            minibarCharges: charges.minibarCharges,
-            extraBedCharges: charges.extraBedCharges,
-            manualCharges: charges.manualCharges,
-            extraPaxCharges: charges.extraPaxCharges,
-          });
+  //         console.log(
+  //           `Added services for room ${roomNumber} on ${formattedDate}:`,
+  //           services[roomNumber][formattedDate]
+  //         );
+  //         console.log(`Charges breakdown for room ${roomNumber}:`, {
+  //           roomCharges: charges.roomCharges,
+  //           foodCharges: charges.foodCharges,
+  //           laundryCharges: charges.laundryCharges,
+  //           minibarCharges: charges.minibarCharges,
+  //           extraBedCharges: charges.extraBedCharges,
+  //           manualCharges: charges.manualCharges,
+  //           extraPaxCharges: charges.extraPaxCharges,
+  //         });
 
-          // Add to totals
-          totalRoomCharges += charges.roomCharges || 0;
-          totalServiceCharges +=
-            (charges.foodCharges || 0) +
-            (charges.laundryCharges || 0) +
-            (charges.minibarCharges || 0) +
-            (charges.extraBedCharges || 0) +
-            (charges.manualCharges || 0) +
-            (charges.extraPaxCharges || 0); // Include extra pax charges
-        });
-      });
+  //         // Add to totals
+  //         totalRoomCharges += charges.roomCharges || 0;
+  //         totalServiceCharges +=
+  //           (charges.foodCharges || 0) +
+  //           (charges.laundryCharges || 0) +
+  //           (charges.minibarCharges || 0) +
+  //           (charges.extraBedCharges || 0) +
+  //           (charges.manualCharges || 0) +
+  //           (charges.extraPaxCharges || 0); // Include extra pax charges
+  //       });
+  //     });
 
-      // Calculate discount and advance payment from bill data
-      const discountAmount =
-        billData?.breakdown?.charges?.discount?.discount_amount_calculated ||
-        billData?.summary?.discountAmount ||
-        billData?.billingSummary?.totalDiscount ||
-        0;
-      const advanceReceived =
-        billData?.breakdown?.charges?.partialPaymentFromBooking ||
-        billData?.summary?.partialPayment ||
-        billData?.billingSummary?.partialPayment ||
-        0;
+  //     // Calculate discount and advance payment from bill data
+  //     const discountAmount =
+  //       billData?.breakdown?.charges?.discount?.discount_amount_calculated ||
+  //       billData?.summary?.discountAmount ||
+  //       billData?.billingSummary?.totalDiscount ||
+  //       0;
+  //     const advanceReceived =
+  //       billData?.breakdown?.charges?.partialPaymentFromBooking ||
+  //       billData?.summary?.partialPayment ||
+  //       billData?.billingSummary?.partialPayment ||
+  //       0;
 
-      // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
-      const discountedRoomCharges = totalRoomCharges - discountAmount;
-      const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-      const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-      const totalTaxAmount = cgstAmount + sgstAmount;
+  //     // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
+  //     const discountedRoomCharges = totalRoomCharges - discountAmount;
+  //     const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
+  //     const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
+  //     const totalTaxAmount = cgstAmount + sgstAmount;
 
-      // Calculate totals
-      const subTotal = totalRoomCharges + totalServiceCharges - discountAmount;
-      const grandTotal = subTotal + totalTaxAmount - advanceReceived;
+  //     // Calculate totals
+  //     const subTotal = totalRoomCharges + totalServiceCharges - discountAmount;
+  //     const grandTotal = subTotal + totalTaxAmount - advanceReceived;
 
-      console.log("Calculated totals for auto-update:", {
-        totalRoomCharges,
-        totalServiceCharges,
-        discountAmount,
-        discountedRoomCharges,
-        advanceReceived,
-        cgstAmount,
-        sgstAmount,
-        totalTaxAmount,
-        subTotal,
-        grandTotal,
-      });
+  //     console.log("Calculated totals for auto-update:", {
+  //       totalRoomCharges,
+  //       totalServiceCharges,
+  //       discountAmount,
+  //       discountedRoomCharges,
+  //       advanceReceived,
+  //       cgstAmount,
+  //       sgstAmount,
+  //       totalTaxAmount,
+  //       subTotal,
+  //       grandTotal,
+  //     });
 
-      console.log("Services data to be updated:", services);
+  //     console.log("Services data to be updated:", services);
 
-      // Log extra pax charges specifically
-      let totalExtraPaxInServices = 0;
-      Object.keys(services).forEach((roomNumber) => {
-        Object.keys(services[roomNumber]).forEach((date) => {
-          const extraPax = services[roomNumber][date].extra_pax_charges || 0;
-          if (extraPax > 0) {
-            console.log(
-              `Extra pax charges for room ${roomNumber} on ${date}: ₹${extraPax}`
-            );
-            totalExtraPaxInServices += extraPax;
-          }
-        });
-      });
-      console.log(
-        `Total extra pax charges in services: ₹${totalExtraPaxInServices}`
-      );
+  //     // Log extra pax charges specifically
+  //     let totalExtraPaxInServices = 0;
+  //     Object.keys(services).forEach((roomNumber) => {
+  //       Object.keys(services[roomNumber]).forEach((date) => {
+  //         const extraPax = services[roomNumber][date].extra_pax_charges || 0;
+  //         if (extraPax > 0) {
+  //           console.log(
+  //             `Extra pax charges for room ${roomNumber} on ${date}: ₹${extraPax}`
+  //           );
+  //           totalExtraPaxInServices += extraPax;
+  //         }
+  //       });
+  //     });
+  //     console.log(
+  //       `Total extra pax charges in services: ₹${totalExtraPaxInServices}`
+  //     );
 
-      // Create updated booking data
-      const updatedBooking = {
-        ...currentBookingData,
-        services: services,
-        discount: discountAmount,
-        partial_payment_amount: advanceReceived,
-        // Add any other fields that need to be updated
-      };
+  //     // Create updated booking data
+  //     const updatedBooking = {
+  //       ...currentBookingData,
+  //       services: services,
+  //       discount: discountAmount,
+  //       partial_payment_amount: advanceReceived,
+  //       // Add any other fields that need to be updated
+  //     };
 
-      // Create version history for the auto-update
-      const versionHistory = {
-        changes: {
-          oldValues: {
-            services: currentBookingData.services || {},
-            discount: currentBookingData.discount || 0,
-            partial_payment_amount:
-              currentBookingData.partial_payment_amount || 0,
-          },
-          newValues: {
-            services: services,
-            discount: discountAmount,
-            partial_payment_amount: advanceReceived,
-          },
-        },
-        updated_at: Date.now(),
-        changed_by: "System Auto-Update",
-        reason:
-          "Bill data synchronization - ensuring checkout data matches bill display",
-      };
+  //     // Create version history for the auto-update
+  //     const versionHistory = {
+  //       changes: {
+  //         oldValues: {
+  //           services: currentBookingData.services || {},
+  //           discount: currentBookingData.discount || 0,
+  //           partial_payment_amount:
+  //             currentBookingData.partial_payment_amount || 0,
+  //         },
+  //         newValues: {
+  //           services: services,
+  //           discount: discountAmount,
+  //           partial_payment_amount: advanceReceived,
+  //         },
+  //       },
+  //       updated_at: Date.now(),
+  //       changed_by: "System Auto-Update",
+  //       reason:
+  //         "Bill data synchronization - ensuring checkout data matches bill display",
+  //     };
 
-      console.log("Auto-updating booking with data:", updatedBooking);
-      console.log("Version history:", versionHistory);
+  //     console.log("Auto-updating booking with data:", updatedBooking);
+  //     console.log("Version history:", versionHistory);
 
-      // Update the booking data
-      await updateBooking({
-        bookingData: updatedBooking,
-        bookingId: bookingId,
-        versionHistory: versionHistory,
-      });
+  //     // Update the booking data
+  //     await updateBooking({
+  //       bookingData: updatedBooking,
+  //       bookingId: bookingId,
+  //       versionHistory: versionHistory,
+  //     });
 
-      console.log("✅ Booking data auto-updated successfully");
-    } catch (error) {
-      console.error("❌ Error auto-updating booking data:", error);
-      // Don't show error to user as this is a background operation
-    }
-  };
+  //     console.log("✅ Booking data auto-updated successfully");
+  //   } catch (error) {
+  //     console.error("❌ Error auto-updating booking data:", error);
+  //     // Don't show error to user as this is a background operation
+  //   }
+  // };
 
   // Refresh function
   const handleRefresh = async () => {
