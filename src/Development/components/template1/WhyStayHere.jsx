@@ -7,7 +7,7 @@ const WhyStayHere = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
 
-  const whyStayHereData = institutionData.whyStayHere;
+  const whyStayHereData = institutionData?.whyStayHere;
   const [currentLoungeImageIndex, setCurrentLoungeImageIndex] = useState(0);
 
   const [isImageEdit, setIsImageEdit] = React.useState(false);
@@ -35,7 +35,7 @@ const WhyStayHere = () => {
               <div className="flex items-center gap-1">
                 <input
                   type="text"
-                  value={whyStayHereData.title || "Why You Should"}
+                  value={whyStayHereData?.title }
                   placeholder="Title"
                   onChange={(e) => {
                     setInstitutionData((prev) => ({
@@ -47,11 +47,11 @@ const WhyStayHere = () => {
                     }));
                   }}
                   className="text-2xl sm:text-3xl font-semibold text-gray-800 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
-                  style={{ width: `${whyStayHereData.title.length + 2}ch` }}
+                  style={{ width: `${whyStayHereData?.title?.length + 2}ch` }}
                 />
                 <input
                   type="text"
-                  value={whyStayHereData.titleHighlight || "Stay Here"}
+                  value={whyStayHereData?.titleHighlight}
                   placeholder="Title Highlight"
                   onChange={(e) => {
                     setInstitutionData((prev) => ({
@@ -64,21 +64,21 @@ const WhyStayHere = () => {
                   }}
                   className="text-2xl sm:text-3xl font-semibold text-orange-500 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
                   style={{
-                    width: `${whyStayHereData.titleHighlight.length + 2}ch`,
+                    width: `${whyStayHereData?.titleHighlight?.length + 2}ch`,
                   }}
                 />
               </div>
             ) : (
               <h2 className="text-3xl sm:text-4xl font-semibold text-gray-800 fjalla">
-                {whyStayHereData.title || "Why You Should"}{" "}
+                {whyStayHereData?.title || "Why You Should"}{" "}
                 <span className="text-orange-500 fjalla">
-                  {whyStayHereData.titleHighlight || "Stay Here"}
+                  {whyStayHereData?.titleHighlight || "Stay Here"}
                 </span>
               </h2>
             )}
             {isEditMode ? (
               <textarea
-                value={whyStayHereData.introText || "Intro Text"}
+                value={whyStayHereData?.introText}
                 onChange={(e) => {
                   setInstitutionData((prev) => ({
                     ...prev,
@@ -90,16 +90,17 @@ const WhyStayHere = () => {
                 }}
                 className="text-black mt-2 sm:mt-3 cormorant font-semibold border border-gray-300 rounded px-1 py-0.5 w-[55ch]"
                 rows="2"
+                placeholder="Enter text"
               />
             ) : (
               <p className="text-black mt-2 sm:mt-3 cormorant font-semibold">
-                {whyStayHereData.introText || "Intro Text"}
+                {whyStayHereData?.introText || "Intro Text"}
               </p>
             )}
 
             <div className="mt-6 sm:mt-8 md:mt-10 space-y-6 sm:space-y-8">
               {/* Point 1 */}
-              {whyStayHereData.points.map((point, index) => (
+              {whyStayHereData?.points?.map((point, index) => (
                 <div key={index} className="flex items-start gap-3 sm:gap-4">
                   <div className="bg-orange-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0">
                     {index + 1}
@@ -160,7 +161,7 @@ const WhyStayHere = () => {
           <div className="w-full lg:w-1/2 relative mt-8 lg:mt-0">
             <div className="relative">
               <img
-                src={whyStayHereData.mainImage || "https://placehold.co/400"}
+                src={whyStayHereData?.mainImage || "https://placehold.co/400"}
                 alt="Room"
                 className="rounded-xl shadow-xl w-full h-64 sm:h-80 md:h-96 object-cover"
               />
@@ -215,7 +216,7 @@ const WhyStayHere = () => {
                   <div className="relative">
                     <img
                       src={
-                        whyStayHereData.ratings[0].image ||
+                        whyStayHereData?.ratings?.length > 0 ? whyStayHereData?.ratings[0]?.image : "https://randomuser.me/api/portraits/men/1.jpg" ||
                         "https://randomuser.me/api/portraits/men/1.jpg"
                       }
                       alt="Cody"
@@ -263,7 +264,7 @@ const WhyStayHere = () => {
                   </div>
                   <input
                     type="text"
-                    value={whyStayHereData.ratings[0].name || "Name"}
+                    value={ whyStayHereData?.ratings?.length > 0 ? whyStayHereData?.ratings[0]?.name : "Name"}
                     onChange={(e) => {
                       setInstitutionData((prevData) => ({
                         ...prevData,
@@ -282,7 +283,7 @@ const WhyStayHere = () => {
                   />
                   <input
                     type="text"
-                    value={whyStayHereData.ratings[0].score || "0"}
+                    value={ whyStayHereData?.ratings?.length > 0 ? whyStayHereData?.ratings[0]?.score : "0"}
                     onChange={(e) => {
                       setInstitutionData((prevData) => ({
                         ...prevData,
@@ -304,7 +305,7 @@ const WhyStayHere = () => {
                 <>
                   <img
                     src={
-                      whyStayHereData.ratings[0].image ||
+                       whyStayHereData?.ratings?.length > 0 ? whyStayHereData?.ratings[0]?.image : "https://randomuser.me/api/portraits/men/1.jpg" ||
                       "https://randomuser.me/api/portraits/men/1.jpg"
                     }
                     alt="Cody"
@@ -312,10 +313,10 @@ const WhyStayHere = () => {
                   />
                   <div>
                     <p className="text-xs sm:text-sm font-semibold">
-                      {whyStayHereData.ratings[0].name || "Name"}
+                      {whyStayHereData?.ratings?.length > 0 ? whyStayHereData?.ratings[0]?.name : "Name"}
                     </p>
                     <p className="text-xs text-orange-500">
-                      {whyStayHereData.ratings[0].score || "0"}
+                      {whyStayHereData?.ratings?.length > 0 ? whyStayHereData?.ratings[0]?.score : "0"}
                     </p>
                   </div>
                 </>
@@ -329,7 +330,7 @@ const WhyStayHere = () => {
                   <div className="relative">
                     <img
                       src={
-                        whyStayHereData.ratings[1].image ||
+                        whyStayHereData?.ratings?.length > 1 ? whyStayHereData?.ratings[1]?.image : "https://randomuser.me/api/portraits/men/1.jpg" ||
                         "https://randomuser.me/api/portraits/men/1.jpg"
                       }
                       alt="Albert"
@@ -377,7 +378,7 @@ const WhyStayHere = () => {
                   </div>
                   <input
                     type="text"
-                    value={whyStayHereData.ratings[1].name || "Name"}
+                    value={ whyStayHereData?.ratings?.length > 1 ? whyStayHereData?.ratings[1]?.name : "Name"}
                     onChange={(e) => {
                       setInstitutionData((prevData) => ({
                         ...prevData,
@@ -396,7 +397,7 @@ const WhyStayHere = () => {
                   />
                   <input
                     type="text"
-                    value={whyStayHereData.ratings[1].score || "0"}
+                    value={ whyStayHereData?.ratings?.length > 1 ? whyStayHereData?.ratings[1]?.score : "0"}
                     onChange={(e) => {
                       setInstitutionData((prevData) => ({
                         ...prevData,
@@ -418,18 +419,17 @@ const WhyStayHere = () => {
                 <>
                   <img
                     src={
-                      whyStayHereData.ratings[1].image ||
-                      "https://randomuser.me/api/portraits/men/1.jpg"
-                    }
+                      whyStayHereData?.ratings?.length > 1 ? whyStayHereData?.ratings[1]?.image : "https://randomuser.me/api/portraits/men/1.jpg" ||
+                      "https://randomuser.me/api/portraits/men/1.jpg"}
                     alt="Albert"
                     className="w-6 h-6 sm:w-8 sm:h-8 rounded-full"
                   />
                   <div>
                     <p className="text-xs sm:text-sm font-semibold">
-                      {whyStayHereData.ratings[1].name || "Name"}
+                      { whyStayHereData?.ratings?.length > 1 ? whyStayHereData?.ratings[1]?.name : "Name"}
                     </p>
                     <p className="text-xs text-orange-500">
-                      {whyStayHereData.ratings[1].score || "0"}
+                      {whyStayHereData?.ratings?.length > 1 ? whyStayHereData?.ratings[1]?.score : "0"}
                     </p>
                   </div>
                 </>
@@ -443,7 +443,7 @@ const WhyStayHere = () => {
                   <div className="relative">
                     <img
                       src={
-                        whyStayHereData.ratings[2].image ||
+                         whyStayHereData?.ratings?.length > 2 ? whyStayHereData?.ratings[2]?.image : "https://randomuser.me/api/portraits/men/1.jpg" ||
                         "https://randomuser.me/api/portraits/men/1.jpg"
                       }
                       alt="Devon"
@@ -491,7 +491,7 @@ const WhyStayHere = () => {
                   </div>
                   <input
                     type="text"
-                    value={whyStayHereData.ratings[2].name || "Name"}
+                    value={ whyStayHereData?.ratings?.length > 2 ? whyStayHereData?.ratings[2]?.name : "Name"}
                     onChange={(e) => {
                       setInstitutionData((prevData) => ({
                         ...prevData,
@@ -510,7 +510,7 @@ const WhyStayHere = () => {
                   />
                   <input
                     type="text"
-                    value={whyStayHereData.ratings[2].score || "0"}
+                    value={ whyStayHereData?.ratings?.length > 2 ? whyStayHereData?.ratings[2]?.score : "0"}
                     onChange={(e) => {
                       setInstitutionData((prevData) => ({
                         ...prevData,
@@ -532,7 +532,7 @@ const WhyStayHere = () => {
                 <>
                   <img
                     src={
-                      whyStayHereData.ratings[2].image ||
+                      whyStayHereData?.ratings?.length > 2 ? whyStayHereData?.ratings[2]?.image : "https://randomuser.me/api/portraits/men/1.jpg" ||
                       "https://randomuser.me/api/portraits/men/1.jpg"
                     }
                     alt="Devon"
@@ -540,10 +540,10 @@ const WhyStayHere = () => {
                   />
                   <div>
                     <p className="text-xs sm:text-sm font-semibold">
-                      {whyStayHereData.ratings[2].name || "Name"}
+                      { whyStayHereData?.ratings?.length > 2 ? whyStayHereData?.ratings[2]?.name : "Name"}
                     </p>
                     <p className="text-xs text-orange-500">
-                      {whyStayHereData.ratings[2].score || "0"}
+                      { whyStayHereData?.ratings?.length > 2 ? whyStayHereData?.ratings[2]?.score : "0"}
                     </p>
                   </div>
                 </>
@@ -553,11 +553,12 @@ const WhyStayHere = () => {
         </div>
 
         {/* Additional Section - Wellness, Architecture, etc. */}
-        <div className="py-12 sm:py-16 mt-12 sm:mt-16">
+        
+        {/* <div className="py-12 sm:py-16 mt-12 sm:mt-16">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8 md:gap-10">
-            {/* Left Side - Text List */}
+           
             <div className="text-gray-300 text-2xl sm:text-3xl space-y-6 sm:space-y-8 text-center md:text-left w-full md:w-auto">
-              {whyStayHereData.categories.map((category, index) =>
+              {whyStayHereData?.categories.map((category, index) =>
                 isEditMode ? (
                   <input
                     key={index}
@@ -588,23 +589,23 @@ const WhyStayHere = () => {
                       currentLoungeImageIndex === index ? "text-gray-500" : ""
                     }`}
                   >
-                    {category.name || "Category Name"}
+                    {category?.name || "Category Name"}
                   </p>
                 )
               )}
             </div>
 
-            {/* Right Side - Image */}
+            
             <div className="w-full md:w-1/2 mt-6 md:mt-0 relative">
               <img
                 src={
-                  whyStayHereData.categories[currentLoungeImageIndex].link ||
+                  whyStayHereData?.categories[currentLoungeImageIndex].link ||
                   "https://placehold.co/400"
                 }
                 alt="Lounge"
                 className="rounded-xl shadow-lg object-cover w-full h-64 sm:h-80"
               />
-              {/* Upload Image */}
+         
               {isEditMode && (
                 <button
                   onClick={() => {
@@ -650,7 +651,7 @@ const WhyStayHere = () => {
               )}
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Floating Image Cards Section */}
         <div className="relative mt-12 sm:mt-16">
@@ -658,7 +659,7 @@ const WhyStayHere = () => {
           <div className="relative">
             <img
               src={
-                whyStayHereData.images.main || "https://placehold.co/600x300"
+                whyStayHereData?.images?.main || "https://placehold.co/600x300"
               }
               alt="Ocean"
               className="w-full h-[300px] sm:h-[400px] object-cover"
@@ -710,7 +711,7 @@ const WhyStayHere = () => {
           {/* Floating Cards */}
           <div className="absolute top-1/2 left-0 right-0 transform -translate-y-1/2 px-4 overflow-x-auto">
             <div className="flex justify-start md:justify-center gap-4 pb-4 min-w-max md:min-w-0 md:px-0">
-              {whyStayHereData.images.floating.map((item, index) => (
+              {whyStayHereData?.images?.floating.map((item, index) => (
                 <div
                   key={index}
                   className="relative w-40 h-56 sm:w-48 sm:h-64 md:w-56 md:h-72 lg:w-60 lg:h-80 flex-shrink-0 shadow-lg rounded-xl overflow-hidden"
@@ -810,7 +811,7 @@ const WhyStayHere = () => {
             {isEditMode ? (
               <input
                 type="text"
-                value={whyStayHereData.hashtag || "#YourHashtag"}
+                value={whyStayHereData?.hashtag || "#YourHashtag"}
                 onChange={(e) => {
                   setInstitutionData((prevData) => ({
                     ...prevData,
@@ -823,7 +824,7 @@ const WhyStayHere = () => {
                 className="border border-gray-300 rounded px-2 py-1 text-black fjalla"
               />
             ) : (
-              whyStayHereData.hashtag || "#YourHashtag"
+              whyStayHereData?.hashtag || "#YourHashtag"
             )}
           </div>
 
@@ -874,7 +875,7 @@ const WhyStayHere = () => {
           <div className="relative">
             <img
               src={
-                whyStayHereData.images.gridBg || "https://placehold.co/600x400"
+                whyStayHereData?.images?.gridBg || "https://placehold.co/600x400"
               }
               alt="Hotel Background"
               className="w-full h-[400px] sm:h-[500px] object-cover opacity-100"
@@ -932,7 +933,7 @@ const WhyStayHere = () => {
               <div className="w-full sm:w-1/3 h-1/3 sm:h-full rounded-lg overflow-hidden shadow-lg relative">
                 <img
                   src={
-                    whyStayHereData.images.gridBig ||
+                    whyStayHereData?.images?.gridBig ||
                     "https://placehold.co/400x300"
                   }
                   alt="Big"
@@ -992,7 +993,7 @@ const WhyStayHere = () => {
                     >
                       <img
                         src={
-                          whyStayHereData.images.grid[index] ||
+                          whyStayHereData?.images?.grid[index] ||
                           "https://placehold.co/200x300"
                         }
                         alt={`${index + 1}`}
@@ -1054,7 +1055,7 @@ const WhyStayHere = () => {
                     >
                       <img
                         src={
-                          whyStayHereData.images.grid[index] ||
+                          whyStayHereData?.images?.grid[index] ||
                           "https://placehold.co/200x300"
                         }
                         alt={`${index + 1}`}

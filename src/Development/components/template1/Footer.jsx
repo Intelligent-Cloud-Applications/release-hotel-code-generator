@@ -9,19 +9,17 @@ const Footer = () => {
   const { isEditMode } = useEditContext();
 
   // State for editable section titles
-  const [quickLinksTitle, setQuickLinksTitle] = useState(institutionData.footer.quickLinks.title);
-  const [getInTouchTitle, setGetInTouchTitle] = useState(institutionData.footer.getInTouch.title);
-  const [usefulLinksTitle, setUsefulLinksTitle] = useState(institutionData.footer.usefulLinks.title);
+  const [quickLinksTitle, setQuickLinksTitle] = useState(institutionData?.footer?.quickLinks?.title);
+  const [getInTouchTitle, setGetInTouchTitle] = useState(institutionData?.footer?.getInTouch?.title);
+  const [usefulLinksTitle, setUsefulLinksTitle] = useState(institutionData?.footer?.usefulLinks?.title);
 
   // State for editable links
-  const [quickLinks, setQuickLinks] = useState(institutionData.footer.quickLinks.links);
-  const [usefulLinks, setUsefulLinks] = useState(institutionData.footer.usefulLinks.links);
-
+  const [quickLinks, setQuickLinks] = useState(institutionData?.footer?.quickLinks?.links);
+  const [usefulLinks, setUsefulLinks] = useState(institutionData?.footer?.usefulLinks?.links);
   // State for editable Get in Touch section
-  const [getInTouchDescription, setGetInTouchDescription] = useState(institutionData.footer.getInTouch.description);
-  const [emailPlaceholder, setEmailPlaceholder] = useState(institutionData.footer.getInTouch.emailPlaceholder);
-  const [subscribeButtonText, setSubscribeButtonText] = useState(institutionData.footer.getInTouch.subscribeButtonText);
-
+  const [getInTouchDescription, setGetInTouchDescription] = useState(institutionData?.footer?.getInTouch?.description);
+  const [emailPlaceholder, setEmailPlaceholder] = useState(institutionData?.footer?.getInTouch?.emailPlaceholder);
+  const [subscribeButtonText, setSubscribeButtonText] = useState(institutionData?.footer?.getInTouch?.subscribeButtonText);
   // State for modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedLink, setSelectedLink] = useState(null);
@@ -185,10 +183,10 @@ const Footer = () => {
                   type="text"
                   value={quickLinksTitle}
                   onChange={(e) => setQuickLinksTitle(e.target.value)}
-                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors text-sm sm:text-base"
+                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors sm:text-base"
                 />
                 <ul className="space-y-3 text-gray-400">
-                  {quickLinks.map((link, index) => (
+                  {quickLinks?.map((link, index) => (
                     <li key={index} className="flex items-center justify-between gap-2">
                       <input
                         type="text"
@@ -232,7 +230,7 @@ const Footer = () => {
               <>
                 <h3 className="text-2xl font-semibold mb-4 roboto">{quickLinksTitle}</h3>
                 <ul className="space-y-3 text-gray-400">
-                  {quickLinks.map((link, index) => (
+                  {quickLinks?.map((link, index) => (
                     <li key={index}>
                       <a href={link.url} className="hover:text-white roboto transition-colors">
                         {link.text}
@@ -318,10 +316,10 @@ const Footer = () => {
                   type="text"
                   value={usefulLinksTitle}
                   onChange={(e) => setUsefulLinksTitle(e.target.value)}
-                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors text-sm sm:text-base"
+                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors  sm:text-base"
                 />
                 <ul className="space-y-3 text-gray-400">
-                  {usefulLinks.map((link, index) => (
+                  {usefulLinks?.map((link, index) => (
                     <li key={index} className="flex items-center justify-between gap-2">
                       <input
                         type="text"
@@ -365,7 +363,7 @@ const Footer = () => {
               <>
                 <h3 className="text-2xl font-semibold mb-4 roboto">{usefulLinksTitle}</h3>
                 <ul className="space-y-3 text-gray-400">
-                  {usefulLinks.map((link, index) => (
+                  {usefulLinks?.map((link, index) => (
                     <li key={index}>
                       <a href={link.url} className="hover:text-white roboto transition-colors">
                         {link.text}

@@ -105,7 +105,7 @@ const CheckOut = () => {
   });
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
   const [createCompanyError, setCreateCompanyError] = useState("");
-  
+
   // Helper functions for company handling
   const getCompanyName = (c) =>
     c?.name || c?.company_name || c?.companyName || "";
@@ -234,58 +234,64 @@ const CheckOut = () => {
     let calculatedTaxAmount = 0; // Declare tax amount variable at function scope
 
     // Debug: Log the bill data structure
-    console.log('=== BILL DATA STRUCTURE DEBUG ===');
-    console.log('billData:', billData);
-    console.log('billData.serviceChargesByDate:', billData.serviceChargesByDate);
-    console.log('billData.breakdown:', billData.breakdown);
-    console.log('billData.summary:', billData.summary);
+    console.log("=== BILL DATA STRUCTURE DEBUG ===");
+    console.log("billData:", billData);
+    console.log(
+      "billData.serviceChargesByDate:",
+      billData.serviceChargesByDate
+    );
+    console.log("billData.breakdown:", billData.breakdown);
+    console.log("billData.summary:", billData.summary);
 
     // Use bill summary totals as they include grace period logic and all days
     if (billData?.summary) {
-      console.log('Using bill summary totals (includes grace period logic)');
-      console.log('Bill Summary Values:', {
+      console.log("Using bill summary totals (includes grace period logic)");
+      console.log("Bill Summary Values:", {
         roomCharges: billData.summary.roomCharges,
         serviceCharges: billData.summary.serviceCharges,
         subTotal: billData.summary.subTotal,
         taxAmount: billData.summary.taxAmount,
         grandTotal: billData.summary.grandTotal,
         discountAmount: billData.summary.discountAmount,
-        partialPayment: billData.summary.partialPayment
+        partialPayment: billData.summary.partialPayment,
       });
-      
+
       totalRoomCharges = billData.summary.roomCharges || 0;
       totalServiceCharges = billData.summary.serviceCharges || 0;
-      
+
       // Get discount amount from bill summary
       const discountAmount = billData.summary.discountAmount || 0;
-      
+
       // Calculate tax from discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
       const discountedRoomCharges = totalRoomCharges - discountAmount;
       const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
       const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
       calculatedTaxAmount = cgstAmount + sgstAmount;
-      
-      console.log('Tax calculation:', {
+
+      console.log("Tax calculation:", {
         totalRoomCharges,
         discountAmount,
         discountedRoomCharges,
         cgstAmount,
         sgstAmount,
         calculatedTaxAmount,
-        billSummaryTaxAmount: billData.summary.taxAmount
+        billSummaryTaxAmount: billData.summary.taxAmount,
       });
-      
+
       // Still populate services from serviceChargesByRoomAndDate for the dates that have data
-      if (billData.breakdown?.charges?.serviceCharges?.serviceChargesByRoomAndDate) {
-        const serviceChargesByRoom = billData.breakdown.charges.serviceCharges.serviceChargesByRoomAndDate;
-        
-        Object.keys(serviceChargesByRoom).forEach(roomNumber => {
+      if (
+        billData.breakdown?.charges?.serviceCharges?.serviceChargesByRoomAndDate
+      ) {
+        const serviceChargesByRoom =
+          billData.breakdown.charges.serviceCharges.serviceChargesByRoomAndDate;
+
+        Object.keys(serviceChargesByRoom).forEach((roomNumber) => {
           const roomServices = serviceChargesByRoom[roomNumber];
           services[roomNumber] = {};
-          
-          Object.keys(roomServices).forEach(date => {
+
+          Object.keys(roomServices).forEach((date) => {
             const dayCharges = roomServices[date];
-            
+
             // Add to services with proper date format
             services[roomNumber][date] = {
               room_charges: dayCharges.room_charges || 0,
@@ -299,17 +305,22 @@ const CheckOut = () => {
           });
         });
       }
-    } else if (billData.breakdown?.charges?.serviceCharges?.serviceChargesByRoomAndDate) {
-      console.log('Using serviceChargesByRoomAndDate for calculation (fallback)');
-      const serviceChargesByRoom = billData.breakdown.charges.serviceCharges.serviceChargesByRoomAndDate;
-      
-      Object.keys(serviceChargesByRoom).forEach(roomNumber => {
+    } else if (
+      billData.breakdown?.charges?.serviceCharges?.serviceChargesByRoomAndDate
+    ) {
+      console.log(
+        "Using serviceChargesByRoomAndDate for calculation (fallback)"
+      );
+      const serviceChargesByRoom =
+        billData.breakdown.charges.serviceCharges.serviceChargesByRoomAndDate;
+
+      Object.keys(serviceChargesByRoom).forEach((roomNumber) => {
         const roomServices = serviceChargesByRoom[roomNumber];
         services[roomNumber] = {};
-        
-        Object.keys(roomServices).forEach(date => {
+
+        Object.keys(roomServices).forEach((date) => {
           const dayCharges = roomServices[date];
-          
+
           // Add to services with proper date format
           services[roomNumber][date] = {
             room_charges: dayCharges.room_charges || 0,
@@ -319,31 +330,35 @@ const CheckOut = () => {
             extra_bed_charges: dayCharges.extra_bed_charges || 0,
             manual_charges: dayCharges.manual_charges || 0,
           };
-          
+
           // Add to totals
           totalRoomCharges += dayCharges.room_charges || 0;
-          totalServiceCharges += (dayCharges.food_charges || 0) + 
-                               (dayCharges.laundry_charges || 0) + 
-                               (dayCharges.minibar_charges || 0) + 
-                               (dayCharges.extra_bed_charges || 0) + 
-                               (dayCharges.manual_charges || 0);
+          totalServiceCharges +=
+            (dayCharges.food_charges || 0) +
+            (dayCharges.laundry_charges || 0) +
+            (dayCharges.minibar_charges || 0) +
+            (dayCharges.extra_bed_charges || 0) +
+            (dayCharges.manual_charges || 0);
         });
       });
-    } else if (billData.serviceChargesByDate && Array.isArray(billData.serviceChargesByDate)) {
-      console.log('Using serviceChargesByDate for calculation');
-      billData.serviceChargesByDate.forEach(dayData => {
+    } else if (
+      billData.serviceChargesByDate &&
+      Array.isArray(billData.serviceChargesByDate)
+    ) {
+      console.log("Using serviceChargesByDate for calculation");
+      billData.serviceChargesByDate.forEach((dayData) => {
         const date = Object.keys(dayData)[0];
         const roomEntries = dayData[date];
-        
-        roomEntries.forEach(roomEntry => {
+
+        roomEntries.forEach((roomEntry) => {
           const roomNumber = roomEntry.roomNumber;
           const charges = roomEntry.charges;
-          
+
           // Initialize room services if not exists
           if (!services[roomNumber]) {
             services[roomNumber] = {};
           }
-          
+
           // Add to services with proper date format
           services[roomNumber][date] = {
             room_charges: charges.roomCharges || 0,
@@ -354,28 +369,35 @@ const CheckOut = () => {
             manual_charges: charges.manualCharges || 0,
             extra_pax_charges: charges.extraPaxCharges || 0, // Add extra pax charges
           };
-          
+
           // Add to totals
           totalRoomCharges += charges.roomCharges || 0;
-          totalServiceCharges += (charges.foodCharges || 0) + 
-                               (charges.laundryCharges || 0) + 
-                               (charges.minibarCharges || 0) + 
-                               (charges.extraBedCharges || 0) + 
-                               (charges.manualCharges || 0) +
-                               (charges.extraPaxCharges || 0); // Include extra pax charges
+          totalServiceCharges +=
+            (charges.foodCharges || 0) +
+            (charges.laundryCharges || 0) +
+            (charges.minibarCharges || 0) +
+            (charges.extraBedCharges || 0) +
+            (charges.manualCharges || 0) +
+            (charges.extraPaxCharges || 0); // Include extra pax charges
         });
       });
     } else {
-      console.log('Using breakdown data for calculation');
+      console.log("Using breakdown data for calculation");
       // Fallback to breakdown data
-      totalRoomCharges = billData?.breakdown?.charges?.roomCharges?.totalRoomCharges || 
-                        billData?.summary?.roomCharges || 0;
-      totalServiceCharges = billData?.breakdown?.charges?.serviceCharges?.totalServiceCharges || 
-                           billData?.summary?.serviceCharges || 0;
-      
+      totalRoomCharges =
+        billData?.breakdown?.charges?.roomCharges?.totalRoomCharges ||
+        billData?.summary?.roomCharges ||
+        0;
+      totalServiceCharges =
+        billData?.breakdown?.charges?.serviceCharges?.totalServiceCharges ||
+        billData?.summary?.serviceCharges ||
+        0;
+
       // If still no room charges, try to calculate from the bill summary
       if (totalRoomCharges === 0) {
-        console.log('No room charges found, trying to calculate from bill summary');
+        console.log(
+          "No room charges found, trying to calculate from bill summary"
+        );
         // Try to get room charges from the bill summary
         const billSummary = billData?.summary;
         if (billSummary) {
@@ -383,50 +405,71 @@ const CheckOut = () => {
           totalServiceCharges = billSummary.serviceCharges || 0;
         }
       }
-      
+
       // If still no room charges, try to calculate manually from the bill data
       if (totalRoomCharges === 0) {
-        console.log('Still no room charges, trying manual calculation');
+        console.log("Still no room charges, trying manual calculation");
         // Try to calculate from the bill data structure
         if (billData?.breakdown?.charges?.roomCharges) {
           const roomChargesData = billData.breakdown.charges.roomCharges;
           if (roomChargesData.roomChargesByDate) {
             // Calculate from room charges by date
-            Object.values(roomChargesData.roomChargesByDate).forEach(dayCharges => {
-              Object.values(dayCharges).forEach(roomCharge => {
-                totalRoomCharges += roomCharge || 0;
-              });
-            });
+            Object.values(roomChargesData.roomChargesByDate).forEach(
+              (dayCharges) => {
+                Object.values(dayCharges).forEach((roomCharge) => {
+                  totalRoomCharges += roomCharge || 0;
+                });
+              }
+            );
           }
         }
       }
-      
+
       // If we still don't have the correct totals, use the bill summary (which includes grace period logic)
-      if (totalRoomCharges === 0 || totalRoomCharges < (billData?.summary?.roomCharges || 0)) {
-        console.log('Using bill summary totals as they include grace period logic');
+      if (
+        totalRoomCharges === 0 ||
+        totalRoomCharges < (billData?.summary?.roomCharges || 0)
+      ) {
+        console.log(
+          "Using bill summary totals as they include grace period logic"
+        );
         totalRoomCharges = billData?.summary?.roomCharges || 0;
         totalServiceCharges = billData?.summary?.serviceCharges || 0;
       }
     }
 
     // Extract other charges
-    const foodCharges = billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals?.total_food_charges || 0;
-    const laundryCharges = billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals?.total_laundry_charges || 0;
-    const minibarCharges = billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals?.total_minibar_charges || 0;
-    const manualCharges = billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals?.total_manual_charges || 0;
-    const extraBedCharges = billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals?.total_extra_bed_charges || 0;
+    const foodCharges =
+      billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals
+        ?.total_food_charges || 0;
+    const laundryCharges =
+      billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals
+        ?.total_laundry_charges || 0;
+    const minibarCharges =
+      billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals
+        ?.total_minibar_charges || 0;
+    const manualCharges =
+      billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals
+        ?.total_manual_charges || 0;
+    const extraBedCharges =
+      billData?.breakdown?.charges?.serviceCharges?.overallServiceTotals
+        ?.total_extra_bed_charges || 0;
 
     // Extract discount and advance payment
-    const discountAmount = billData?.breakdown?.charges?.discount?.discount_amount_calculated || 
-                         billData?.summary?.discountAmount || 0;
-    const advanceReceived = billData?.breakdown?.charges?.partialPaymentFromBooking || 
-                          billData?.summary?.partialPayment || 0;
+    const discountAmount =
+      billData?.breakdown?.charges?.discount?.discount_amount_calculated ||
+      billData?.summary?.discountAmount ||
+      0;
+    const advanceReceived =
+      billData?.breakdown?.charges?.partialPaymentFromBooking ||
+      billData?.summary?.partialPayment ||
+      0;
 
     // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
     const discountedRoomCharges = totalRoomCharges - discountAmount;
     const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
     const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-    const totalTaxAmount = cgstAmount + sgstAmount;
+    let totalTaxAmount = cgstAmount + sgstAmount;
 
     // Calculate totals
     const subTotal = totalRoomCharges + totalServiceCharges - discountAmount;
@@ -434,31 +477,31 @@ const CheckOut = () => {
 
     // Final fallback: if grand total is still 0, use the bill summary grand total
     if (grandTotal === 0 && billData?.summary?.grandTotal) {
-      console.log('Using bill summary grand total as final fallback');
+      console.log("Using bill summary grand total as final fallback");
       const billGrandTotal = billData.summary.grandTotal;
       const billSubTotal = billData.summary.subTotal || 0;
       const billTaxAmount = billData.summary.taxAmount || 0;
       const billAdvanceReceived = billData.summary.advanceReceived || 0;
-      
+
       // Recalculate room charges from the bill summary
       totalRoomCharges = billSubTotal - totalServiceCharges + discountAmount;
-      
+
       // Calculate tax from discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
       const discountedRoomCharges = totalRoomCharges - discountAmount;
       const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
       const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
       calculatedTaxAmount = cgstAmount + sgstAmount;
-      
-      console.log('Final fallback tax calculation:', {
+
+      console.log("Final fallback tax calculation:", {
         totalRoomCharges,
         cgstAmount,
         sgstAmount,
         calculatedTaxAmount,
-        billSummaryTaxAmount: billTaxAmount
+        billSummaryTaxAmount: billTaxAmount,
       });
-      
+
       totalTaxAmount = calculatedTaxAmount;
-      
+
       return {
         totalRoomCharges,
         totalServiceCharges,
@@ -473,7 +516,7 @@ const CheckOut = () => {
         totalTaxAmount: calculatedTaxAmount,
         subTotal: billSubTotal,
         grandTotal: billGrandTotal,
-        services
+        services,
       };
     }
 
@@ -486,12 +529,14 @@ const CheckOut = () => {
       manualCharges,
       extraBedCharges,
       extraPaxCharges: 0, // Add extra pax charges
-      discountAmount: billData?.summary ? (billData.summary.discountAmount || 0) : discountAmount,
+      discountAmount: billData?.summary
+        ? billData.summary.discountAmount || 0
+        : discountAmount,
       advanceReceived,
       totalTaxAmount: calculatedTaxAmount || totalTaxAmount,
       subTotal,
       grandTotal,
-      services
+      services,
     };
   };
 
@@ -723,61 +768,79 @@ const CheckOut = () => {
         gst_type: booking.gst_type || "IGST",
       };
 
-      console.log('=== FETCHING BILL DATA FOR CHECKOUT ===');
-      console.log('Booking Data:', bookingData);
+      console.log("=== FETCHING BILL DATA FOR CHECKOUT ===");
+      console.log("Booking Data:", bookingData);
 
       if (calculateTotalBill) {
-        const billData = await calculateTotalBill({ bookingDetails: bookingData });
-        console.log('=== COMPLETE BILL DATA RECEIVED ===');
-        console.log('Full Bill Data Object:', billData);
-        console.log('Bill Data Keys:', Object.keys(billData || {}));
-        
+        const billData = await calculateTotalBill({
+          bookingDetails: bookingData,
+        });
+        console.log("=== COMPLETE BILL DATA RECEIVED ===");
+        console.log("Full Bill Data Object:", billData);
+        console.log("Bill Data Keys:", Object.keys(billData || {}));
+
         // Log specific sections
         if (billData) {
-          console.log('=== BILL DATA SECTIONS ===');
-          console.log('serviceChargesByDate:', billData.serviceChargesByDate);
-          console.log('breakdown:', billData.breakdown);
-          console.log('summary:', billData.summary);
-          console.log('bookingDetails:', billData.bookingDetails);
-          console.log('billingSummary:', billData.billingSummary);
-          
+          console.log("=== BILL DATA SECTIONS ===");
+          console.log("serviceChargesByDate:", billData.serviceChargesByDate);
+          console.log("breakdown:", billData.breakdown);
+          console.log("summary:", billData.summary);
+          console.log("bookingDetails:", billData.bookingDetails);
+          console.log("billingSummary:", billData.billingSummary);
+
           // Log room charges specifically
           if (billData.breakdown?.charges?.roomCharges) {
-            console.log('=== ROOM CHARGES BREAKDOWN ===');
-            console.log('totalRoomCharges:', billData.breakdown.charges.roomCharges.totalRoomCharges);
-            console.log('roomChargesByDate:', billData.breakdown.charges.roomCharges.roomChargesByDate);
+            console.log("=== ROOM CHARGES BREAKDOWN ===");
+            console.log(
+              "totalRoomCharges:",
+              billData.breakdown.charges.roomCharges.totalRoomCharges
+            );
+            console.log(
+              "roomChargesByDate:",
+              billData.breakdown.charges.roomCharges.roomChargesByDate
+            );
           }
-          
+
           // Log service charges specifically
           if (billData.breakdown?.charges?.serviceCharges) {
-            console.log('=== SERVICE CHARGES BREAKDOWN ===');
-            console.log('totalServiceCharges:', billData.breakdown.charges.serviceCharges.totalServiceCharges);
-            console.log('overallServiceTotals:', billData.breakdown.charges.serviceCharges.overallServiceTotals);
-            console.log('serviceChargesByRoomAndDate:', billData.breakdown.charges.serviceCharges.serviceChargesByRoomAndDate);
+            console.log("=== SERVICE CHARGES BREAKDOWN ===");
+            console.log(
+              "totalServiceCharges:",
+              billData.breakdown.charges.serviceCharges.totalServiceCharges
+            );
+            console.log(
+              "overallServiceTotals:",
+              billData.breakdown.charges.serviceCharges.overallServiceTotals
+            );
+            console.log(
+              "serviceChargesByRoomAndDate:",
+              billData.breakdown.charges.serviceCharges
+                .serviceChargesByRoomAndDate
+            );
           }
-          
+
           // Log summary totals
           if (billData.summary) {
-            console.log('=== BILL SUMMARY TOTALS ===');
-            console.log('roomCharges:', billData.summary.roomCharges);
-            console.log('serviceCharges:', billData.summary.serviceCharges);
-            console.log('subTotal:', billData.summary.subTotal);
-            console.log('taxAmount:', billData.summary.taxAmount);
-            console.log('grandTotal:', billData.summary.grandTotal);
-            console.log('discountAmount:', billData.summary.discountAmount);
-            console.log('partialPayment:', billData.summary.partialPayment);
+            console.log("=== BILL SUMMARY TOTALS ===");
+            console.log("roomCharges:", billData.summary.roomCharges);
+            console.log("serviceCharges:", billData.summary.serviceCharges);
+            console.log("subTotal:", billData.summary.subTotal);
+            console.log("taxAmount:", billData.summary.taxAmount);
+            console.log("grandTotal:", billData.summary.grandTotal);
+            console.log("discountAmount:", billData.summary.discountAmount);
+            console.log("partialPayment:", billData.summary.partialPayment);
           }
         }
-        
+
         setBillData(billData);
       }
     } catch (error) {
-      console.error('Error fetching bill data:', error);
+      console.error("Error fetching bill data:", error);
       setBillData(null);
     } finally {
-    setTimeout(() => {
-      setIsBillLoading(false);
-    }, 1500);
+      setTimeout(() => {
+        setIsBillLoading(false);
+      }, 1500);
     }
   };
 
@@ -815,8 +878,10 @@ const CheckOut = () => {
       guest_id: selectedBooking.guest_id,
       room_id: selectedBooking.room_id,
       payment_mode: checkoutFormData.payment_mode,
-      upi_platform: checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
-      received_by_staff_id: userData.cognitoId || checkoutFormData.received_by_staff_id,
+      upi_platform:
+        checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
+      received_by_staff_id:
+        userData.cognitoId || checkoutFormData.received_by_staff_id,
       notes: checkoutFormData.notes,
       room_charges: billDataExtracted.totalRoomCharges,
       laundry_charges: billDataExtracted.laundryCharges,
@@ -834,7 +899,8 @@ const CheckOut = () => {
       refund_amount: 0,
       services: billDataExtracted.services,
       // Always include company_id if available (from booking or form)
-      company_id: selectedBooking.company_id || checkoutFormData.company_id || null,
+      company_id:
+        selectedBooking.company_id || checkoutFormData.company_id || null,
       gst_no: selectedBooking.gst_no || checkoutFormData.gst_no || null,
       // Include complete bill summary
       bill_summary: {
@@ -851,37 +917,42 @@ const CheckOut = () => {
         taxAmount: billDataExtracted.totalTaxAmount,
         subTotal: billDataExtracted.subTotal,
         grandTotal: billDataExtracted.grandTotal,
-        services: billDataExtracted.services
+        services: billDataExtracted.services,
       },
       // Include original bill data for reference
-      original_bill_data: billData
+      original_bill_data: billData,
     };
-    
+
     // Debug logging to see what's being sent
-    console.log('=== CHECKOUT DEBUG ===');
-    console.log('Bill Data Extracted:', billDataExtracted);
-    console.log('Checkout Data being sent:', checkoutData);
-    console.log('Bill Data Summary:', billData?.summary);
-    console.log('Bill Data Breakdown:', billData?.breakdown);
-    console.log('ServiceChargesByDate:', billData?.serviceChargesByDate);
-    console.log('=== AMOUNT COMPARISON ===');
-    console.log('Bill Display Expected:', {
+    console.log("=== CHECKOUT DEBUG ===");
+    console.log("Bill Data Extracted:", billDataExtracted);
+    console.log("Checkout Data being sent:", checkoutData);
+    console.log("Bill Data Summary:", billData?.summary);
+    console.log("Bill Data Breakdown:", billData?.breakdown);
+    console.log("ServiceChargesByDate:", billData?.serviceChargesByDate);
+    console.log("=== AMOUNT COMPARISON ===");
+    console.log("Bill Display Expected:", {
       roomCharges: 16028,
       serviceCharges: 1134,
-      total: 17954
+      total: 17954,
     });
-    console.log('Bill Summary Actual:', {
+    console.log("Bill Summary Actual:", {
       roomCharges: billData?.summary?.roomCharges,
       serviceCharges: billData?.summary?.serviceCharges,
-      grandTotal: billData?.summary?.grandTotal
+      grandTotal: billData?.summary?.grandTotal,
     });
-    console.log('Checkout Payload:', {
+    console.log("Checkout Payload:", {
       roomCharges: checkoutData.room_charges,
-      serviceCharges: checkoutData.food_charges + checkoutData.laundry_charges + checkoutData.minibar_charges + checkoutData.extra_bed_charges + checkoutData.manual_charges,
-      total: checkoutData.total_amount
+      serviceCharges:
+        checkoutData.food_charges +
+        checkoutData.laundry_charges +
+        checkoutData.minibar_charges +
+        checkoutData.extra_bed_charges +
+        checkoutData.manual_charges,
+      total: checkoutData.total_amount,
     });
-    console.log('=== END DEBUG ===');
-    
+    console.log("=== END DEBUG ===");
+
     // Call the checkout API
     checkoutGuest({ bookingDetails: checkoutData });
 
@@ -889,12 +960,16 @@ const CheckOut = () => {
     if (checkoutFormData.payment_mode === "Cash") {
       try {
         // Get guest details for the description
-        const guest = guests?.find((g) => g.guest_id === selectedBooking.guest_id);
-        
+        const guest = guests?.find(
+          (g) => g.guest_id === selectedBooking.guest_id
+        );
+
         const cashReceivedData = {
           date: new Date().toLocaleDateString("en-GB"), // DD/MM/YYYY format
           name: `${selectedBooking.booking_id}`,
-          description: `Cash payment received for guest checkout - ${guest?.full_name || 'Guest'}`,
+          description: `Cash payment received for guest checkout - ${
+            guest?.full_name || "Guest"
+          }`,
           amount: checkoutData.total_amount || 0, // Use total_amount from checkout data
           bill_id: selectedBooking.booking_id, // Store bill_id for reference
           receivedId: Math.random().toString(36).substr(2, 9), // Generate unique ID
@@ -907,7 +982,7 @@ const CheckOut = () => {
 
         // Add to cash drawer as received amount
         addExpense({ received: cashReceivedData });
-        
+
         console.log("Cash received added to drawer:", cashReceivedData);
       } catch (error) {
         console.error("Error adding cash received to drawer:", error);
@@ -1134,7 +1209,7 @@ const CheckOut = () => {
                 Manage guest departures and process check-outs
               </p>
             </div>
-            
+
             {/* Refresh Button */}
             <div className="flex items-center gap-4">
               <Button
@@ -1143,8 +1218,10 @@ const CheckOut = () => {
                 className="flex items-center gap-2"
                 variant="outline"
               >
-                <RefreshCw className={`h-4 w-4 ${pageLoading ? 'animate-spin' : ''}`} />
-                {pageLoading ? 'Refreshing...' : 'Refresh'}
+                <RefreshCw
+                  className={`h-4 w-4 ${pageLoading ? "animate-spin" : ""}`}
+                />
+                {pageLoading ? "Refreshing..." : "Refresh"}
               </Button>
             </div>
           </div>
@@ -1239,9 +1316,13 @@ const CheckOut = () => {
                       <TableRow key={booking.booking_id}>
                         <TableCell className="font-medium">
                           {(() => {
-                            return booking?.room_id?.map(rid =>
-                              rooms?.find(room => rid === room.room_id)?.room_number
-                            )?.join(', ');
+                            return booking?.room_id
+                              ?.map(
+                                (rid) =>
+                                  rooms?.find((room) => rid === room.room_id)
+                                    ?.room_number
+                              )
+                              ?.join(", ");
                           })()}
                         </TableCell>
                         <TableCell>
@@ -1318,7 +1399,21 @@ const CheckOut = () => {
                               variant={
                                 isCheckoutEnabled ? "default" : "secondary"
                               }
-                              onClick={() => handleCheckout(booking)}
+                              onClick={() => {
+                                navigate(
+                                  `/dashboard/registrations/bill?booking_id=${
+                                    booking.booking_id
+                                  }&guest_id=${
+                                    booking.guest_id
+                                  }&room_id=${
+                                    booking.room_id
+                                  }&gst_type="IGST"&rate_plan_id=${
+                                    booking.rate_plan_id
+                                  }&checkin_date=${
+                                    booking.checkin_date
+                                  }&checkout_date=${getCurrentIndianTime().toISOString()}`
+                                );
+                              }}
                               disabled={!isCheckoutEnabled}
                               className="flex items-center space-x-1"
                             >
@@ -1329,7 +1424,8 @@ const CheckOut = () => {
                               )}
                               <span>
                                 {!isCheckoutEnabled
-                                  ? booking.hold !== false && booking.restaurant_hold === true
+                                  ? booking.hold !== false &&
+                                    booking.restaurant_hold === true
                                     ? "HK & RST Hold"
                                     : booking.hold !== false
                                     ? "HK Hold"
@@ -1390,12 +1486,13 @@ const CheckOut = () => {
                             RST Hold
                           </span>
                         )}
-                        {selectedBooking?.hold === false && !selectedBooking?.restaurant_hold && (
-                          <span className="bg-red-500 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
-                            <Lock className="h-3 w-3" />
-                            Restricted
-                          </span>
-                        )}
+                        {selectedBooking?.hold === false &&
+                          !selectedBooking?.restaurant_hold && (
+                            <span className="bg-red-500 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                              <Lock className="h-3 w-3" />
+                              Restricted
+                            </span>
+                          )}
                       </div>
                     )}
                   </div>
@@ -1487,13 +1584,17 @@ const CheckOut = () => {
                               RST Hold
                             </Badge>
                           )}
-                          {selectedBooking.hold === false && !selectedBooking.restaurant_hold && (
-                            <span className="font-medium">Booking Restricted</span>
-                          )}
+                          {selectedBooking.hold === false &&
+                            !selectedBooking.restaurant_hold && (
+                              <span className="font-medium">
+                                Booking Restricted
+                              </span>
+                            )}
                         </div>
                       </div>
                       <p className="text-red-700 text-sm mt-1">
-                        {selectedBooking.hold !== false && selectedBooking.restaurant_hold === true
+                        {selectedBooking.hold !== false &&
+                        selectedBooking.restaurant_hold === true
                           ? "This booking is currently on hold by both Housekeeping and Restaurant. Please contact both departments to release their holds before proceeding."
                           : selectedBooking.hold !== false
                           ? "This booking is currently on hold by Housekeeping and cannot be checked out. Please contact Housekeeping to release the hold before proceeding."
@@ -1504,42 +1605,60 @@ const CheckOut = () => {
                     </div>
                   )}
 
-                    {/* Compact Bill Summary */}
-                    {billData && (() => {
+                  {/* Compact Bill Summary */}
+                  {billData &&
+                    (() => {
                       const billDataExtracted = extractBillData();
-                      
+
                       return (
                         <div className="bg-gray-50 border rounded-lg p-3 mb-3">
                           <div className="flex items-center gap-2 mb-2">
                             <Receipt className="h-3 w-3 text-blue-600" />
-                            <h3 className="text-xs font-semibold text-gray-900">Bill Summary</h3>
+                            <h3 className="text-xs font-semibold text-gray-900">
+                              Bill Summary
+                            </h3>
                           </div>
-                          
+
                           {/* Compact grid layout */}
                           <div className="grid grid-cols-4 gap-1 text-xs">
                             <div className="text-center">
                               <p className="text-gray-500">Room</p>
-                              <p className="font-semibold">₹{billDataExtracted.totalRoomCharges.toFixed(0)}</p>
+                              <p className="font-semibold">
+                                ₹{billDataExtracted.totalRoomCharges.toFixed(0)}
+                              </p>
                             </div>
                             <div className="text-center">
                               <p className="text-gray-500">Services</p>
-                              <p className="font-semibold">₹{billDataExtracted.totalServiceCharges.toFixed(0)}</p>
+                              <p className="font-semibold">
+                                ₹
+                                {billDataExtracted.totalServiceCharges.toFixed(
+                                  0
+                                )}
+                              </p>
                             </div>
                             <div className="text-center">
                               <p className="text-gray-500">Tax</p>
-                              <p className="font-semibold">₹{billDataExtracted.totalTaxAmount.toFixed(0)}</p>
+                              <p className="font-semibold">
+                                ₹{billDataExtracted.totalTaxAmount.toFixed(0)}
+                              </p>
                             </div>
                             <div className="text-center">
                               <p className="text-gray-500">Discount</p>
-                              <p className="font-semibold text-red-600">-₹{billDataExtracted.discountAmount.toFixed(0)}</p>
+                              <p className="font-semibold text-red-600">
+                                -₹{billDataExtracted.discountAmount.toFixed(0)}
+                              </p>
                             </div>
                           </div>
-                          
+
                           {/* Grand Total */}
                           <div className="border-t mt-2 pt-2">
                             <div className="flex justify-between items-center">
-                              <span className="text-xs font-medium text-gray-700">Grand Total</span>
-                              <span className="text-sm font-bold text-blue-600">₹{billDataExtracted.grandTotal.toFixed(2)}</span>
+                              <span className="text-xs font-medium text-gray-700">
+                                Grand Total
+                              </span>
+                              <span className="text-sm font-bold text-blue-600">
+                                ₹{billDataExtracted.grandTotal.toFixed(2)}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1970,7 +2089,8 @@ const CheckOut = () => {
                       )}
                       <span>
                         {!canCheckout(selectedBooking)
-                          ? selectedBooking?.hold !== false && selectedBooking?.restaurant_hold === true
+                          ? selectedBooking?.hold !== false &&
+                            selectedBooking?.restaurant_hold === true
                             ? "HK & RST Hold"
                             : selectedBooking?.hold !== false
                             ? "HK Hold"
@@ -1995,8 +2115,10 @@ const CheckOut = () => {
               <div className="bg-gray-50 border-b p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                <Building className="h-5 w-5 text-blue-600" />
-                    <h2 className="text-lg font-semibold text-gray-900">Create New Company</h2>
+                    <Building className="h-5 w-5 text-blue-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Create New Company
+                    </h2>
                   </div>
                   <button
                     onClick={closeCreateCompanyDialog}
@@ -2006,79 +2128,80 @@ const CheckOut = () => {
                   </button>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
-                  Add a new company to the system. This company will be available for future bookings.
+                  Add a new company to the system. This company will be
+                  available for future bookings.
                 </p>
               </div>
 
               {/* Modal Content */}
               <div className="p-4 space-y-4">
-              {/* Show error message if any */}
-              {createCompanyError && (
-                <div className="p-3 rounded-md bg-red-50 border border-red-200">
-                  <p className="text-sm text-red-600">{createCompanyError}</p>
-                </div>
-              )}
+                {/* Show error message if any */}
+                {createCompanyError && (
+                  <div className="p-3 rounded-md bg-red-50 border border-red-200">
+                    <p className="text-sm text-red-600">{createCompanyError}</p>
+                  </div>
+                )}
 
-              <div className="space-y-2">
-                <Label htmlFor="company-name" className="text-sm font-medium">
-                  Company Name <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="company-name"
-                  placeholder="Enter company name"
-                  value={newCompany.name}
-                  onChange={(e) =>
-                    setNewCompany({ ...newCompany, name: e.target.value })
-                  }
-                  className="focus:border-blue-500 focus:ring-blue-500"
-                  disabled={isCreatingCompany}
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="company-name" className="text-sm font-medium">
+                    Company Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="company-name"
+                    placeholder="Enter company name"
+                    value={newCompany.name}
+                    onChange={(e) =>
+                      setNewCompany({ ...newCompany, name: e.target.value })
+                    }
+                    className="focus:border-blue-500 focus:ring-blue-500"
+                    disabled={isCreatingCompany}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gst-number" className="text-sm font-medium">
+                    GST Number
+                  </Label>
+                  <Input
+                    id="gst-number"
+                    placeholder="Enter GST number (optional)"
+                    value={newCompany.gst_no}
+                    onChange={(e) =>
+                      setNewCompany({ ...newCompany, gst_no: e.target.value })
+                    }
+                    className="focus:border-blue-500 focus:ring-blue-500"
+                    disabled={isCreatingCompany}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="gst-number" className="text-sm font-medium">
-                  GST Number
-                </Label>
-                <Input
-                  id="gst-number"
-                  placeholder="Enter GST number (optional)"
-                  value={newCompany.gst_no}
-                  onChange={(e) =>
-                    setNewCompany({ ...newCompany, gst_no: e.target.value })
-                  }
-                  className="focus:border-blue-500 focus:ring-blue-500"
-                  disabled={isCreatingCompany}
-                />
-              </div>
-            </div>
 
               {/* Modal Footer */}
               <div className="bg-gray-50 border-t p-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closeCreateCompanyDialog}
-                disabled={isCreatingCompany}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleCreateCompany}
-                disabled={isCreatingCompany || !newCompany.name.trim()}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {isCreatingCompany ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Company
-                  </>
-                )}
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeCreateCompanyDialog}
+                  disabled={isCreatingCompany}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleCreateCompany}
+                  disabled={isCreatingCompany || !newCompany.name.trim()}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isCreatingCompany ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Company
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </div>
