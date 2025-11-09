@@ -36,7 +36,7 @@ const Navbar = () => {
           {isEditMode ? (
             <input
               type="text"
-              value={institutionData.cnText}
+              value={institutionData?.cnText}
               onChange={(e) => {
                 setInstitutionData((institutionData) => {
                   return {
@@ -56,7 +56,7 @@ const Navbar = () => {
             {isEditMode ? (
               <input
                 type="text"
-                value={institutionData.companyName}
+                value={institutionData?.companyName}
                 onChange={(e) => {
                   setInstitutionData((institutionData) => {
                     return {
@@ -69,13 +69,13 @@ const Navbar = () => {
               />
             ) : (
               <span className="text-xl md:text-2xl font-medium text-black leading-tight cormorant">
-                {institutionData.companyName || "Company Name"}
+                {institutionData?.companyName || "Company Name"}
               </span>
             )}
             {isEditMode ? (
               <input
                 type="text"
-                value={institutionData.slogan}
+                value={institutionData?.slogan}
                 onChange={(e) => {
                   setInstitutionData((institutionData) => {
                     return {
@@ -88,7 +88,7 @@ const Navbar = () => {
               />
             ) : (
               <span className="text-xs md:text-sm leading-wide sugiyama">
-                {institutionData.slogan || "Slogan"}
+                {institutionData?.slogan || "Slogan"}
               </span>
             )}
           </div>
