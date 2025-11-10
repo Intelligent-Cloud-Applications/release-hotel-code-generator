@@ -292,11 +292,26 @@ const RoomCard = ({ room, isLoading }) => {
     }
   };
 
+  const getStatusBackground = (status) => {
+    switch (status) {
+      case "Vacant":
+        return "bg-[#065F46]";
+      case "Reserved":
+        return "bg-[#92400E]";
+      case "Occupied":
+        return "bg-[#3730A3]";
+      case "Dirty":
+        return "bg-[#B91C1C]";
+      case "Under Maintenance":
+        return "bg-[#C2410C]";
+      default:
+        return "bg-gray-400";
+    }
+  };
+
   const getStatusText = (status, isLoading = false) => {
     if (isLoading) {
-      return (
-        <div className="h-3 bg-gray-300 rounded animate-pulse w-16"></div>
-      );
+      return null; // Handled in JSX
     }
 
     switch (status) {
@@ -315,24 +330,33 @@ const RoomCard = ({ room, isLoading }) => {
     }
   };
 
+  const bgClass = isLoading ? "bg-gray-100" : getStatusBackground(room.status);
 
   return (
-    <div className="bg-[#FBFAF9] h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-700 rounded-lg p-1 sm:p-2 hover:shadow-md transition-shadow cursor-pointer relative min-w-0">
+    <div className={`${bgClass} h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-300 rounded-lg p-1 sm:p-2 hover:shadow-md transition-shadow cursor-pointer relative min-w-0`}>
       {/* Status Icon */}
       <div className="absolute top-1 right-1">
         {getStatusIcon(room.status, isLoading)}
       </div>
 
       {/* Room Number */}
-      <div className="text-xs text-gray-500 mb-1 truncate">Room {room.room_number}</div>
+      {isLoading ? (
+        <div className="h-3 bg-gray-300 rounded animate-pulse w-16 mb-1"></div>
+      ) : (
+        <div className="text-xs text-white mb-1 truncate">Room {room.room_number}</div>
+      )}
 
       {/* Room Type */}
-      <div className="font-bold text-gray-800 mb-1 text-xs sm:text-sm truncate">
-        {room.room_type}
-      </div>
+      {isLoading ? (
+        <div className="h-4 bg-gray-300 rounded animate-pulse w-20 mb-1"></div>
+      ) : (
+        <div className="font-bold text-white mb-1 text-xs sm:text-sm truncate">
+          {room.room_type}
+        </div>
+      )}
 
       {/* Status and Floor */}
-      <div className="text-xs text-gray-500 flex items-center gap-1 flex-row flex-wrap">
+      <div className="text-xs text-white flex items-center gap-1 flex-row flex-wrap">
         {isLoading ? (
           <div className="h-3 bg-gray-300 rounded animate-pulse w-16"></div>
         ) : (
@@ -340,14 +364,15 @@ const RoomCard = ({ room, isLoading }) => {
             {getStatusText(room.status)}
           </div>
         )}
-        <span className="h-1 w-1 rounded-full bg-gray-400 inline-block flex-shrink-0"></span>
-        <div className="truncate text-xs">Floor {room.floor}</div>
+        <span className={`h-1 w-1 rounded-full bg-gray-400 inline-block flex-shrink-0 ${isLoading ? 'invisible' : ''}`}></span>
+        {isLoading ? (
+          <div className="h-3 bg-gray-300 rounded animate-pulse w-12"></div>
+        ) : (
+          <div className="truncate text-xs">Floor {room.floor}</div>
+        )}
       </div>
     </div>
   );
 };
 
 export default RoomList;
-
-
-
