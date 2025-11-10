@@ -244,6 +244,18 @@ const Bill = () => {
     setIsCheckoutModalOpen(true);
   };
 
+    // Helper getters for company details (non-hook)
+    const getCompanyNameById = (id) => {
+      if (!id) return "";
+      const c = companies.find((cc) => getCompanyId(cc) === id);
+      return c ? getCompanyName(c) : "";
+    };
+    const getCompanyGstById = (id) => {
+      if (!id) return "";
+      const c = companies.find((cc) => getCompanyId(cc) === id);
+      return c ? getCompanyGst(c) : "";
+    };
+
   useEffect(() => {
     const bookingData = bookings.find((b) => b.booking_id === bookingId);
     if (bookingData?.company_id) {
@@ -2391,17 +2403,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
     );
   }
 
-  // Helper getters for company details (non-hook)
-  const getCompanyNameById = (id) => {
-    if (!id) return "";
-    const c = companies.find((cc) => getCompanyId(cc) === id);
-    return c ? getCompanyName(c) : "";
-  };
-  const getCompanyGstById = (id) => {
-    if (!id) return "";
-    const c = companies.find((cc) => getCompanyId(cc) === id);
-    return c ? getCompanyGst(c) : "";
-  };
+
 
   const handleCompanySelect = (company) => {
     const name = getCompanyName(company);
