@@ -58,6 +58,7 @@ const Bill = () => {
     updateBooking,
     calculateTotalBill,
     companies,
+    bills,
     checkoutGuest,
   } = useAppContext();
   const { userData } = useAuthContext();
@@ -403,6 +404,7 @@ const Bill = () => {
       gst_no: checkoutFormData.gst_no || "N/A",
       bill_summary: billSummary,
       original_bill_data: booking,
+      bill_no: bills?.length + 1,
     };
 
     try {
@@ -2985,7 +2987,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
           className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
         >
           <div className="p-8 print:p-6">
-            <BillHeader billData={billData} institutionData={institutionData} />
+            <BillHeader billData={billData} institutionData={institutionData} bills={bills?.length + 1}/>
             <GuestDetails
               billData={billData}
               guestData={guestData}

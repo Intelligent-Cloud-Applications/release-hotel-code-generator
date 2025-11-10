@@ -1,8 +1,7 @@
 import React from "react";
 import logo from "../assets/logo.png";
-const BillHeader = ({ billData, institutionData}) => {
+const BillHeader = ({bills, billData, institutionData}) => {
   const showLogo = institutionData?.institutionId === "DISH5877";
-  
   return (
     <div className="border-b-2 border-black border-dashed pb-4 mb-6">
       <div className="flex justify-between items-start mb-4 print:mb-2">
@@ -40,8 +39,8 @@ const BillHeader = ({ billData, institutionData}) => {
       {/* Bill info row - full width below */}
       <div className="flex justify-between items-center text-base print:text-sm">
         <div className="mt-1">
-          <span className="font-semibold">Bill ID:</span>{" "}
-          {billData.billHeader.bookingRef}
+          <span className="font-semibold">Bill Number:</span>{" "}
+          {bills}
         </div>
         <div>
           <span className="font-semibold">GSTIN:</span>{" "}
