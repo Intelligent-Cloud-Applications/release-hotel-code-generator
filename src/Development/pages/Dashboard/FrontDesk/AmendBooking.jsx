@@ -534,15 +534,15 @@ const AmendBooking = () => {
       </head>
       <body>
         <div class="header">
-          <div class="form-title">CHECK-IN FORM</div>
+          <div class="form-title"> REGISTRATION FORM</div>
         </div>
         
         <div class="section">
-          <div class="section-title">Booking & Guest Information</div>
+          <div class="section-title">Check-in & Guest Information</div>
           <div class="info-grid">
             <div class="info-item">
-              <span class="info-label">Booking ID:</span>
-              <span class="info-value">${booking.booking_id}</span>
+              <span class="info-label">GRC Number:</span>
+              <span class="info-value">${booking?.grc_no}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Guest Name:</span>
@@ -710,18 +710,14 @@ const AmendBooking = () => {
             </div>
             <div class="terms-item">
               <span class="terms-number">2.</span>
-              <span class="terms-text">Half day charge applicable after departure till 5 PM</span>
+              <span class="terms-text">Disputes subject to Odisha court jurisdiction (PIN:766100)</span>
             </div>
             <div class="terms-item">
               <span class="terms-number">3.</span>
-              <span class="terms-text">Disputes subject to Odisha court jurisdiction (PIN: 766001)</span>
-            </div>
-            <div class="terms-item">
-              <span class="terms-number">4.</span>
               <span class="terms-text">Check out time: 24 hours</span>
             </div>
             <div class="terms-item">
-              <span class="terms-number">5.</span>
+              <span class="terms-number">4.</span>
               <span class="terms-text">Guest agrees to abide by hotel terms & conditions</span>
             </div>
           </div>
