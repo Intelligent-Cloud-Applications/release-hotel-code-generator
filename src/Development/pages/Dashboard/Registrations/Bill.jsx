@@ -45,7 +45,6 @@ import { Input } from "../../../components/ui/input.tsx";
 import { Label } from "../../../components/ui/label.tsx";
 import { Textarea } from "../../../components/ui/textarea.tsx";
 import { toast } from "sonner";
-
 const Bill = () => {
   const navigate = useNavigate();
   const {
@@ -63,6 +62,7 @@ const Bill = () => {
   } = useAppContext();
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
+
   const [searchParams] = useSearchParams();
   // Helper functions for Indian time conversion
   const toIndianTime = (date) => {
@@ -246,7 +246,6 @@ const Bill = () => {
 
   useEffect(() => {
     const bookingData = bookings.find((b) => b.booking_id === bookingId);
-
     if (bookingData?.company_id) {
       const name = getCompanyNameById(bookingData.company_id);
       const gst = getCompanyGstById(bookingData.company_id);
@@ -968,15 +967,15 @@ const Bill = () => {
 
       // Find the company details from the companies array
       const rawBookingData = bookings.find((b) => b.booking_id === bookingId);
-
+console.log("Raw booking data for company ID:", rawBookingData);
       // Try to get company_id from either the processed booking or raw booking data
       const companyIdToUse = booking?.company_id || rawBookingData?.company_id;
-
+     const grcNo = rawBookingData?.grc_no || "N/A";
+     const no_of_adults =rawBookingData?.no_of_adults || 0;
       const companyDetails =
         companies?.find((company) => {
           return company.company_id === companyIdToUse;
         }) || {};
-
       setBillData((prev) => {
         return {
           ...prev,
@@ -1023,6 +1022,8 @@ const Bill = () => {
             numberOfNights: numberOfNights,
             companyName: companyDetails.name || "N/A",
             companyGstNo: companyDetails.gst_no || "N/A",
+            grc_no: grcNo,
+            no_of_adults: no_of_adults
           },
           billingSummary: {
             // Use the breakdown data for more accurate calculations
@@ -2982,14 +2983,14 @@ const Bill = () => {
           className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
         >
           <div className="p-8 print:p-6">
-            <BillHeader billData={billData} />
+            <BillHeader billData={billData} institutionData={institutionData} />
             <GuestDetails
               billData={billData}
               guestData={guestData}
               isAmountEditing={isAmountEditing}
               setGuestData={setGuestData}
             />
-            <BookingDetails billData={billData} />
+            {/* <BookingDetails billData={billData} /> */}
             <ChargesBreakdown
               billData={billData}
               isAmountEditing={isAmountEditing}
