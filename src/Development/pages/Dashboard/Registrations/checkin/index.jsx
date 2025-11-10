@@ -31,7 +31,6 @@ const CheckIn = () => {
   } = useAppContext();
   
   const navigate = useNavigate();
-  console.log("Rendering CheckIn component",guests.length);
   const [pageLoading, setPageLoading] = useState(true);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -104,9 +103,9 @@ const CheckIn = () => {
     status: "Reserved",
     assigned_staff_id: "",
     rate_plan_id: "",
-    grc_no: guests?.length + 1, // Guest Registration Count
+    grc_no: "",
   });
-
+console.log("GRC Number:", guests?.length + bookings?.filter(b => b.status === "Checked-in").length + 1)
   // Initialize data on component mount
   useEffect(() => {
     const fetchData = async () => {
@@ -218,6 +217,7 @@ const CheckIn = () => {
         status: selectedBooking.status || "Checked-in",
         assigned_staff_id: selectedBooking.assigned_staff_id || "",
         rate_plan_id: selectedBooking.rate_plan_id,
+        grc_no: "",
       });
     }
   }, [selectedBooking, guests]);
@@ -714,6 +714,10 @@ const CheckIn = () => {
       const phoneNumber = checkInData.mobile || "0000000000";
       const customBookingId = `${phoneNumber}_${day}${month}${year}_${hours}${minutes}`;
 
+      // Calculate GRC number: guests.length + checked-in bookings.length + 1
+      const checkedInBookingsCount = bookings?.filter(b => b.status === "Checked-in").length;
+      const grcNo = (guests?.length || 0) + checkedInBookingsCount + 1;
+
       const finalCheckInData = {
         ...checkInData,
         status: "Checked-in",
@@ -725,7 +729,8 @@ const CheckIn = () => {
         booking_type: selectedBooking ? checkInData.booking_type : "Walk-in",
         // Add services and room charges
         services: services,
-        room_charges: room_charges
+        room_charges: room_charges,
+        grc_no: grcNo
       };
 
       setCheckInData(finalCheckInData);
@@ -816,6 +821,7 @@ const CheckIn = () => {
       status: "Reserved",
       assigned_staff_id: "",
       rate_plan_id: "",
+      grc_no: "",
     });
     setValidationErrors({});
     setHasUserInteracted(false);
