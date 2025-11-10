@@ -31,6 +31,7 @@ const CheckIn = () => {
   } = useAppContext();
   
   const navigate = useNavigate();
+  console.log("Rendering CheckIn component",guests.length);
   const [pageLoading, setPageLoading] = useState(true);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -103,6 +104,7 @@ const CheckIn = () => {
     status: "Reserved",
     assigned_staff_id: "",
     rate_plan_id: "",
+    grc_no: guests?.length + 1, // Guest Registration Count
   });
 
   // Initialize data on component mount
