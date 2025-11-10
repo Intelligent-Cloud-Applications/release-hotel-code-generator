@@ -35,17 +35,20 @@ import {
 import { useAppContext } from "../../../../../context/AppContext.jsx";
 
 const CheckInForm = ({
-                       checkInData,
-                       handleInputChange,
-                       validationErrors,
-                       formatToLocalDateTime,
-                       parseLocalDateTime,
-                       getVacantRooms,
-                       staffs,
-                       ratePlans,
-                       numberOfNights,
-                       onRoomSelectionChange,
-                     }) => {
+  checkInData,
+  handleInputChange,
+  validationErrors,
+  formatToLocalDateTime,
+  parseLocalDateTime,
+  getVacantRooms,
+  staffs,
+  ratePlans,
+  numberOfNights,
+  onRoomSelectionChange,
+  nextGrcNumber,
+  nextCheckInNumber,
+  nextBillNumber,
+}) => {
   const { companies = [], createCompany } = useAppContext?.() || {
     companies: [],
     createCompany: null
@@ -68,6 +71,32 @@ const CheckInForm = ({
         {error}
       </p>
     );
+  };
+
+  // Helper to extract date from timestamp (YYYY-MM-DD format)
+  const getDateFromTimestamp = (timestamp) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper to extract time from timestamp (HH:MM format)
+  const getTimeFromTimestamp = (timestamp) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  };
+
+  // Helper to combine date and time into timestamp
+  const combineDateAndTime = (dateString, timeString) => {
+    if (!dateString || !timeString) return null;
+    const dateTimeString = `${dateString}T${timeString}`;
+    return new Date(dateTimeString).getTime();
   };
 
   // Helper to normalize company object properties
@@ -122,7 +151,7 @@ const CheckInForm = ({
 
   const filteredCompanies = useMemo(() => {
     const q = companyQuery.trim().toLowerCase();
-    if (!q) return companies.slice(0, 8); // show some by default
+    if (!q) return []; // don't show anything when empty
     return companies
       .filter((c) => getCompanyName(c).toLowerCase().includes(q))
       .slice(0, 8);
@@ -153,12 +182,18 @@ const CheckInForm = ({
 
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
-    setShowCompanyDropdown(true);
+    setShowCompanyDropdown(!!value.trim());
     if (checkInData?.company_id) {
       handleInputChange("company_id", "");
       // Clear GST when user starts typing a new company
       handleInputChange("gst_no", "");
     }
+  };
+
+  const formatIdentifierValue = (value) => {
+    if (value === null || value === undefined) return "—";
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : "—";
   };
 
   // Create Company Dialog handlers
@@ -375,11 +410,10 @@ const CheckInForm = ({
                 placeholder="Enter full name"
                 value={checkInData.full_name || ""}
                 onChange={(e) => handleInputChange("full_name", e.target.value)}
-                className={`h-8 text-sm ${
-                  validationErrors.full_name
+                className={`h-8 text-sm ${validationErrors.full_name
                     ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                     : "focus:border-blue-500 focus:ring-blue-500"
-                } transition-colors duration-200`}
+                  } transition-colors duration-200`}
                 required
               />
               <ErrorMessage error={validationErrors.full_name} />
@@ -394,11 +428,10 @@ const CheckInForm = ({
                 placeholder="Enter mobile number"
                 value={checkInData.mobile || ""}
                 onChange={(e) => handleInputChange("mobile", e.target.value)}
-                className={`h-8 text-sm ${
-                  validationErrors.mobile
+                className={`h-8 text-sm ${validationErrors.mobile
                     ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                     : "focus:border-blue-500 focus:ring-blue-500"
-                } transition-colors duration-200`}
+                  } transition-colors duration-200`}
                 required
               />
               <ErrorMessage error={validationErrors.mobile} />
@@ -414,11 +447,10 @@ const CheckInForm = ({
                 value={checkInData.gender || ""}
               >
                 <SelectTrigger
-                  className={`h-8 text-sm ${
-                    validationErrors.gender
+                  className={`h-8 text-sm ${validationErrors.gender
                       ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                       : "focus:border-blue-500 focus:ring-blue-500"
-                  } transition-colors duration-200`}
+                    } transition-colors duration-200`}
                 >
                   <SelectValue placeholder="Select gender" />
                 </SelectTrigger>
@@ -443,11 +475,10 @@ const CheckInForm = ({
                 value={checkInData.id_proof_type || ""}
               >
                 <SelectTrigger
-                  className={`h-8 text-sm ${
-                    validationErrors.id_proof_type
+                  className={`h-8 text-sm ${validationErrors.id_proof_type
                       ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                       : "focus:border-blue-500 focus:ring-blue-500"
-                  } transition-colors duration-200`}
+                    } transition-colors duration-200`}
                 >
                   <SelectValue placeholder="Select ID type" />
                 </SelectTrigger>
@@ -474,11 +505,10 @@ const CheckInForm = ({
                 onChange={(e) =>
                   handleInputChange("id_proof_number", e.target.value)
                 }
-                className={`h-8 text-sm ${
-                  validationErrors.id_proof_number
+                className={`h-8 text-sm ${validationErrors.id_proof_number
                     ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                     : "focus:border-blue-500 focus:ring-blue-500"
-                } transition-colors duration-200`}
+                  } transition-colors duration-200`}
                 required
               />
               <ErrorMessage error={validationErrors.id_proof_number} />
@@ -570,11 +600,10 @@ const CheckInForm = ({
                 placeholder="Enter pincode"
                 value={checkInData.pincode || ""}
                 onChange={(e) => handleInputChange("pincode", e.target.value)}
-                className={`h-8 text-sm ${
-                  validationErrors.pincode
+                className={`h-8 text-sm ${validationErrors.pincode
                     ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                     : "focus:border-blue-500 focus:ring-blue-500"
-                } transition-colors duration-200`}
+                  } transition-colors duration-200`}
               />
               <ErrorMessage error={validationErrors.pincode} />
             </div>
@@ -590,11 +619,10 @@ const CheckInForm = ({
                 value={checkInData.guest_category || ""}
               >
                 <SelectTrigger
-                  className={`h-8 text-sm ${
-                    validationErrors.guest_category
+                  className={`h-8 text-sm ${validationErrors.guest_category
                       ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                       : "focus:border-blue-500 focus:ring-blue-500"
-                  } transition-colors duration-200`}
+                    } transition-colors duration-200`}
                 >
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -618,11 +646,10 @@ const CheckInForm = ({
                 value={checkInData.marital_status || "Unmarried"}
               >
                 <SelectTrigger
-                  className={`h-8 text-sm ${
-                    validationErrors.marital_status
+                  className={`h-8 text-sm ${validationErrors.marital_status
                       ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                       : "focus:border-blue-500 focus:ring-blue-500"
-                  } transition-colors duration-200`}
+                    } transition-colors duration-200`}
                 >
                   <SelectValue placeholder="Select marital status" />
                 </SelectTrigger>
@@ -694,11 +721,10 @@ const CheckInForm = ({
                 value={checkInData.booking_type}
               >
                 <SelectTrigger
-                  className={`h-8 text-sm ${
-                    validationErrors.booking_type
+                  className={`h-8 text-sm ${validationErrors.booking_type
                       ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                       : "focus:border-green-500 focus:ring-green-500"
-                  } transition-colors duration-200`}
+                    } transition-colors duration-200`}
                 >
                   <SelectValue placeholder="Select booking type" />
                 </SelectTrigger>
@@ -784,7 +810,7 @@ const CheckInForm = ({
                 <Input
                   value={companyQuery}
                   onChange={(e) => handleCompanyInputChange(e.target.value)}
-                  onFocus={() => setShowCompanyDropdown(true)}
+                  onFocus={() => setShowCompanyDropdown(!!companyQuery.trim())}
                   placeholder="Search company (optional)"
                   className="h-8 text-sm pr-7 focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
                 />
@@ -802,7 +828,7 @@ const CheckInForm = ({
                 {showCompanyDropdown && (
                   <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
                     <ul className="max-h-56 overflow-auto py-1">
-                      {filteredCompanies.length > 0 ? (
+                      {filteredCompanies.length > 0 &&
                         filteredCompanies.map((c) => {
                           const name = getCompanyName(c);
                           const gst = getCompanyGst(c);
@@ -825,28 +851,7 @@ const CheckInForm = ({
                               )}
                             </li>
                           );
-                        })
-                      ) : (
-                        <>
-                          <li className="px-3 py-2 text-sm text-gray-500">
-                            No companies found
-                          </li>
-                          {companyQuery.trim() && createCompany && (
-                            <li
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                openCreateCompanyDialog();
-                              }}
-                              className="cursor-pointer px-3 py-2 hover:bg-blue-50 border-t border-gray-100"
-                            >
-                              <div className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
-                                <Plus className="h-4 w-4" />
-                                <span>Create "{companyQuery}"</span>
-                              </div>
-                            </li>
-                          )}
-                        </>
-                      )}
+                        })}
                     </ul>
                   </div>
                 )}
@@ -878,11 +883,10 @@ const CheckInForm = ({
                 value={checkInData.rate_plan_id}
               >
                 <SelectTrigger
-                  className={`h-8 text-sm ${
-                    validationErrors.rate_plan_id
+                  className={`h-8 text-sm ${validationErrors.rate_plan_id
                       ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                       : "focus:border-green-500 focus:ring-green-500"
-                  } transition-colors duration-200`}
+                    } transition-colors duration-200`}
                 >
                   <SelectValue placeholder="Select rate plan" />
                 </SelectTrigger>
@@ -912,16 +916,35 @@ const CheckInForm = ({
                 <Clock className="h-3 w-3 text-gray-500" />
                 Check-in Date & Time <span className="text-red-500">*</span>
               </Label>
-              <Input
-                type="datetime-local"
-                value={formatToLocalDateTime(checkInData.checkin_date)}
-                onChange={(e) => {
-                  const timestamp = parseLocalDateTime(e.target.value);
-                  handleInputChange("checkin_date", timestamp);
-                }}
-                disabled
-                className="h-8 text-sm opacity-70 bg-gray-50"
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-600">Date</Label>
+                  <Input
+                    type="date"
+                    value={getDateFromTimestamp(checkInData.checkin_date)}
+                    disabled
+                    className="h-8 text-sm opacity-70 bg-gray-50 cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-600">Time</Label>
+                  <Input
+                    type="time"
+                    value={getTimeFromTimestamp(checkInData.checkin_date)}
+                    onChange={(e) => {
+                      const dateString = getDateFromTimestamp(checkInData.checkin_date);
+                      const timeString = e.target.value;
+                      if (dateString && timeString) {
+                        const newTimestamp = combineDateAndTime(dateString, timeString);
+                        if (newTimestamp) {
+                          handleInputChange("checkin_date", newTimestamp);
+                        }
+                      }
+                    }}
+                    className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                  />
+                </div>
+              </div>
               <ErrorMessage error={validationErrors.checkin_date} />
             </div>
 
@@ -1045,7 +1068,7 @@ const CheckInForm = ({
                   <Select
                     onValueChange={(value) => {
                       handleInputChange("discount_type", value);
-                      
+
                       // When switching discount types, preserve the current discount amount
                       if (checkInData.discount > 0) {
                         if (value === "percentage") {
@@ -1081,7 +1104,7 @@ const CheckInForm = ({
                     type="text"
                     value={
                       checkInData.discount_input !== undefined &&
-                      checkInData.discount_input !== null
+                        checkInData.discount_input !== null
                         ? checkInData.discount_input
                         : ""
                     }
@@ -1095,7 +1118,7 @@ const CheckInForm = ({
                         } else {
                           const value = parseFloat(inputValue) || 0;
                           handleInputChange("discount_input", value);
-                          
+
                           // Calculate actual discount in rupees based on type
                           let discountInRupees = 0;
                           if (checkInData.discount_type === "percentage") {
@@ -1109,20 +1132,19 @@ const CheckInForm = ({
                       }
                     }}
                     placeholder={
-                      checkInData.discount_type === "percentage" 
-                        ? "Enter discount percentage" 
+                      checkInData.discount_type === "percentage"
+                        ? "Enter discount percentage"
                         : "Enter discount amount in rupees"
                     }
-                    className={`h-8 text-sm ${
-                      validationErrors.discount
+                    className={`h-8 text-sm ${validationErrors.discount
                         ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                         : "focus:border-green-500 focus:ring-green-500"
-                    } transition-colors duration-200`}
+                      } transition-colors duration-200`}
                   />
                   <ErrorMessage error={validationErrors.discount} />
                   <p className="text-xs text-gray-500">
-                    {checkInData.discount_type === "percentage" 
-                      ? "Enter discount percentage (0-100%)" 
+                    {checkInData.discount_type === "percentage"
+                      ? "Enter discount percentage (0-100%)"
                       : "Enter discount amount in rupees"
                     }
                   </p>
@@ -1170,11 +1192,10 @@ const CheckInForm = ({
                       value={checkInData.advance_payment_mode || ""}
                     >
                       <SelectTrigger
-                        className={`h-8 text-sm ${
-                          validationErrors.advance_payment_mode
+                        className={`h-8 text-sm ${validationErrors.advance_payment_mode
                             ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                             : "focus:border-green-500 focus:ring-green-500"
-                        } transition-colors duration-200`}
+                          } transition-colors duration-200`}
                       >
                         <SelectValue placeholder="Select payment mode" />
                       </SelectTrigger>
@@ -1205,11 +1226,10 @@ const CheckInForm = ({
                       value={checkInData.advance_payment_upi_mode || ""}
                     >
                       <SelectTrigger
-                        className={`h-8 text-sm ${
-                          validationErrors.advance_payment_upi_mode
+                        className={`h-8 text-sm ${validationErrors.advance_payment_upi_mode
                             ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                             : "focus:border-green-500 focus:ring-green-500"
-                        } transition-colors duration-200`}
+                          } transition-colors duration-200`}
                       >
                         <SelectValue placeholder="Select UPI platform" />
                       </SelectTrigger>
