@@ -1,283 +1,245 @@
 import React from "react";
 import { Input } from "../../../../components/ui/input.js";
-import {
-  Select,
-  SelectValue,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-} from "../../../../components/ui/select.js";
 
-const GuestDetails = ({ 
-  billData, 
-  guestData, 
-  isAmountEditing, 
-  setGuestData 
+const GuestDetails = ({
+  billData,
+  guestData,
+  isAmountEditing,
+  setGuestData,
 }) => {
-  // Add null check for guestData
+  const toTitleCase = (str) => {
+    if (!str) return "";
+    return str
+      .toLowerCase()
+      .split(" ")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  };
+
   if (!guestData) {
     return (
       <div className="mb-4 mt-2">
         <h3 className="font-bold text-black mb-2 text-base">
-          Guest Details
+          Guest & Booking Details
         </h3>
-        <div className="mt-1">
-          <div className="text-sm text-gray-500">Loading guest details...</div>
-        </div>
+        <div className="text-sm text-gray-500">Loading details...</div>
       </div>
     );
   }
 
+  const gstInDisplay =
+    billData.bookingDetails?.companyName &&
+    billData.bookingDetails.companyName !== "N/A" &&
+    billData.bookingDetails.companyGstNo &&
+    billData.bookingDetails.companyGstNo !== "N/A"
+      ? billData.bookingDetails.companyGstNo
+      : "";
+
+  const companyNameDisplay =
+    billData.bookingDetails?.companyName &&
+    billData.bookingDetails.companyName !== "N/A"
+      ? billData.bookingDetails.companyName
+      : "";
+
+  const grcNumber = billData.bookingDetails?.grc_no || "";
+  console.log("GRC Number in GuestDetails:",billData);
+
   return (
     <div className="mb-4 mt-2">
       <h3 className="font-bold text-black mb-2 text-base">
-        Guest Details
+        Guest & Booking Details
       </h3>
+
       <div className="mt-1">
-        <table className="w-full text-sm guest-booking-table">
+        <table className="w-full text-sm border border-black border-collapse">
           <tbody>
+            {/* Guest Name + GRC Number */}
             <tr className="border-b border-black">
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
                 Guest Name
               </td>
-              <td className="border-r-1 border-black px-3 py-2">
+              <td className="px-3 py-2 border-r border-black">
                 {isAmountEditing ? (
                   <Input
                     type="text"
-                    className="w-full"
                     value={guestData.full_name || ""}
                     placeholder="Guest Name"
-                    onChange={(e) => {
+                    onChange={(e) =>
                       setGuestData((prev) => ({
                         ...prev,
                         full_name: e.target.value,
-                      }));
-                    }}
+                      }))
+                    }
                   />
                 ) : (
-                  <span>{guestData.full_name || ""}</span>
+                  <span>{toTitleCase(guestData.full_name || "---")}</span>
                 )}
               </td>
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                Gender
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                GRC Number
               </td>
-              <td className="px-3 py-2">
-                {isAmountEditing ? (
-                  <Select
-                    value={guestData.gender || ""}
-                    onValueChange={(value) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        gender: value,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Male">Male</SelectItem>
-                      <SelectItem value="Female">Female</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span>{guestData.gender || ""}</span>
-                )}
-              </td>
+              <td className="px-3 py-2">{grcNumber || "---"}</td>
             </tr>
-            <tr className="border-b border-black">
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                Mobile Number
-              </td>
-              <td className="border-r-1 border-black px-3 py-2">
-                {isAmountEditing ? (
-                  <Input
-                    type="text"
-                    className="w-full"
-                    value={guestData.mobile || ""}
-                    placeholder="Mobile Number"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        mobile: e.target.value,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <span>{guestData.mobile || ""}</span>
-                )}
-              </td>
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                Identification Type
-              </td>
-              <td className="px-3 py-2">
-                {isAmountEditing ? (
-                  <Select
-                    value={guestData.id_proof_type || ""}
-                    onValueChange={(value) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        id_proof_type: value,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select ID Proof Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Aadhar">Aadhar</SelectItem>
-                      <SelectItem value="Passport">Passport</SelectItem>
-                      <SelectItem value="Voter ID">Voter ID</SelectItem>
-                      <SelectItem value="Driving License">
-                        Driving License
-                      </SelectItem>
-                      <SelectItem value="PAN">PAN Card</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span>{guestData.id_proof_type || ""}</span>
-                )}
-              </td>
-            </tr>
-            <tr className="border-b border-black">
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                Email
-              </td>
-              <td className="border-r-1 border-black px-3 py-2">
-                {isAmountEditing ? (
-                  <Input
-                    type="email"
-                    className="w-full"
-                    value={guestData.email || ""}
-                    placeholder="Email"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        email: e.target.value,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <span>{guestData.email || "---"}</span>
-                )}
-              </td>
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                Identification No.
-              </td>
-              <td className="px-3 py-2">
-                {isAmountEditing ? (
-                  <Input
-                    type="text"
-                    className="w-full"
-                    value={guestData.id_proof_number || ""}
-                    placeholder="ID Proof Number"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        id_proof_number: e.target.value,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <span>{guestData.id_proof_number || ""}</span>
-                )}
-              </td>
-            </tr>
-            <tr className=" border-black">
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
+
+            {/* Address + Pax (No. of Persons) */}
+            <tr className="border-b border-black align-top">
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
                 Address
               </td>
-              <td className="border-r-1 border-black px-3 py-2">
+              <td className="px-3 py-2 border-r border-black">
                 {isAmountEditing ? (
-                  <Input
-                    type="text"
-                    className="w-fit"
-                    value={guestData.address || ""}
-                    placeholder="Address"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        address: e.target.value,
-                      }));
-                    }}
-                  />
+                  <>
+                    <Input
+                      type="text"
+                      className="mb-2"
+                      value={guestData.address || ""}
+                      placeholder="Address"
+                      onChange={(e) =>
+                        setGuestData((prev) => ({
+                          ...prev,
+                          address: e.target.value,
+                        }))
+                      }
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        className="w-1/3"
+                        value={guestData.city || ""}
+                        placeholder="City"
+                        onChange={(e) =>
+                          setGuestData((prev) => ({
+                            ...prev,
+                            city: e.target.value,
+                          }))
+                        }
+                      />
+                      <Input
+                        type="text"
+                        className="w-1/3"
+                        value={guestData.state || ""}
+                        placeholder="State"
+                        onChange={(e) =>
+                          setGuestData((prev) => ({
+                            ...prev,
+                            state: e.target.value,
+                          }))
+                        }
+                      />
+                      <Input
+                        type="text"
+                        className="w-1/3"
+                        value={guestData.pincode || ""}
+                        placeholder="Pin Code"
+                        onChange={(e) =>
+                          setGuestData((prev) => ({
+                            ...prev,
+                            pincode: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </>
                 ) : (
-                  <span>{guestData.address || "---"}</span>
-                )}
-                ,{" "}
-                {isAmountEditing ? (
-                  <Input
-                    type="text"
-                    className="w-fit"
-                    value={guestData.city || ""}
-                    placeholder="City"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        city: e.target.value,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <span>{guestData.city || "---"}</span>
-                )}
-                ,{" "}
-                {isAmountEditing ? (
-                  <Input
-                    type="text"
-                    className="w-fit"
-                    value={guestData.state || ""}
-                    placeholder="State"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        state: e.target.value,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <span>{guestData.state || "---"}</span>
-                )}
-                ,{" "}
-                {isAmountEditing ? (
-                  <Input
-                    type="text"
-                    className="w-fit"
-                    value={guestData.pincode || ""}
-                    placeholder="Pin Code"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        pincode: e.target.value,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <span>{guestData.pincode || "---"}</span>
+                  <span>
+                    {guestData.address || "---"}, {guestData.city || "---"},{" "}
+                    {guestData.state || "---"} - {guestData.pincode || "---"}
+                  </span>
                 )}
               </td>
-              <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                Nationality
+
+              {/* Pax (No. of Persons) */}
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                Pax (No. of Adults)
               </td>
               <td className="px-3 py-2">
-                {isAmountEditing ? (
-                  <Input
-                    type="text"
-                    className="w-full"
-                    value={guestData.nationality || ""}
-                    placeholder="Nationality"
-                    onChange={(e) => {
-                      setGuestData((prev) => ({
-                        ...prev,
-                        nationality: e.target.value,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <span>{guestData.nationality || ""}</span>
-                )}
+                {billData.bookingDetails?.no_of_adults || "---"}
               </td>
             </tr>
+
+            {/* Room No + Room Type */}
+            <tr className="border-b border-black">
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                Room Number
+              </td>
+              <td className="px-3 py-2 border-r border-black">
+                {billData.bookingDetails?.roomNumber || "---"}
+              </td>
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                Room Type
+              </td>
+              <td className="px-3 py-2">
+                {billData.bookingDetails?.roomType || "---"}
+              </td>
+            </tr>
+
+            {/* Rate Plan + Nights */}
+            <tr className="border-b border-black">
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                Rate Plan
+              </td>
+              <td className="px-3 py-2 border-r border-black">
+                {billData.bookingDetails?.ratePlanName || "---"}
+              </td>
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                Nights/Days
+              </td>
+              <td className="px-3 py-2">
+                {billData.bookingDetails?.numberOfNights || "---"}
+              </td>
+            </tr>
+
+            {/* Arrival + Departure */}
+            <tr className="border-b border-black">
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                Arrival Date & Time
+              </td>
+              <td className="px-3 py-2 border-r border-black">
+                {billData.bookingDetails?.checkIn
+                  ? `${new Date(
+                      billData.bookingDetails.checkIn
+                    ).toLocaleDateString("en-GB")} ${new Date(
+                      billData.bookingDetails.checkIn
+                    ).toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    })}`
+                  : "---"}
+              </td>
+              <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                Departure Date & Time
+              </td>
+              <td className="px-3 py-2">
+                {billData.bookingDetails?.checkOut
+                  ? `${new Date(
+                      billData.bookingDetails.checkOut
+                    ).toLocaleDateString("en-GB")} ${new Date(
+                      billData.bookingDetails.checkOut
+                    ).toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    })}`
+                  : "---"}
+              </td>
+            </tr>
+
+            {/* Company Name + GSTIN */}
+            {gstInDisplay && (
+              <tr className="border-b border-black">
+                <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                  Company Name
+                </td>
+                <td className="px-3 py-2 border-r border-black">
+                  {companyNameDisplay}
+                </td>
+                <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
+                  GSTIN (Company)
+                </td>
+                <td className="px-3 py-2">{gstInDisplay}</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
