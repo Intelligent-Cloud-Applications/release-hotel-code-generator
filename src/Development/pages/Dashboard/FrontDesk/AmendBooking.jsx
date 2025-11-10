@@ -53,6 +53,9 @@ const AmendBooking = () => {
   const [loading, setLoading] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Auto-scaling helpers for today's room charge
+  const [perAdultBase, setPerAdultBase] = useState(null);
+  const [manualChargeEdited, setManualChargeEdited] = useState(false);
 
   // Company autocomplete state (UI only, stores company_id in formData, sourced from booking)
   const [companyQuery, setCompanyQuery] = useState('');
@@ -327,6 +330,65 @@ const AmendBooking = () => {
 
   // ----------- MULTI-ROOM DROPDOWN LOGIC END -----------
 
+  // Helpers for today's room charge editing
+  const getTodayYMD = () => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const getPrimaryRoomNumber = () => {
+    const primaryRoomId = (formData?.room_ids && formData.room_ids[0]) || (editingBooking ? getCurrentRoomIds(editingBooking)[0] : '');
+    const room = getRoomDetails(primaryRoomId);
+    return room.room_number || primaryRoomId || '';
+  };
+
+  const getTodayRoomCharge = () => {
+    const roomNumber = getPrimaryRoomNumber();
+    const todayKey = getTodayYMD();
+    const services = formData?.services || {};
+    const dayEntry = services?.[roomNumber]?.[todayKey];
+    if (dayEntry && dayEntry.room_charges !== undefined && dayEntry.room_charges !== null) {
+      return dayEntry.room_charges;
+    }
+    // Fallback: booking-level room_charges map (by room number)
+    const roomChargesMap = formData?.room_charges || (editingBooking?.room_charges || {});
+    return roomChargesMap?.[roomNumber] ?? '';
+  };
+
+  const setTodayRoomCharge = (amount) => {
+    const roomNumber = getPrimaryRoomNumber();
+    const todayKey = getTodayYMD();
+    setFormData(prev => {
+      const prevServices = prev.services || {};
+      const roomServices = prevServices[roomNumber] || {};
+      // If a services entry for today exists, update it; otherwise update room_charges map
+      if (roomServices[todayKey]) {
+        const todayServices = roomServices[todayKey];
+        const updatedToday = { ...todayServices, room_charges: amount };
+        return {
+          ...prev,
+          services: {
+            ...prevServices,
+            [roomNumber]: {
+              ...roomServices,
+              [todayKey]: updatedToday,
+            },
+          },
+        };
+      }
+      // Fallback update room_charges map when today's service is not present
+      const rcMap = prev.room_charges || {};
+      const updatedRC = { ...rcMap, [roomNumber]: amount };
+      return {
+        ...prev,
+        room_charges: updatedRC,
+      };
+    });
+  };
+
   // Handle other form input changes
   const handleInputChange = (field, value) => {
     setFormData(prev => {
@@ -334,7 +396,72 @@ const AmendBooking = () => {
         const timestamp = value ? new Date(value).getTime() : '';
         return { ...prev, [field]: timestamp };
       }
-      return { ...prev, [field]: value };
+      const next = { ...prev, [field]: value };
+
+      // When number of adults changes, ensure today's room charge entry exists (keep current value if any)
+      if (field === 'no_of_adults') {
+        const roomNumber = getPrimaryRoomNumber();
+        if (roomNumber) {
+          const todayKey = getTodayYMD();
+          const services = next.services || {};
+          const roomServices = services[roomNumber] || {};
+          // Scale rule: multiply existing source by (newAdults/oldAdults)
+          const oldAdults = parseInt(prev.no_of_adults) || 1;
+          const newAdults = parseInt(value) || 1;
+          const ratio = (oldAdults > 0) ? (newAdults / oldAdults) : 1;
+
+          const hasTodayService = !!roomServices[todayKey];
+          const serviceAmount = hasTodayService
+            ? (roomServices[todayKey]?.room_charges ?? null)
+            : null;
+
+          if (hasTodayService && serviceAmount !== null) {
+            const newAmount = Math.round(Number(serviceAmount) * ratio);
+            next.services = {
+              ...services,
+              [roomNumber]: {
+                ...roomServices,
+                [todayKey]: {
+                  ...roomServices[todayKey],
+                  room_charges: newAmount,
+                },
+              },
+            };
+          } else {
+            // No today's service entry with room_charges; fallback to room_charges map
+            const rcMap = next.room_charges || {};
+            const baseRC = rcMap[roomNumber];
+            if (baseRC !== undefined && baseRC !== null) {
+              const newRC = Math.round(Number(baseRC) * ratio);
+              next.room_charges = {
+                ...rcMap,
+                [roomNumber]: newRC,
+              };
+            } else {
+              // If neither exists, initialize today's service entry with 0 (kept), do not attempt scaling
+              if (!roomServices[todayKey]) {
+                next.services = {
+                  ...services,
+                  [roomNumber]: {
+                    ...roomServices,
+                    [todayKey]: {
+                      extra_bed_charges: 0,
+                      extra_pax_charges: 0,
+                      food_charges: 0,
+                      laundry_charges: 0,
+                      manual_charges: 0,
+                      minibar_charges: 0,
+                      room_charges: 0,
+                    },
+                  },
+                };
+              }
+            }
+          }
+        }
+      }
+
+      return next;
     });
   };
 
@@ -379,6 +506,7 @@ const AmendBooking = () => {
       remarks: editingBooking.remarks || '',
       special_requests: editingBooking.special_requests || '',
       services: convertServicesToRoomNumbers(editingBooking.services, currentRoomIds[0]),
+      room_charges: editingBooking.room_charges || {},
       extra_pax: Array.isArray(editingBooking.extra_pax)
         ? editingBooking.extra_pax.map(p => ({
             ...p,
@@ -389,6 +517,21 @@ const AmendBooking = () => {
     });
 
     toast.success('Form reset to original values');
+
+    // Reinitialize per-adult base from current today's charge and adults after reset
+    setTimeout(() => {
+      const roomId0 = currentRoomIds[0];
+      const roomNumber = getRoomDetails(roomId0).room_number || roomId0;
+      const todayKey = getTodayYMD();
+      const services = convertServicesToRoomNumbers(editingBooking.services, roomId0) || {};
+      const dayEntry = services?.[roomNumber]?.[todayKey];
+      const todayAmt = dayEntry && dayEntry.room_charges !== undefined
+        ? dayEntry.room_charges
+        : (editingBooking.room_charges || {})[roomNumber] || 0;
+      const adults = parseInt(editingBooking.no_of_adults) || 1;
+      setPerAdultBase(Number(todayAmt) / (adults > 0 ? adults : 1));
+      setManualChargeEdited(false);
+    }, 0);
   };
 
   // Open edit dialog
@@ -432,6 +575,7 @@ const AmendBooking = () => {
       remarks: booking.remarks || '',
       special_requests: booking.special_requests || '',
       services: convertServicesToRoomNumbers(booking.services, currentRoomIds[0]),
+      room_charges: booking.room_charges || {},
       extra_pax: Array.isArray(booking.extra_pax)
         ? booking.extra_pax.map(p => ({
             ...p,
@@ -441,6 +585,22 @@ const AmendBooking = () => {
       company_id: initialCompanyId
     });
     setShowEditDialog(true);
+
+    // Initialize per-adult base from current today's charge and adults
+    setTimeout(() => {
+      const todayAmt = (() => {
+        const roomNumber = getRoomDetails(currentRoomIds[0]).room_number || currentRoomIds[0];
+        const todayKey = getTodayYMD();
+        const services = convertServicesToRoomNumbers(booking.services, currentRoomIds[0]) || {};
+        const dayEntry = services?.[roomNumber]?.[todayKey];
+        if (dayEntry && dayEntry.room_charges !== undefined) return dayEntry.room_charges;
+        const roomChargesMap = booking.room_charges || {};
+        return roomChargesMap?.[roomNumber] ?? 0;
+      })();
+      const adults = parseInt(booking.no_of_adults) || 1;
+      setPerAdultBase(Number(todayAmt) / (adults > 0 ? adults : 1));
+      setManualChargeEdited(false);
+    }, 0);
   };
 
   // Print check-in form
@@ -842,6 +1002,7 @@ const AmendBooking = () => {
       room_type: formData.room_type,
       rate_plan_id: formData.rate_plan_id,
       company_id: formData.company_id || '',
+      no_of_adults: parseInt(formData.no_of_adults) || 1,
       services: formData.services || {},
       updated_at: Math.floor(Date.now())
     } : {
@@ -1042,7 +1203,7 @@ const AmendBooking = () => {
                               {isOldCheckin && (
                                 <p className="text-sm text-amber-600 flex items-center gap-1 mt-1">
                                   <AlertCircle className="h-4 w-4" />
-                                  Check-in is more than 24 hours old. Only rate plan and room can be modified.
+                                  Check-in is more than 24 hours old. Only rate plan, room and adults can be modified.
                                 </p>
                               )}
                             </div>
@@ -1444,7 +1605,28 @@ const AmendBooking = () => {
                                     value={formData.no_of_adults || ''}
                                     onChange={(e) => handleInputChange('no_of_adults', e.target.value)}
                                     className="h-7 text-xs"
-                                    disabled={isCheckinOld(editingBooking?.checkin_date)}
+                                    disabled={false}
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs font-medium text-gray-700">Room Charges (Today) ₹</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={getTodayRoomCharge()}
+                                    onChange={(e) => {
+                                      const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                                      setTodayRoomCharge(val);
+                                      // If adults > 0, recalibrate base per adult for auto-scaling
+                                      const adults = parseInt(formData?.no_of_adults) || 1;
+                                      if (adults > 0 && val !== '') {
+                                        setPerAdultBase(Number(val) / adults);
+                                      }
+                                      setManualChargeEdited(true);
+                                    }}
+                                    className="h-7 text-xs"
+                                    disabled={false}
                                   />
                                 </div>
                                 <div>

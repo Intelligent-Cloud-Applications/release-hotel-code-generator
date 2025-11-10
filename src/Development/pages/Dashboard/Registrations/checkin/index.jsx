@@ -95,7 +95,7 @@ const CheckIn = () => {
     no_of_children: 0,
     company_name: "",
     gst_no: "",
-    discount: 10,
+    discount: 0,
     partial_payment_amount: null,
     advance_payment_mode: "",
     advance_payment_upi_mode: "",
