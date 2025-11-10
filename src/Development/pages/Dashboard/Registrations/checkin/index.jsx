@@ -22,6 +22,7 @@ const CheckIn = () => {
     ratePlans,
     checkInGuest,
     guests,
+    bills,
     staffs,
     fetchGuests,
     fetchBookings,
@@ -107,7 +108,39 @@ const CheckIn = () => {
     rate_plan_id: "",
     grc_no: "",
   });
-console.log("GRC Number:", guests?.length + bookings?.filter(b => b.status === "Checked-in").length + 1)
+
+  const checkedInBookingsCount = useMemo(() => {
+    if (!Array.isArray(bookings)) return 0;
+    return bookings.filter((booking) => booking.status === "Checked-in").length;
+  }, [bookings]);
+
+  const totalBillsCount = useMemo(
+    () => (Array.isArray(bills) ? bills.length : 0),
+    [bills]
+  );
+
+  const nextGrcNumber = useMemo(
+    () => totalBillsCount + checkedInBookingsCount + 1,
+    [totalBillsCount, checkedInBookingsCount]
+  );
+
+  const nextCheckInNumber = useMemo(
+    () => checkedInBookingsCount + 1,
+    [checkedInBookingsCount]
+  );
+
+  const nextBillNumber = useMemo(
+    () => totalBillsCount + 1,
+    [totalBillsCount]
+  );
+
+  useEffect(() => {
+    console.log("Next identifiers:", {
+      grcNumber: nextGrcNumber,
+      checkInNumber: nextCheckInNumber,
+      billNumber: nextBillNumber,
+    });
+  }, [nextGrcNumber, nextCheckInNumber, nextBillNumber]);
   // Initialize data on component mount
   useEffect(() => {
     const fetchData = async () => {
@@ -775,9 +808,9 @@ console.log("GRC Number:", guests?.length + bookings?.filter(b => b.status === "
       const phoneNumber = checkInData.mobile || "0000000000";
       const customBookingId = `${phoneNumber}_${day}${month}${year}_${hours}${minutes}`;
 
-      // Calculate GRC number: guests.length + checked-in bookings.length + 1
-      const checkedInBookingsCount = bookings?.filter(b => b.status === "Checked-in").length;
-      const grcNo = (guests?.length || 0) + checkedInBookingsCount + 1;
+      const grcNo = nextGrcNumber;
+      const checkInSequenceNumber = nextCheckInNumber;
+      const billSequenceNumber = nextBillNumber;
 
       const finalCheckInData = {
         ...checkInData,
@@ -791,8 +824,17 @@ console.log("GRC Number:", guests?.length + bookings?.filter(b => b.status === "
         // Add services and room charges
         services: services,
         room_charges: room_charges,
-        grc_no: grcNo
+        grc_no: grcNo,
+        check_in_number: checkInSequenceNumber,
+        bill_no: billSequenceNumber,
       };
+
+      console.log("Check-in identifiers:", {
+        grcNo,
+        checkInNumber: checkInSequenceNumber,
+        billNo: billSequenceNumber,
+        bookingId: finalCheckInData.booking_id,
+      });
 
       setCheckInData(finalCheckInData);
       
@@ -957,6 +999,9 @@ console.log("GRC Number:", guests?.length + bookings?.filter(b => b.status === "
                 ratePlans={ratePlans}
                 numberOfNights={numberOfNights}
                 onRoomSelectionChange={handleRoomSelectionChange}
+                nextGrcNumber={nextGrcNumber}
+                nextCheckInNumber={nextCheckInNumber}
+                nextBillNumber={nextBillNumber}
               />
 
               {(checkInData.rate_plan_id || (checkInData.room_id && checkInData.room_id.length > 0)) && (

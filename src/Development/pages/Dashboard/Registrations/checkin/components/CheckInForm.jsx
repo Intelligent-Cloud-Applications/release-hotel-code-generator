@@ -45,6 +45,9 @@ const CheckInForm = ({
   ratePlans,
   numberOfNights,
   onRoomSelectionChange,
+  nextGrcNumber,
+  nextCheckInNumber,
+  nextBillNumber,
 }) => {
   const { companies = [], createCompany } = useAppContext?.() || {
     companies: [],
@@ -185,6 +188,12 @@ const CheckInForm = ({
       // Clear GST when user starts typing a new company
       handleInputChange("gst_no", "");
     }
+  };
+
+  const formatIdentifierValue = (value) => {
+    if (value === null || value === undefined) return "—";
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : "—";
   };
 
   // Create Company Dialog handlers
