@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "../../../../components/ui/button.js";
 import { useAppContext } from "../../../../context/AppContext.jsx";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Hotel } from "lucide-react";
 import RefreshButton from "../../../../components/ui/RefreshButton.jsx";
@@ -31,6 +31,7 @@ const CheckIn = () => {
   } = useAppContext();
   
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pageLoading, setPageLoading] = useState(true);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,6 +48,7 @@ const CheckIn = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [roomAutoSelected, setRoomAutoSelected] = useState(false);
 
   // Helper function to format timestamp to local datetime-local string
   const formatToLocalDateTime = (timestamp) => {
@@ -148,6 +150,65 @@ console.log("GRC Number:", guests?.length + bookings?.filter(b => b.status === "
       }
     }
   }, [ratePlans, checkInData.rate_plan_id]);
+
+  // Auto-select room from URL parameter (when navigating from RoomList)
+  // Note: This effect must be after getVacantRooms is defined, or we inline the filter logic
+  useEffect(() => {
+    const roomIdFromUrl = searchParams.get('room_id');
+    
+    // Only auto-select if:
+    // 1. room_id is in URL
+    // 2. rooms are loaded and page is not loading
+    // 3. room hasn't been auto-selected yet
+    // 4. no room is currently selected
+    if (
+      roomIdFromUrl && 
+      rooms.length > 0 && 
+      !pageLoading &&
+      !roomAutoSelected && 
+      (!checkInData.room_id || checkInData.room_id.length === 0)
+    ) {
+      // Filter vacant/clean rooms inline (to avoid dependency on getVacantRooms)
+      const vacantRooms = rooms.filter(
+        (room) => room.status === "Clean" || room.status === "Vacant"
+      );
+      
+      // Find the room in the vacant rooms list
+      const roomToSelect = vacantRooms.find(room => {
+        const roomIdStr = String(room.room_id);
+        const urlRoomIdStr = String(roomIdFromUrl);
+        return roomIdStr === urlRoomIdStr;
+      });
+
+      if (roomToSelect) {
+        // Room is already validated as Vacant or Clean by the filter above
+        // Auto-select the room by updating state directly (avoid dependency on handleInputChange)
+        setCheckInData(prev => ({
+          ...prev,
+          room_id: [roomToSelect.room_id]
+        }));
+        
+        // Mark as auto-selected to prevent re-selection
+        setRoomAutoSelected(true);
+        
+        // Clear the URL parameter after a short delay to allow state updates
+        setTimeout(() => {
+          const newSearchParams = new URLSearchParams(searchParams);
+          newSearchParams.delete('room_id');
+          setSearchParams(newSearchParams, { replace: true });
+        }, 100);
+        
+        // Show success message
+        toast.success(`Room ${roomToSelect.room_number} has been auto-selected for check-in`);
+      } else {
+        // Room not found in vacant rooms, clear URL parameter
+        toast.error("Room not found or not available for check-in");
+        const newSearchParams = new URLSearchParams(searchParams);
+        newSearchParams.delete('room_id');
+        setSearchParams(newSearchParams, { replace: true });
+      }
+    }
+  }, [searchParams, rooms, roomAutoSelected, checkInData.room_id, pageLoading, setSearchParams]);
 
   // Refresh function
   const handleRefresh = async () => {

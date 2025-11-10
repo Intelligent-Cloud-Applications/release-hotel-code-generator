@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
+import { useNavigate, useLocation } from "react-router";
 import { Wifi, RefreshCw, AlertCircle, Loader2, Filter } from "lucide-react";
 
 import VacantIcon from "../../../assets/Icons/vacant-svg.svg";
@@ -18,6 +19,8 @@ import {
 
 const RoomList = () => {
   const { rooms, fetchRooms, error } = useAppContext();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [pageLoading, setPageLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [dataFetched, setDataFetched] = useState(false);
@@ -218,6 +221,26 @@ const RoomList = () => {
               key={room.room_id} 
               room={room} 
               isLoading={initialLoad}
+              onDoubleClick={(roomId) => {
+                // Find the room to verify its status
+                const clickedRoom = rooms.find(r => 
+                  r.room_id === roomId || 
+                  String(r.room_id) === String(roomId)
+                );
+                
+                if (clickedRoom && (clickedRoom.status === "Vacant" || clickedRoom.status === "Clean")) {
+                  // Navigate to check-in page with room_id parameter
+                  // Determine the correct check-in route based on current location
+                  const isFrontDesk = location.pathname.includes('/frontdesk');
+                  const checkInPath = isFrontDesk 
+                    ? `/dashboard/frontdesk/check_in?room_id=${roomId}`
+                    : `/dashboard/registrations/check_in?room_id=${roomId}`;
+                  navigate(checkInPath);
+                } else if (clickedRoom) {
+                  // Room is not vacant/clean, show a message (optional)
+                  console.log(`Room ${clickedRoom.room_number} is ${clickedRoom.status}, cannot check-in`);
+                }
+              }}
             />
           ))}
         </div>
@@ -261,8 +284,7 @@ const RoomList = () => {
 };
 
 // Reusable Room Card
-const RoomCard = ({ room, isLoading }) => {
-
+const RoomCard = ({ room, isLoading, onDoubleClick }) => {
   const getStatusIcon = (status, isLoading = false) => {
     const iconClass =
       "w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white font-bold relative";
@@ -330,10 +352,35 @@ const RoomCard = ({ room, isLoading }) => {
     }
   };
 
+  const handleDoubleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only allow double-click for vacant/clean rooms
+    if (room.status === "Vacant" || room.status === "Clean") {
+      if (onDoubleClick) {
+        onDoubleClick(room.room_id);
+      }
+    }
+  };
+
   const bgClass = isLoading ? "bg-gray-100" : getStatusBackground(room.status);
+  
+  // Add cursor pointer for vacant/clean rooms to indicate they're clickable
+  const cursorClass = (!isLoading && (room.status === "Vacant" || room.status === "Clean")) 
+    ? "cursor-pointer hover:shadow-lg" 
+    : "";
+  
+  const tooltipText = !isLoading && (room.status === "Vacant" || room.status === "Clean") 
+    ? "Double-click to check-in" 
+    : "";
 
   return (
-    <div className={`${bgClass} h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-300 rounded-lg p-1 sm:p-2 hover:shadow-md transition-shadow cursor-pointer relative min-w-0`}>
+    <div 
+      className={`${bgClass} ${cursorClass} h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-300 rounded-lg p-1 sm:p-2 hover:shadow-md transition-shadow relative min-w-0`}
+      onDoubleClick={handleDoubleClick}
+      title={tooltipText}
+    >
       {/* Status Icon */}
       <div className="absolute top-1 right-1">
         {getStatusIcon(room.status, isLoading)}
