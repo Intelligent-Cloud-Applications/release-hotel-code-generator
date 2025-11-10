@@ -148,7 +148,7 @@ const CheckInForm = ({
 
   const filteredCompanies = useMemo(() => {
     const q = companyQuery.trim().toLowerCase();
-    if (!q) return companies.slice(0, 8); // show some by default
+    if (!q) return []; // don't show anything when empty
     return companies
       .filter((c) => getCompanyName(c).toLowerCase().includes(q))
       .slice(0, 8);
@@ -179,7 +179,7 @@ const CheckInForm = ({
 
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
-    setShowCompanyDropdown(true);
+    setShowCompanyDropdown(!!value.trim());
     if (checkInData?.company_id) {
       handleInputChange("company_id", "");
       // Clear GST when user starts typing a new company
@@ -801,7 +801,7 @@ const CheckInForm = ({
                 <Input
                   value={companyQuery}
                   onChange={(e) => handleCompanyInputChange(e.target.value)}
-                  onFocus={() => setShowCompanyDropdown(true)}
+                  onFocus={() => setShowCompanyDropdown(!!companyQuery.trim())}
                   placeholder="Search company (optional)"
                   className="h-8 text-sm pr-7 focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
                 />
@@ -819,7 +819,7 @@ const CheckInForm = ({
                 {showCompanyDropdown && (
                   <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
                     <ul className="max-h-56 overflow-auto py-1">
-                      {filteredCompanies.length > 0 ? (
+                      {filteredCompanies.length > 0 &&
                         filteredCompanies.map((c) => {
                           const name = getCompanyName(c);
                           const gst = getCompanyGst(c);
@@ -842,28 +842,7 @@ const CheckInForm = ({
                               )}
                             </li>
                           );
-                        })
-                      ) : (
-                        <>
-                          <li className="px-3 py-2 text-sm text-gray-500">
-                            No companies found
-                          </li>
-                          {companyQuery.trim() && createCompany && (
-                            <li
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                openCreateCompanyDialog();
-                              }}
-                              className="cursor-pointer px-3 py-2 hover:bg-blue-50 border-t border-gray-100"
-                            >
-                              <div className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
-                                <Plus className="h-4 w-4" />
-                                <span>Create "{companyQuery}"</span>
-                              </div>
-                            </li>
-                          )}
-                        </>
-                      )}
+                        })}
                     </ul>
                   </div>
                 )}

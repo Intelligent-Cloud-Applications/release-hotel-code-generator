@@ -105,6 +105,18 @@ const Bill = () => {
   const [companyQuery, setCompanyQuery] = useState("");
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const companyFieldRef = useRef(null);
+  const getCompanyName = (c) =>
+    c?.name || c?.company_name || c?.companyName || "";
+  const getCompanyId = (c) => c?.company_id || c?.id || c?.companyId;
+  const getCompanyGst = (c) => c?.gst_no || c?.gst_number || c?.gstNo || "";
+  // Keep hooks (useMemo) before any early returns to preserve hook order across renders
+  const filteredCompanies = useMemo(() => {
+    const q = (companyQuery || "").trim().toLowerCase();
+    if (!q) return [];
+    return (companies || []).filter((c) =>
+      getCompanyName(c).toLowerCase().includes(q)
+    );
+  }, [companies, companyQuery]);
 
   // State to force refresh bill data
   const [forceRefresh, setForceRefresh] = useState(0);
@@ -2379,10 +2391,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
     );
   }
 
-  const getCompanyName = (c) =>
-    c?.name || c?.company_name || c?.companyName || "";
-  const getCompanyId = (c) => c?.company_id || c?.id || c?.companyId;
-  const getCompanyGst = (c) => c?.gst_no || c?.gst_number || c?.gstNo || "";
+  // Helper getters for company details (non-hook)
   const getCompanyNameById = (id) => {
     if (!id) return "";
     const c = companies.find((cc) => getCompanyId(cc) === id);
@@ -2418,7 +2427,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
 
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
-    setShowCompanyDropdown(true);
+    setShowCompanyDropdown(!!value.trim());
     if (checkoutFormData?.company_id) {
       handleFieldChange("company_id", "");
       handleFieldChange("gst_no", "");
@@ -2555,7 +2564,9 @@ console.log("Raw booking data for company ID:", rawBookingData);
                         onChange={(e) =>
                           handleCompanyInputChange(e.target.value)
                         }
-                        onFocus={() => setShowCompanyDropdown(true)}
+                        onFocus={() =>
+                          setShowCompanyDropdown(!!companyQuery.trim())
+                        }
                         placeholder="Search company"
                         
                         className={`h-8 text-xs pr-6 ${
@@ -2579,8 +2590,8 @@ console.log("Raw booking data for company ID:", rawBookingData);
                       {showCompanyDropdown && (
                         <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
                           <ul className="max-h-56 overflow-auto py-1">
-                            {companies.length > 0 ? (
-                              companies.map((c) => {
+                            {filteredCompanies.length > 0 &&
+                              filteredCompanies.map((c) => {
                                 const name = getCompanyName(c);
                                 const gst = getCompanyGst(c);
                                 return (
@@ -2602,28 +2613,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
                                     )}
                                   </li>
                                 );
-                              })
-                            ) : (
-                              <>
-                                <li className="px-3 py-2 text-sm text-gray-500">
-                                  No companies found
-                                </li>
-                                {companyQuery.trim() && createCompany && (
-                                  <li
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      openCreateCompanyDialog();
-                                    }}
-                                    className="cursor-pointer px-3 py-2 hover:bg-blue-50 border-t border-gray-100"
-                                  >
-                                    <div className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
-                                      <Plus className="h-4 w-4" />
-                                      <span>Create "{companyQuery}"</span>
-                                    </div>
-                                  </li>
-                                )}
-                              </>
-                            )}
+                              })}
                           </ul>
                         </div>
                       )}
