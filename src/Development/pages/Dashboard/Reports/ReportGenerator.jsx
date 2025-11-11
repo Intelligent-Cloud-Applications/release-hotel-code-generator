@@ -22,7 +22,8 @@ import {
   ChevronRight,
   Gift,
   DollarSign,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Receipt
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -336,6 +337,22 @@ console.log("listExpenses", expenses);
         { key: 'paymentMethod', label: 'Payment Method', type: 'text' },
         { key: 'paymentStatus', label: 'Payment Status', type: 'text' }
       ]
+    },
+    settlement: {
+      title: 'Settlement Report',
+      icon: Receipt,
+      description: 'Guests who checked out today with basic settlement details',
+      dataSource: 'bookings',
+      columns: [
+        { key: 'bill_no', label: 'Bill No', type: 'text' },
+        { key: 'guest_name', label: 'Guest Name', type: 'text' },
+        { key: 'room_number', label: 'Room', type: 'text' },
+        { key: 'checkout_date', label: 'Check-out', type: 'date' },
+        { key: 'status', label: 'Status', type: 'text' },
+        { key: 'advance_payment', label: 'Advance Payment', type: 'currency' },
+        { key: 'discount', label: 'Discount', type: 'currency' },
+        { key: 'total_amount', label: 'Total Amount', type: 'currency' }
+      ]
     }
   };
 
@@ -627,6 +644,10 @@ console.log("listExpenses", expenses);
           case 'restaurant':
             await fetchRestaurantOrders();
             break;
+          case 'settlement':
+            await fetchBookings();
+            await fetchGuests();
+            break;
           default:
             break;
         }
@@ -691,6 +712,47 @@ console.log("listExpenses", expenses);
           // Transform restaurant orders data into formatted rows
           data = processRestaurantData(restaurantOrders);
           break;
+        case 'settlement': {
+          // Only guests who checked out today
+          const today = new Date();
+          const start = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime();
+          const end = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).getTime();
+          const todaysCheckedOut = (bookings || []).filter(b => {
+            const co = typeof b.checkout_date === 'string' ? new Date(b.checkout_date).getTime() : Number(b.checkout_date);
+            const status = String(b.status || '').toLowerCase();
+            return Number.isFinite(co) && co >= start && co <= end && (status === 'checked-out' || status === 'checkedout' || status === 'checked_out');
+          });
+          data = todaysCheckedOut.map(booking => {
+            const roomCharges = Object.values(booking.room_charges || {}).reduce((sum, charge) => sum + charge, 0);
+            const serviceCharges = Object.values(booking.services || {}).reduce((sum, dayServices) => {
+              return sum + Object.values(dayServices).reduce((daySum, service) => {
+                return daySum + (service.manual_charges || 0) + (service.minibar_charges || 0) +
+                  (service.laundry_charges || 0) + (service.extra_bed_charges || 0) + (service.food_charges || 0);
+              }, 0);
+            }, 0);
+            const totalAmount = roomCharges + serviceCharges - (booking.discount || 0);
+
+            let guestName = booking.full_name || booking.guestName || booking.name || booking.customer_name || booking.primaryGuestName;
+            if (!guestName && booking.guest_id) {
+              const guest = guests?.find(g => g.guest_id === booking.guest_id || g.id === booking.guest_id || g._id === booking.guest_id);
+              guestName = guest?.full_name || guest?.name || guest?.guest_name || '';
+            }
+
+            const billNo = booking.bill_no || booking.billNumber || booking.bill_no_sequence || '';
+
+            return {
+              bill_no: billNo || 'N/A',
+              guest_name: guestName || 'N/A',
+              room_number: Object.keys(booking.room_charges || {})[0] || 'N/A',
+              checkout_date: booking.checkout_date || null,
+              status: booking.status || 'Checked-out',
+              advance_payment: booking.advance_payment || booking.partial_payment_amount || 0,
+              discount: booking.discount || 0,
+              total_amount: totalAmount
+            };
+          });
+          break;
+        }
         default:
           data = [];
       }
