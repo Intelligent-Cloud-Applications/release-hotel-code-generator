@@ -90,6 +90,7 @@ const Bill = () => {
   const [editingDiscount, setEditingDiscount] = useState(0);
   const [editingRoomCharges, setEditingRoomCharges] = useState(); // New state to track which room charges are being edited
   const [editingAdvancePayment, setEditingAdvancePayment] = useState(0);
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
 
   // New state for editing individual charge amounts
   const [editingChargeAmounts, setEditingChargeAmounts] = useState({});
@@ -289,6 +290,8 @@ const Bill = () => {
       return;
     }
 
+    setIsProcessingCheckout(true);
+    
     // If BTC and a new company is typed with GST, auto-create the company first
     if (
       checkoutFormData.payment_mode === "BTC" &&
@@ -489,6 +492,8 @@ const Bill = () => {
     } catch (error) {
       console.error("Checkout error:", error);
       toast.error("Failed to checkout guest");
+    } finally {
+      setIsProcessingCheckout(false);
     }
   };
 
@@ -2716,9 +2721,23 @@ console.log("Raw booking data for company ID:", rawBookingData);
               >
                 Cancel
               </Button>
-              <Button size="sm" onClick={processCheckout}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Complete Check-Out
+              <Button
+                size="sm"
+                onClick={processCheckout}
+                disabled={isProcessingCheckout}
+                className={isProcessingCheckout ? "bg-green-600 text-white hover:bg-green-600" : "bg-green-600 text-white hover:bg-green-700"}
+              >
+                {isProcessingCheckout ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Processing...
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Complete Check-Out
+                  </div>
+                )}
               </Button>
             </div>
           </div>
@@ -2954,10 +2973,10 @@ console.log("Raw booking data for company ID:", rawBookingData);
             {/* Add a checkout button here */}
             <Button
               onClick={handleCheckoutClick}
-              className="flex items-center space-x-2"
+              className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white"
             >
               <LogOut className="h-4 w-4" />
-              <span>Checkout</span>
+              <span>Checkout & Settle</span>
             </Button>
           </div>
         </div>

@@ -95,6 +95,7 @@ const AmendBooking = () => {
   // Refresh function
   const handleRefresh = async () => {
     try {
+      if (refreshing) return;
       setRefreshing(true);
       await Promise.all([
         fetchBookings(),
@@ -1148,17 +1149,6 @@ const AmendBooking = () => {
             </CardContent>
           </Card>
         </div>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <Calendar className="h-8 w-8 text-blue-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-600">Checked-in Guests</p>
-                <p className="text-2xl font-bold text-gray-900">{checkedInBookings.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
       {/* Bookings List */}
       <div className="overflow-x-auto">
