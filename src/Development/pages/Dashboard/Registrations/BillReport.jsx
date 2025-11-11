@@ -2,6 +2,11 @@ import React from "react";
 import { Button } from "../../../components/ui/button.js";
 import { Download, Printer } from "lucide-react";
 import { useAppContext } from "../../../context/AppContext.jsx";
+import { useAuthContext } from "../../../context/AuthContext.jsx";
+// Import your new components
+import BillHeader from "./components/BillHeader.jsx";
+import GuestDetails from "./components/GuestDetails.jsx";
+import LegalSignature from "./components/LegalSignature.jsx";
 
 const handlePrint = () => {
   window.print();
@@ -14,6 +19,7 @@ const handleDownload = () => {
 const isChargeExcluded = (type) => {
   return false; // Simplified - show all charges
 };
+
 const CHARGE_TYPES = [
   { key: "foodCharges", label: "Food Charges" },
   { key: "laundryCharges", label: "Laundry Charges" },
@@ -25,14 +31,12 @@ const CHARGE_TYPES = [
 const getFilteredCharges = (charges) => {
   const filtered = { ...charges };
   let totalReduction = 0;
-
   CHARGE_TYPES.forEach(({ key }) => {
     if (isChargeExcluded(key)) {
       totalReduction += filtered[key] || 0;
       filtered[key] = 0;
     }
   });
-
   filtered.dailyTotal = (filtered.dailyTotal || 0) - totalReduction;
   return filtered;
 };
@@ -42,16 +46,16 @@ const numberToWords = (num) => {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-
+  
   const convertHundreds = (n) => {
     let result = '';
-    
+   
     if (n > 99) {
       result += ones[Math.floor(n / 100)] + ' Hundred';
       n %= 100;
       if (n > 0) result += ' ';
     }
-    
+   
     if (n > 19) {
       result += tens[Math.floor(n / 10)];
       n %= 10;
@@ -61,39 +65,113 @@ const numberToWords = (num) => {
     } else if (n > 0) {
       result += ones[n];
     }
-    
+   
     return result;
   };
 
   if (num === 0) return 'Zero';
-  
+ 
   let result = '';
-  
+ 
   if (num >= 10000000) {
     result += convertHundreds(Math.floor(num / 10000000)) + ' Crore ';
     num %= 10000000;
   }
-  
+ 
   if (num >= 100000) {
     result += convertHundreds(Math.floor(num / 100000)) + ' Lakh ';
     num %= 100000;
   }
-  
+ 
   if (num >= 1000) {
     result += convertHundreds(Math.floor(num / 1000)) + ' Thousand ';
     num %= 1000;
   }
-  
+ 
   if (num > 0) {
     result += convertHundreds(num);
   }
-  
+ 
   return result.trim() + ' Rupees Only';
 };
 
-const BillReport = ({ billData }) => {
-  const {rooms} = useAppContext();
-  
+const BillReport = ({ billData: rawBillData }) => {
+  const { rooms, institutionData, bills, bookings, companies } = useAppContext();
+ const { userData } = useAuthContext();
+  // Process and prepare billData similar to Bill.jsx
+  const billData = React.useMemo(() => {
+    if (!rawBillData) return null;
+ console.log("GRC Number in BillReport:",rawBillData);
+
+    // Extract booking ID for lookups (assuming it's in rawBillData)
+    const bookingId = rawBillData?.bookingDetails?.bookingId || rawBillData?.billHeader?.bookingRef;
+
+    // Find raw booking data
+    const rawBookingData = bookings?.find((b) => b.booking_id === bookingId);
+
+    // Find company details from companies list (not bookings)
+    const companyIdToUse = rawBillData?.company_id || rawBookingData?.company_id;
+    const companyDetails = companies?.find((company) => company.company_id === companyIdToUse) || {};
+    
+    const grcNo = rawBookingData?.grc_no || "N/A";
+    const noOfAdults = rawBookingData?.no_of_adults || 0;
+
+    // Build billHeader similar to Bill.jsx
+    const billHeader = {
+      hotelName: institutionData?.companyName || rawBillData?.billHeader?.hotelName || "",
+      address: institutionData?.contactDetails?.address || rawBillData?.billHeader?.address || "",
+      contact: institutionData?.contactDetails?.phone || rawBillData?.billHeader?.contact || "",
+      email: institutionData?.contactDetails?.email || rawBillData?.billHeader?.email || "",
+      bookingRef: rawBillData?.billHeader?.bookingRef || bookingId || "N/A",
+      gstIn: institutionData?.taxNumber,
+      billDate: rawBillData?.billHeader?.billDate || Date.now(),
+      bill_no: rawBillData?.billHeader?.bill_no || "N/A",
+    };
+
+    // Build bookingDetails similar to Bill.jsx
+    const bookingDetails = {
+      ...rawBillData?.bookingDetails,
+      bookingId: rawBillData?.bookingDetails?.bookingId || bookingId || "N/A",
+      bookingType: rawBillData?.bookingDetails?.bookingType || rawBookingData?.booking_type || "",
+      bookingSource: rawBillData?.bookingDetails?.bookingSource || rawBookingData?.booking_source || "",
+      roomNumber: rawBillData?.bookingDetails?.roomNumber || rawBookingData?.rooms?.map((room) => room.room_number).join(", ") || "",
+      roomType: rawBillData?.bookingDetails?.roomType || rawBookingData?.rooms?.map((room) => room.room_type).join(", ") || "",
+      ratePlanId: rawBillData?.bookingDetails?.ratePlanId || rawBookingData?.rate_plan_id || "",
+      ratePlanName: rawBillData?.bookingDetails?.ratePlanName || rawBookingData?.rate_plan_name || "",
+      ratePlanBaseTariff: rawBillData?.bookingDetails?.ratePlanBaseTariff || rawBookingData?.base_tariff || 0,
+      ratePlanTariffVariation: rawBillData?.bookingDetails?.ratePlanTariffVariation || rawBookingData?.tariff_variation || 0,
+      checkIn: rawBillData?.bookingDetails?.checkIn || rawBookingData?.checkin_date || "",
+      checkOut: rawBillData?.bookingDetails?.checkOut || rawBookingData?.checkout_date || "",
+      numberOfNights: rawBillData?.bookingDetails?.numberOfNights || rawBookingData?.number_of_nights || 0,
+      companyName: companyDetails.name || rawBillData?.bookingDetails?.companyName || "N/A",
+      companyGstNo: companyDetails.gst_no || rawBillData?.bookingDetails?.gstNo || "N/A",
+      grc_no: grcNo,
+      no_of_adults: noOfAdults,
+    };
+    const legalSignature= {
+      gstIn: institutionData?.taxNumber,
+      roomStaySac: "996311",
+      roomServiceSac: "996312",
+      foodServiceSac: "996313",
+      laundryClause:
+              "Subject to Aimer jurisdiction. No claim for loss of valuables unless deposited.",
+              guestName: rawBillData?.guestDetails?.guestName || "",
+            guestSignature: "Guest Signature",
+            cashierSignature: "Cashier Signature & Seal",
+          };
+    return {
+      ...rawBillData,
+      billHeader,
+      bookingDetails,
+      legalSignature
+    };
+  }, [rawBillData, institutionData, bookings, companies]);
+ 
+
+  if (!billData) {
+    return <div>No bill data available</div>;
+  }
+
   // Create a map of room_id to extra pax charges for specific room allocation
   const extraPaxByRoomId = {};
   const extra_pax = billData?.bookingDetails?.extra_pax;
@@ -111,7 +189,7 @@ const BillReport = ({ billData }) => {
     let totalRoomFromBreakdown = 0;
     let totalServiceFromBreakdown = 0;
     let totalExtraPaxFromBreakdown = 0;
-    
+   
     if (billData?.serviceChargesByDate) {
       billData.serviceChargesByDate.forEach((dayData) => {
         const date = Object.keys(dayData)[0];
@@ -119,11 +197,11 @@ const BillReport = ({ billData }) => {
         roomEntries.forEach((roomEntry) => {
           const charges = roomEntry.charges;
           const roomNumber = roomEntry.roomNumber;
-          
+         
           // Check if room charges exist in services object
           const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
           const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-          
+         
           totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
           totalRoomFromBreakdown += roomChargesToUse || 0;
           totalServiceFromBreakdown +=
@@ -132,7 +210,7 @@ const BillReport = ({ billData }) => {
             (charges.minibarCharges || 0) +
             (charges.extraBedCharges || 0) +
             (charges.manualCharges || 0);
-          
+         
           // Get room-specific extra pax charges
           const roomDetails = rooms?.find(r => r.room_number === roomNumber);
           const roomIdForExtraPax = roomDetails?.room_id;
@@ -141,10 +219,10 @@ const BillReport = ({ billData }) => {
         });
       });
     }
-    
+   
     const discountAmount = billData?.billingSummary?.totalDiscount || 0;
     const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
-    
+   
     // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
     const discountedRoomCharges = totalRoomFromBreakdown - discountAmount;
     const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
@@ -156,6 +234,23 @@ const BillReport = ({ billData }) => {
 
   const finalAmount = calculateFinalAmount();
   const amountInWords = numberToWords(Math.floor(finalAmount));
+
+  // Prepare guest data for GuestDetails component
+  const guestData = {
+    full_name: billData?.guestDetails?.guestName || "",
+    mobile: billData?.guestDetails?.mobile || "",
+    email: billData?.guestDetails?.email || "",
+    gender: billData?.guestDetails?.gender || "",
+    nationality: billData?.guestDetails?.nationality || "",
+    address: billData?.guestDetails?.address || "",
+    id_proof_type: billData?.guestDetails?.idProofType || "",
+    id_proof_number: billData?.guestDetails?.idProofNumber || "",
+    city: billData?.guestDetails?.city || "",
+    state: billData?.guestDetails?.state || "",
+    pincode: billData?.guestDetails?.pincode || "",
+    country: billData?.guestDetails?.country || "",
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Print/Download Controls - Hidden in print */}
@@ -275,7 +370,6 @@ const BillReport = ({ billData }) => {
               <Download className="h-4 w-4" />
               <span>Download PDF</span>
             </Button>
-
             <Button
               onClick={handlePrint}
               className="flex items-center space-x-2"
@@ -288,237 +382,27 @@ const BillReport = ({ billData }) => {
       </div>
 
       {/* Bill Content - This section will be printed */}
-      <div className=" max-w-5xl mx-auto p-6 print:p-0 print:max-w-none print:m-0">
+      <div className="max-w-5xl mx-auto p-6 print:p-0 print:max-w-none print:m-0">
         <div
           id="printable-bill"
           className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
         >
           <div className="p-8 print:p-6">
-            <div className="text-center border-b-2 border-black border-dashed pb-4 mb-6">
-              <h1 className="text-xl font-bold text-black mb-2 hotel-name">
-                {billData.billHeader.hotelName}
-              </h1>
-              <p className="text-base text-black">
-                {billData.billHeader.address}
-              </p>
-              <p className="text-base text-black">
-                Contact: {billData.billHeader.contact} | Email:{" "}
-                {billData.billHeader.email}
-              </p>
-              <div className="flex justify-between items-center mt-4 text-base">
-                <div className="mt-2 text-base">
-                  <span className="font-semibold">Bill ID:</span>{" "}
-                  {billData.billHeader.bookingRef}
-                </div>
-                <div>
-                  <span className="font-semibold">GSTIN:</span>{" "}
-                  {billData.billHeader.gstIn}
-                </div>
-                <div>
-                  <span className="font-semibold">Bill Date:</span>{" "}
-                  {new Date(billData.billHeader.billDate).toLocaleDateString(
-                    "en-GB",
-                    {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    }
-                  )}{" "}
-                  {new Date(billData.billHeader.billDate).toLocaleTimeString(
-                    "en-US",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                      hour12: true,
-                    }
-                  )}
-                </div>
-              </div>
-            </div>
-            {/* Guest Details */}
+            {/* Use the new BillHeader component - matching Bill.jsx structure */}
+            <BillHeader 
+              bills={billData.billHeader.bill_no}
+              billData={billData} 
+            />
 
-            <div className="mb-4 mt-2">
-              <h3 className="font-bold text-black mb-2 text-base">
-                Guest Details
-              </h3>
-              <div className="mt-1">
-                <table className="w-full text-sm guest-booking-table">
-                  <tbody>
-                    <tr className="border-b border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Guest Name
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        <span>{billData.guestDetails?.guestName || ""}</span>
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Gender
-                      </td>
-                      <td className="px-3 py-2">
-                        <span>{billData.guestDetails?.gender || ""}</span>
-                      </td>
-                    </tr>
-                    <tr className="border-b border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Mobile Number
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        <span>{billData.guestDetails?.mobile || ""}</span>
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Identification Type
-                      </td>
-                      <td className="px-3 py-2">
-                        <span>{billData.guestDetails?.idProofType || ""}</span>
-                      </td>
-                    </tr>
-                    <tr className="border-b border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Email
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        <span>{billData.guestDetails?.email || ""}</span>
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Identification No.
-                      </td>
-                      <td className="px-3 py-2">
-                        <span>
-                          {billData.guestDetails?.idProofNumber || ""}
-                        </span>
-                      </td>
-                    </tr>
-                    <tr className=" border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Address
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        <span>{billData.guestDetails?.address || ""}</span>,{" "}
-                        <span>{billData.guestDetails?.city || ""}</span>,{" "}
-                        <span>{billData.guestDetails?.state || ""}</span>,{" "}
-                        <span>{billData.guestDetails?.pincode || ""}</span>
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Nationality
-                      </td>
-                      <td className="px-3 py-2">
-                        <span>{billData.guestDetails?.nationality || ""}</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            {/* Booking Details */}
-            <div className="mb-4">
-              <h3 className="font-bold text-black mb-2 text-base">
-                Booking Details
-              </h3>
-              <div className="mt-1">
-                <table className="w-full text-sm guest-booking-table">
-                  <tbody>
-                    <tr className="border-b border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Booking ID
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        {billData.bookingDetails.bookingId}
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Rate Plan ID
-                      </td>
-                      <td className="px-3 py-2">
-                        {billData.bookingDetails?.ratePlanId}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Booking Type
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        {billData.bookingDetails?.bookingType}
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Rate Plan Name
-                      </td>
-                      <td className="px-3 py-2">
-                        {billData.bookingDetails?.ratePlanName}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Booking Source
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        {billData.bookingDetails?.bookingSource}
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Check-in Date
-                      </td>
-                      <td className="px-3 py-2">
-                        {new Date(
-                          billData.bookingDetails?.checkIn
-                        ).toLocaleDateString("en-GB", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })}{" "}
-                        {new Date(
-                          billData.bookingDetails?.checkIn
-                        ).toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Room Number
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        {billData.bookingDetails?.roomNumber}
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Check-out Date
-                      </td>
-                      <td className="px-3 py-2">
-                        {new Date(
-                          billData.bookingDetails?.checkOut
-                        ).toLocaleDateString("en-GB", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })}{" "}
-                        {new Date(
-                          billData.bookingDetails?.checkOut
-                        ).toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
-                      </td>
-                    </tr>
-                    <tr className=" border-black">
-                      <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
-                        Room Type
-                      </td>
-                      <td className="border-r-1 border-black px-3 py-2">
-                        {billData.bookingDetails?.roomType}
-                      </td>
-                      <td className="border-r-1 font-semibold border-black px-3 py-2 bg-gray-100">
-                        Number of Nights
-                      </td>
-                      <td className="  px-3 py-2">
-                        {billData.bookingDetails.numberOfNights}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            {/* Charges Breakdown (Day-wise) */}
+            {/* Use the new GuestDetails component - Combined Guest & Booking Details */}
+            <GuestDetails
+              billData={billData}
+              guestData={guestData}
+              isAmountEditing={false}
+              setGuestData={() => {}}
+            />
+
+            {/* Charges Breakdown (Day-wise) - Keep original structure */}
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2 mt-2">
                 <h3 className="font-bold text-black text-base">
@@ -554,29 +438,23 @@ const BillReport = ({ billData }) => {
                     billData.serviceChargesByDate.length > 0 ? (
                       (() => {
                         let serialNumber = 1; // Global counter for serial numbers
-
                         return billData.serviceChargesByDate.map(
                           (dayData, dayIndex) => {
                             const date = Object.keys(dayData)[0];
                             const roomEntries = dayData[date];
-
-
                             return roomEntries.map((roomEntry, roomIndex) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
                               const roomType = roomEntry.roomType;
-
-
                               // Check if room charges exist in services object for this room and date
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               // Get room-specific extra pax charges
                               const roomDetails = rooms?.find(r => r.room_number === roomNumber);
                               const roomIdForExtraPax = roomDetails?.room_id;
                               const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-                              
-
+                             
                               const particulars = [
                                 {
                                   description: `Rate Plan Base Tariff`,
@@ -648,29 +526,25 @@ const BillReport = ({ billData }) => {
                                 (particular) =>
                                   !isChargeExcluded(particular.type)
                               );
-
                               // Get filtered charges for display - update with correct room charges and room-specific extra pax
                               const updatedCharges = {
                                 ...charges,
                                 roomCharges: roomChargesToUse,
                                 extraPaxCharges: roomSpecificExtraPax,
-                                dailyTotal: roomChargesToUse + 
-                                  (charges.foodCharges || 0) + 
-                                  (charges.laundryCharges || 0) + 
-                                  (charges.minibarCharges || 0) + 
-                                  (charges.extraBedCharges || 0) + 
-                                  (charges.manualCharges || 0) + 
-                                  roomSpecificExtraPax + 
+                                dailyTotal: roomChargesToUse +
+                                  (charges.foodCharges || 0) +
+                                  (charges.laundryCharges || 0) +
+                                  (charges.minibarCharges || 0) +
+                                  (charges.extraBedCharges || 0) +
+                                  (charges.manualCharges || 0) +
+                                  roomSpecificExtraPax +
                                   (billData?.bookingDetails?.ratePlanBaseTariff || 0)
                               };
                               const filteredCharges = getFilteredCharges(updatedCharges);
-
                               // Rowspan for this room (only particulars, not including total row)
                               const rowspan = particulars.length;
-
                               const currentSerialNumber = serialNumber;
                               serialNumber++; // Increment for next room entry
-
                               return (
                                 <React.Fragment
                                   key={`${dayIndex}-${roomIndex}`}
@@ -763,7 +637,7 @@ const BillReport = ({ billData }) => {
                           className="text-center py-4 text-gray-500"
                         >
                           No charges breakdown data available
-                          <br />
+                           <br />
                           <small>
                             Debug: serviceChargesByDate ={" "}
                             {JSON.stringify(billData?.serviceChargesByDate)}
@@ -775,6 +649,7 @@ const BillReport = ({ billData }) => {
                 </table>
               </div>
             </div>
+
             {/* Billing Summary */}
             <div className="grid grid-cols-2 gap-8 mb-6 section-gap">
               <div>
@@ -822,11 +697,11 @@ const BillReport = ({ billData }) => {
                             roomEntries.forEach((roomEntry) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
-                              
+                             
                               // Check if room charges exist in services object
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               if (roomChargesToUse) {
                                 totalRoomFromBreakdown += roomChargesToUse;
                               }
@@ -878,12 +753,12 @@ const BillReport = ({ billData }) => {
                               roomEntries.forEach((roomEntry) => {
                                 const charges = roomEntry.charges;
                                 const roomNumber = roomEntry.roomNumber;
-                                
+                               
                                 // Get room-specific extra pax charges
                                 const roomDetails = rooms?.find(r => r.room_number === roomNumber);
                                 const roomIdForExtraPax = roomDetails?.room_id;
                                 const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-                                
+                               
                                 if (roomSpecificExtraPax) {
                                   totalExtraPaxFromBreakdown += roomSpecificExtraPax;
                                 }
@@ -909,11 +784,11 @@ const BillReport = ({ billData }) => {
                               roomEntries.forEach((roomEntry) => {
                                 const charges = roomEntry.charges;
                                 const roomNumber = roomEntry.roomNumber;
-                                
+                               
                                 // Check if room charges exist in services object
                                 const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                                 const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                                
+                               
                                 if (roomChargesToUse) {
                                   totalRoomFromBreakdown += roomChargesToUse;
                                 }
@@ -922,7 +797,7 @@ const BillReport = ({ billData }) => {
                           }
                           return totalRoomFromBreakdown;
                         })();
-                        
+                       
                         if (discountAmount > 0 && totalRoomCharges > 0) {
                           const discountPercentage = ((discountAmount / totalRoomCharges) * 100).toFixed(1);
                           return `${discountPercentage}%`;
@@ -948,11 +823,11 @@ const BillReport = ({ billData }) => {
                             roomEntries.forEach((roomEntry) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
-                              
+                             
                               // Check if room charges exist in services object
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               if (roomChargesToUse) {
                                 totalRoomChargesForTax += roomChargesToUse;
                               }
@@ -982,11 +857,11 @@ const BillReport = ({ billData }) => {
                             roomEntries.forEach((roomEntry) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
-                              
+                             
                               // Check if room charges exist in services object
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               if (roomChargesToUse) {
                                 totalRoomChargesForTax += roomChargesToUse;
                               }
@@ -1014,11 +889,11 @@ const BillReport = ({ billData }) => {
                             roomEntries.forEach((roomEntry) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
-                              
+                             
                               // Check if room charges exist in services object
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               if (roomChargesToUse) {
                                 totalRoomChargesForTax += roomChargesToUse;
                               }
@@ -1052,7 +927,7 @@ const BillReport = ({ billData }) => {
                         let totalRoomFromBreakdown = 0;
                         let totalServiceFromBreakdown = 0;
                         let totalExtraPaxFromBreakdown = 0;
-                        
+                       
                         if (billData?.serviceChargesByDate) {
                           billData.serviceChargesByDate.forEach((dayData) => {
                             const date = Object.keys(dayData)[0];
@@ -1060,11 +935,11 @@ const BillReport = ({ billData }) => {
                             roomEntries.forEach((roomEntry) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
-                              
+                             
                               // Check if room charges exist in services object
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
                               totalRoomFromBreakdown += roomChargesToUse || 0;
                               totalServiceFromBreakdown +=
@@ -1073,7 +948,7 @@ const BillReport = ({ billData }) => {
                                 (charges.minibarCharges || 0) +
                                 (charges.extraBedCharges || 0) +
                                 (charges.manualCharges || 0);
-                              
+                             
                               // Get room-specific extra pax charges
                               const roomDetails = rooms?.find(r => r.room_number === roomNumber);
                               const roomIdForExtraPax = roomDetails?.room_id;
@@ -1082,7 +957,7 @@ const BillReport = ({ billData }) => {
                             });
                           });
                         }
-                        
+                       
                         const discountAmount = billData?.billingSummary?.totalDiscount || 0;
                         const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
                         return subTotal.toFixed(2);
@@ -1098,7 +973,7 @@ const BillReport = ({ billData }) => {
                         let totalRoomFromBreakdown = 0;
                         let totalServiceFromBreakdown = 0;
                         let totalExtraPaxFromBreakdown = 0;
-                        
+                       
                         if (billData?.serviceChargesByDate) {
                           billData.serviceChargesByDate.forEach((dayData) => {
                             const date = Object.keys(dayData)[0];
@@ -1106,11 +981,11 @@ const BillReport = ({ billData }) => {
                             roomEntries.forEach((roomEntry) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
-                              
+                             
                               // Check if room charges exist in services object
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
                               totalRoomFromBreakdown += roomChargesToUse || 0;
                               totalServiceFromBreakdown +=
@@ -1119,7 +994,7 @@ const BillReport = ({ billData }) => {
                                 (charges.minibarCharges || 0) +
                                 (charges.extraBedCharges || 0) +
                                 (charges.manualCharges || 0);
-                              
+                             
                               // Get room-specific extra pax charges
                               const roomDetails = rooms?.find(r => r.room_number === roomNumber);
                               const roomIdForExtraPax = roomDetails?.room_id;
@@ -1128,10 +1003,10 @@ const BillReport = ({ billData }) => {
                             });
                           });
                         }
-                        
+                       
                         const discountAmount = billData?.billingSummary?.totalDiscount || 0;
                         const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
-                        
+                       
                         // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
                         const discountedRoomCharges = totalRoomFromBreakdown - discountAmount;
                         const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
@@ -1151,7 +1026,7 @@ const BillReport = ({ billData }) => {
                         let totalRoomFromBreakdown = 0;
                         let totalServiceFromBreakdown = 0;
                         let totalExtraPaxFromBreakdown = 0;
-                        
+                       
                         if (billData?.serviceChargesByDate) {
                           billData.serviceChargesByDate.forEach((dayData) => {
                             const date = Object.keys(dayData)[0];
@@ -1159,11 +1034,11 @@ const BillReport = ({ billData }) => {
                             roomEntries.forEach((roomEntry) => {
                               const charges = roomEntry.charges;
                               const roomNumber = roomEntry.roomNumber;
-                              
+                             
                               // Check if room charges exist in services object
                               const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
                               const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                              
+                             
                               totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
                               totalRoomFromBreakdown += roomChargesToUse || 0;
                               totalServiceFromBreakdown +=
@@ -1172,7 +1047,7 @@ const BillReport = ({ billData }) => {
                                 (charges.minibarCharges || 0) +
                                 (charges.extraBedCharges || 0) +
                                 (charges.manualCharges || 0);
-                              
+                             
                               // Get room-specific extra pax charges
                               const roomDetails = rooms?.find(r => r.room_number === roomNumber);
                               const roomIdForExtraPax = roomDetails?.room_id;
@@ -1181,10 +1056,10 @@ const BillReport = ({ billData }) => {
                             });
                           });
                         }
-                        
+                       
                         const discountAmount = billData?.billingSummary?.totalDiscount || 0;
                         const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
-                        
+                       
                         // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
                         const discountedRoomCharges = totalRoomFromBreakdown - discountAmount;
                         const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
@@ -1198,7 +1073,6 @@ const BillReport = ({ billData }) => {
                   </div>
                 </div>
               </div>
-
               <div>
                 <h3 className="font-bold text-black mb-3 text-base">
                   Final Summary
@@ -1216,56 +1090,9 @@ const BillReport = ({ billData }) => {
               </div>
             </div>
 
-            {/* Legal & Signature */}
-            <div className="border-t-2 border-dashed border-black section-gap">
-              <h3 className="font-bold text-black mb-3 text-base">
-                Legal & Signature
-              </h3>
-              <div className="grid grid-cols-3 gap-8 text-xs">
-                <div>
-                  <div className="space-y-1">
-                    <div>
-                      <span className="font-bold">GSTIN:</span>{" "}
-                      {billData.legalSignature.gstIn}
-                    </div>
-                    <div>
-                      <span className="font-bold">Room Stay SAC:</span>{" "}
-                      {billData.legalSignature.roomStaySac}
-                    </div>
-                    <div>
-                      <span className="font-bold">Room Service SAC:</span>{" "}
-                      {billData.legalSignature.roomServiceSac}
-                    </div>
-                    <div>
-                      <span className="font-bold">Food Service SAC:</span>{" "}
-                      {billData.legalSignature.foodServiceSac}
-                    </div>
-                  </div>
-                </div>
+            {/* Use the new LegalSignature component */}
+            <LegalSignature billData={billData} userData={userData} />
 
-                <div className="text-center">
-                  <div className="mb-16">
-                    <div className="font-bold">Guest Name:</div>
-                    <div className="mt-2">
-                      {billData.legalSignature.guestName}
-                    </div>
-                  </div>
-                  <div className="border-t border-black pt-2">
-                    <div className="font-bold">
-                      {billData.legalSignature.guestSignature}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-center">
-                  <div className="mb-16">
-                    <div className="font-bold">
-                      {billData.legalSignature.cashierSignature}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
             {/* Footer */}
             <div className="border-t-2 border-dashed text-center border-black section-gap">
               <div className="text-xl font-bold mt-2">
