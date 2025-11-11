@@ -60,6 +60,7 @@ const Bill = () => {
     companies,
     bills,
     checkoutGuest,
+    createCompany,
   } = useAppContext();
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
@@ -286,6 +287,35 @@ const Bill = () => {
   const processCheckout = async () => {
     if (!booking || !validateCheckoutForm()) {
       return;
+    }
+
+    // If BTC and a new company is typed with GST, auto-create the company first
+    if (
+      checkoutFormData.payment_mode === "BTC" &&
+      !checkoutFormData.company_id &&
+      (companyQuery || "").trim() &&
+      (checkoutFormData.gst_no || "").trim()
+    ) {
+      try {
+        if (typeof createCompany === "function") {
+          const created = await createCompany({
+            name: (companyQuery || "").trim(),
+            gst_no: (checkoutFormData.gst_no || "").trim(),
+          });
+          const newId = created?.company_id || created?.id || created?._id;
+          if (newId) {
+            // Update local state so downstream uses the id
+            setCheckoutFormData((prev) => ({
+              ...prev,
+              company_id: newId,
+              gst_no: created?.gst_no || prev.gst_no,
+            }));
+          }
+        }
+      } catch (e) {
+        console.error("Auto-create company (checkout) failed:", e);
+        // Continue without blocking checkout
+      }
     }
 
     const billDataExtracted = extractBillDataForCheckout();

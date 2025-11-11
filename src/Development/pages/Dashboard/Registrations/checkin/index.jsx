@@ -29,6 +29,9 @@ const CheckIn = () => {
     fetchRooms,
     fetchStaffs,
     addExpense,
+    companies,
+    createCompany,
+    fetchCompanies,
   } = useAppContext();
   
   const navigate = useNavigate();
@@ -94,6 +97,7 @@ const CheckIn = () => {
     room_id: [],
     no_of_adults: 1,
     no_of_children: 0,
+    company_id: "",
     company_name: "",
     gst_no: "",
     discount: 0,
@@ -299,6 +303,7 @@ const CheckIn = () => {
         room_id: selectedBooking.room_id || [],
         no_of_adults: selectedBooking.no_of_adults,
         no_of_children: selectedBooking.no_of_children,
+        company_id: selectedBooking.company_id || "",
         company_name: selectedBooking.company_name || "",
         gst_no: selectedBooking.gst_no || "",
         discount: selectedBooking.discount || 0,
@@ -756,6 +761,45 @@ const CheckIn = () => {
     isProcessingRef.current = true;
 
     try {
+      // --- PATCH: Check if we need to auto-create company before continuing ---
+      const companyName = (checkInData.company_name || "").trim();
+      const gst = (checkInData.gst_no || "").trim();
+      let companyId = checkInData.company_id;
+      const existCompany = companies && companies.find(c => {
+        const n = (c.name || c.company_name || c.companyName || "").trim().toLowerCase();
+        return n === companyName.toLowerCase();
+      });
+
+      if (!companyId && companyName && gst && !existCompany && typeof createCompany === 'function') {
+        toast.info("Creating company... Please wait");
+        const created = await createCompany({ name: companyName, gst_no: gst });
+        let resolvedId = created && (created.company_id || created.id);
+        if (!resolvedId && typeof fetchCompanies === 'function') {
+          // Refresh and try to resolve by name + gst
+          await fetchCompanies();
+          const match = (companies || []).concat([]).find((c) => {
+            const n = (c.name || c.company_name || c.companyName || "").trim().toLowerCase();
+            const g = (c.gst_no || c.gst_number || c.gstNo || "").trim().toLowerCase();
+            return n === companyName.toLowerCase() && g === gst.toLowerCase();
+          });
+          if (match) {
+            resolvedId = match.company_id || match.id;
+          }
+        }
+        if (!resolvedId) {
+          // Proceed without blocking; keep name/gst set, but warn
+          toast.warning("Company created but ID missing; proceeding without company link.");
+        } else {
+          companyId = resolvedId;
+          setCheckInData(prev => ({ ...prev, company_id: companyId }));
+          toast.success("Company created and selected.");
+        }
+      } else if (!companyId && existCompany) {
+        companyId = existCompany.company_id || existCompany.id;
+        setCheckInData(prev => ({ ...prev, company_id: companyId }));
+      }
+      // --- END PATCH ---
+
       // Generate services data for each selected room
       const services = {};
       const selectedRoomIds = checkInData.room_id || [];
@@ -815,6 +859,7 @@ const CheckIn = () => {
       const finalCheckInData = {
         ...checkInData,
         status: "Checked-in",
+        company_id: companyId || checkInData.company_id || "",
         company_name: checkInData.company_name || "N/A",
         gst_no: checkInData.gst_no || "N/A",
         // Generate booking ID if not from existing booking
@@ -912,6 +957,7 @@ const CheckIn = () => {
       room_id: [],
       no_of_adults: 1,
       no_of_children: 0,
+      company_id: "",
       company_name: "",
       gst_no: "",
       discount: 0,

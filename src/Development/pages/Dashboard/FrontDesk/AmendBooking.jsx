@@ -28,6 +28,7 @@ import {
   Building,
   PlusCircle,
   Printer,
+  CreditCard as CreditCardIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -44,9 +45,10 @@ const AmendBooking = () => {
     fetchRooms,
     fetchCompanies,
     amendBooking,
-    updateRoomStatus
+    updateRoomStatus,
+    createCompany,
+    addExpense,
   } = useAppContext();
-
   const [searchTerm, setSearchTerm] = useState('');
   const [editingBooking, setEditingBooking] = useState(null);
   const [formData, setFormData] = useState({});
@@ -56,12 +58,12 @@ const AmendBooking = () => {
   // Auto-scaling helpers for today's room charge
   const [perAdultBase, setPerAdultBase] = useState(null);
   const [manualChargeEdited, setManualChargeEdited] = useState(false);
-
   // Company autocomplete state (UI only, stores company_id in formData, sourced from booking)
   const [companyQuery, setCompanyQuery] = useState('');
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const companyFieldRef = useRef(null);
-
+  // New company GST state
+  const [newGstNo, setNewGstNo] = useState('');
   // PAX handlers
   const addPax = () => {
     const defaultRoomId = (formData?.room_ids && formData.room_ids[0]) || '';
@@ -79,7 +81,6 @@ const AmendBooking = () => {
     current.splice(index, 1);
     setFormData(prev => ({ ...prev, extra_pax: current }));
   };
-
   // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
@@ -91,7 +92,6 @@ const AmendBooking = () => {
     };
     fetchData();
   }, []);
-
   // Refresh function
   const handleRefresh = async () => {
     try {
@@ -111,23 +111,29 @@ const AmendBooking = () => {
       setRefreshing(false);
     }
   };
-
   // Company helpers
   const getCompanyName = (c) => c?.name || c?.company_name || c?.companyName || '';
   const getCompanyId = (c) => c?.company_id || c?.id || c?.companyId;
+  const getCompanyGst = (c) => c?.gst_no || '';
   const getCompanyNameById = (id) => {
     if (!id) return '';
     const c = companies.find(cc => getCompanyId(cc) === id);
     return c ? getCompanyName(c) : '';
   };
-
+  const getCompanyGstById = (id) => {
+    if (!id) return '';
+    const c = companies.find(cc => getCompanyId(cc) === id);
+    return getCompanyGst(c);
+  };
   // Autocomplete filtering
   const filteredCompanies = useMemo(() => {
     const q = companyQuery.trim().toLowerCase();
     if (!q) return companies.slice(0, 8);
     return companies.filter(c => getCompanyName(c).toLowerCase().includes(q)).slice(0, 8);
   }, [companies, companyQuery]);
-
+  const isNewCompany = useMemo(() => {
+    return companyQuery && !formData.company_id && filteredCompanies.length === 0;
+  }, [companyQuery, formData.company_id, filteredCompanies.length]);
   // Close suggestions on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -138,17 +144,18 @@ const AmendBooking = () => {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
   const handleCompanySelect = (company) => {
     setCompanyQuery(getCompanyName(company));
     setShowCompanyDropdown(false);
     const id = getCompanyId(company);
-    setFormData(prev => ({ ...prev, company_id: id }));
+    setFormData(prev => ({ ...prev, company_id: id, gst_no: getCompanyGst(company) }));
+    setNewGstNo('');
   };
   const clearSelectedCompany = () => {
     setCompanyQuery('');
     setFormData(prev => ({ ...prev, company_id: '' }));
     setShowCompanyDropdown(false);
+    setNewGstNo('');
   };
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
@@ -156,8 +163,8 @@ const AmendBooking = () => {
     if (formData?.company_id) {
       setFormData(prev => ({ ...prev, company_id: '' }));
     }
+    setNewGstNo('');
   };
-
   // Check if check-in date is more than 24 hours old
   const isCheckinOld = (checkinDate) => {
     if (!checkinDate) return false;
@@ -166,7 +173,6 @@ const AmendBooking = () => {
     const twentyFourHoursInMs = 24 * 60 * 60 * 1000;
     return (now - checkinTimestamp) > twentyFourHoursInMs;
   };
-
   // Get guest details for a booking
   const getGuestDetails = (booking) => {
     if (booking.source === 'offline' || booking.full_name) {
@@ -186,8 +192,7 @@ const AmendBooking = () => {
         guest_category: booking.guest_category,
         marital_status: booking.marital_status || 'Unmarried',
         anniversary_date: booking.anniversary_date,
-        gst_no: booking.gst_no,
-        company_name: booking.company_name
+        gst_no: booking.gst_no
       };
     }
     const guest = guests?.find(guest =>
@@ -195,13 +200,13 @@ const AmendBooking = () => {
       guest.id === booking.guest_id ||
       guest._id === booking.guest_id
     ) || {};
-    
+   
     return {
       ...guest,
-      marital_status: booking.marital_status || 'Unmarried'
+      marital_status: booking.marital_status || 'Unmarried',
+      gst_no: booking.gst_no
     };
   };
-
   // Get room details for a room ID
   const getRoomDetails = (roomId) => {
     return rooms?.find(room =>
@@ -210,7 +215,6 @@ const AmendBooking = () => {
       room._id === roomId
     ) || {};
   };
-
   // Get available rooms (status = "Vacant") and current room
   const getAvailableRooms = (currentRoomId) => {
     const availableRooms = rooms?.filter(room => room.status === "Vacant") || [];
@@ -220,7 +224,6 @@ const AmendBooking = () => {
     }
     return availableRooms;
   };
-
   // Get array of room IDs from booking
   const getCurrentRoomIds = (booking) => {
     if (Array.isArray(booking.room_id)) {
@@ -228,7 +231,6 @@ const AmendBooking = () => {
     }
     return booking.room_id ? [booking.room_id] : [];
   };
-
   // Convert services object to use room numbers as keys instead of UUIDs
   const convertServicesToRoomNumbers = (services, roomId) => {
     if (!services || typeof services !== 'object') return {};
@@ -247,19 +249,16 @@ const AmendBooking = () => {
     });
     return convertedServices;
   };
-
   // Filter checked-in bookings
   const checkedInBookings = bookings?.filter(booking =>
     booking.status === 'Checked-in' || booking.status === 'checked-in'
   ) || [];
-
   // Filter bookings based on search
   const filteredBookings = checkedInBookings.filter(booking => {
     const guest = getGuestDetails(booking);
     const guestName = guest.full_name || guest.name || guest.guest_name || '';
     const searchLower = searchTerm.toLowerCase();
     const firstRoomId = getCurrentRoomIds(booking)[0];
-
     return (
       (booking.booking_id && booking.booking_id.toString().toLowerCase().includes(searchLower)) ||
       guestName.toLowerCase().includes(searchLower) ||
@@ -268,7 +267,6 @@ const AmendBooking = () => {
       (booking.booking_source && booking.booking_source.toLowerCase().includes(searchLower))
     );
   });
-
   // Format date for display
   const formatDate = (dateValue) => {
     if (!dateValue) return 'N/A';
@@ -279,16 +277,13 @@ const AmendBooking = () => {
       day: 'numeric',
     });
   };
-
   // Format date for input
   const formatDateForInput = (dateValue) => {
     if (!dateValue) return '';
     const date = new Date(dateValue);
     return date.toISOString().split('T')[0];
   };
-
   // ----------- MULTI-ROOM DROPDOWN LOGIC START -----------
-
   // Helper: Get available rooms for a given dropdown index, removing rooms already picked in other dropdowns (except its own)
   const getAvailableRoomsForDropdown = (currentRoomIds, idx) => {
     const selectedRoomIds = currentRoomIds.filter((rid, i) => i !== idx);
@@ -298,7 +293,6 @@ const AmendBooking = () => {
       return false;
     });
   };
-
   // Change handler: update room_ids and ensure uniqueness
   const handleRoomIdChange = (index, value) => {
     setFormData(prev => {
@@ -318,7 +312,6 @@ const AmendBooking = () => {
             return p;
           })
         : prev.extra_pax;
-
       return {
         ...prev,
         room_ids: newRoomIds,
@@ -327,9 +320,7 @@ const AmendBooking = () => {
       };
     });
   };
-
   // ----------- MULTI-ROOM DROPDOWN LOGIC END -----------
-
   // Helpers for today's room charge editing
   const getTodayYMD = () => {
     const d = new Date();
@@ -338,13 +329,11 @@ const AmendBooking = () => {
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   };
-
   const getPrimaryRoomNumber = () => {
     const primaryRoomId = (formData?.room_ids && formData.room_ids[0]) || (editingBooking ? getCurrentRoomIds(editingBooking)[0] : '');
     const room = getRoomDetails(primaryRoomId);
     return room.room_number || primaryRoomId || '';
   };
-
   const getTodayRoomCharge = () => {
     const roomNumber = getPrimaryRoomNumber();
     const todayKey = getTodayYMD();
@@ -357,7 +346,6 @@ const AmendBooking = () => {
     const roomChargesMap = formData?.room_charges || (editingBooking?.room_charges || {});
     return roomChargesMap?.[roomNumber] ?? '';
   };
-
   const setTodayRoomCharge = (amount) => {
     const roomNumber = getPrimaryRoomNumber();
     const todayKey = getTodayYMD();
@@ -388,7 +376,6 @@ const AmendBooking = () => {
       };
     });
   };
-
   // Handle other form input changes
   const handleInputChange = (field, value) => {
     setFormData(prev => {
@@ -397,7 +384,6 @@ const AmendBooking = () => {
         return { ...prev, [field]: timestamp };
       }
       const next = { ...prev, [field]: value };
-
       // When number of adults changes, ensure today's room charge entry exists (keep current value if any)
       if (field === 'no_of_adults') {
         const roomNumber = getPrimaryRoomNumber();
@@ -409,12 +395,10 @@ const AmendBooking = () => {
           const oldAdults = parseInt(prev.no_of_adults) || 1;
           const newAdults = parseInt(value) || 1;
           const ratio = (oldAdults > 0) ? (newAdults / oldAdults) : 1;
-
           const hasTodayService = !!roomServices[todayKey];
           const serviceAmount = hasTodayService
             ? (roomServices[todayKey]?.room_charges ?? null)
             : null;
-
           if (hasTodayService && serviceAmount !== null) {
             const newAmount = Math.round(Number(serviceAmount) * ratio);
             next.services = {
@@ -460,23 +444,25 @@ const AmendBooking = () => {
           }
         }
       }
-
       return next;
     });
   };
-
   // Reset form to original booking data
   const resetForm = () => {
     if (!editingBooking) return;
     const guest = getGuestDetails(editingBooking);
     const currentRoomIds = getCurrentRoomIds(editingBooking);
-
     // Company init (from booking)
     const initialCompanyId = editingBooking.company_id || '';
-    const initialCompanyName = getCompanyNameById(initialCompanyId) || '';
+    let initialCompanyName = initialCompanyId ? getCompanyNameById(initialCompanyId) : (editingBooking.company_name || '');
+    if (initialCompanyName === 'N/A') initialCompanyName = '';
     setCompanyQuery(initialCompanyName);
-
-  setFormData({
+    if (!initialCompanyId && initialCompanyName) {
+      setNewGstNo(editingBooking.gst_no || '');
+    } else {
+      setNewGstNo('');
+    }
+    setFormData({
       full_name: guest.full_name || guest.name || '',
       mobile: guest.mobile || '',
       email: guest.email || '',
@@ -493,7 +479,6 @@ const AmendBooking = () => {
       marital_status: editingBooking.marital_status || 'Unmarried',
       anniversary_date: editingBooking.anniversary_date || '',
       gst_no: guest.gst_no || '',
-
       checkin_date: editingBooking.checkin_date ? Number(editingBooking.checkin_date) : '',
       checkout_date: editingBooking.checkout_date ? Number(editingBooking.checkout_date) : '',
       room_ids: currentRoomIds,
@@ -513,11 +498,12 @@ const AmendBooking = () => {
             room_id: p?.room_id ?? (currentRoomIds && currentRoomIds[0] ? currentRoomIds[0] : '')
           }))
         : [],
-      company_id: initialCompanyId
+      company_id: initialCompanyId,
+      partial_payment_amount: editingBooking.partial_payment_amount || 0,
+      advance_payment_mode: editingBooking.advance_payment_mode || '',
+      advance_payment_upi_mode: editingBooking.advance_payment_upi_mode || '',
     });
-
     toast.success('Form reset to original values');
-
     // Reinitialize per-adult base from current today's charge and adults after reset
     setTimeout(() => {
       const roomId0 = currentRoomIds[0];
@@ -532,20 +518,24 @@ const AmendBooking = () => {
       setPerAdultBase(Number(todayAmt) / (adults > 0 ? adults : 1));
       setManualChargeEdited(false);
     }, 0);
+    setNewAdvanceAmount('');
   };
-
   // Open edit dialog
   const openEditDialog = (booking) => {
     const guest = getGuestDetails(booking);
     const currentRoomIds = getCurrentRoomIds(booking);
-
     // Company init (from booking)
     const initialCompanyId = booking.company_id || '';
-    const initialCompanyName = getCompanyNameById(initialCompanyId) || '';
+    let initialCompanyName = initialCompanyId ? getCompanyNameById(initialCompanyId) : (booking.company_name || '');
+    if (initialCompanyName === 'N/A') initialCompanyName = '';
     setCompanyQuery(initialCompanyName);
-
+    if (!initialCompanyId && initialCompanyName) {
+      setNewGstNo(booking.gst_no || '');
+    } else {
+      setNewGstNo('');
+    }
     setEditingBooking(booking);
-  setFormData({
+    setFormData({
       full_name: guest.full_name || guest.name || '',
       mobile: guest.mobile || '',
       email: guest.email || '',
@@ -562,7 +552,6 @@ const AmendBooking = () => {
       marital_status: booking.marital_status || 'Unmarried',
       anniversary_date: booking.anniversary_date || '',
       gst_no: guest.gst_no || '',
-
       checkin_date: booking.checkin_date ? Number(booking.checkin_date) : '',
       checkout_date: booking.checkout_date ? Number(booking.checkout_date) : '',
       room_ids: currentRoomIds,
@@ -582,10 +571,12 @@ const AmendBooking = () => {
             room_id: p?.room_id ?? (currentRoomIds && currentRoomIds[0] ? currentRoomIds[0] : '')
           }))
         : [],
-      company_id: initialCompanyId
+      company_id: initialCompanyId,
+      partial_payment_amount: booking.partial_payment_amount || 0,
+      advance_payment_mode: booking.advance_payment_mode || '',
+      advance_payment_upi_mode: booking.advance_payment_upi_mode || '',
     });
     setShowEditDialog(true);
-
     // Initialize per-adult base from current today's charge and adults
     setTimeout(() => {
       const todayAmt = (() => {
@@ -601,27 +592,27 @@ const AmendBooking = () => {
       setPerAdultBase(Number(todayAmt) / (adults > 0 ? adults : 1));
       setManualChargeEdited(false);
     }, 0);
+    setNewAdvanceAmount('');
   };
-
   // Print check-in form
   const printCheckinForm = (booking) => {
     const guest = getGuestDetails(booking);
     const currentRoomIds = getCurrentRoomIds(booking);
     const rooms = currentRoomIds.map(roomId => getRoomDetails(roomId));
-    const companyName = getCompanyNameById(booking.company_id) || '';
-    
+    const companyName = getCompanyNameById(booking.company_id) || booking.company_name || '';
+   
     // Calculate stay duration
     const stayDuration = Math.ceil((new Date(booking.checkout_date) - new Date(booking.checkin_date)) / (1000 * 60 * 60 * 24));
-    
+   
     // Format dates
     const checkinDate = formatDate(booking.checkin_date);
     const checkoutDate = formatDate(booking.checkout_date);
     const bookingDate = formatDate(booking.booking_date);
-    
+   
     // Calculate room charges and taxes
     const roomCharges = booking.room_charges ? Object.values(booking.room_charges).reduce((sum, charge) => sum + parseFloat(charge || 0), 0) : 0;
     const roomChargesPerNight = stayDuration > 0 ? roomCharges / stayDuration : 0;
-    
+   
     // Calculate individual room charges for display
     const individualRoomCharges = currentRoomIds.map(roomId => {
       const roomObj = getRoomDetails(roomId);
@@ -635,7 +626,7 @@ const AmendBooking = () => {
     const sgstPerNight = Math.round((parseFloat(roomChargesPerNight) * 0.025) * 100) / 100;
     const totalAmount = parseFloat(roomCharges) + cgst + sgst;
     const totalAmountPerNight = parseFloat(roomChargesPerNight) + cgstPerNight + sgstPerNight;
-    
+   
     // Create print content
     const printContent = `
       <!DOCTYPE html>
@@ -696,7 +687,7 @@ const AmendBooking = () => {
         <div class="header">
           <div class="form-title"> REGISTRATION FORM</div>
         </div>
-        
+       
         <div class="section">
           <div class="section-title">Check-in & Guest Information</div>
           <div class="info-grid">
@@ -786,7 +777,7 @@ const AmendBooking = () => {
             <span class="info-value">${guest.address || 'N/A'}, ${guest.city || 'N/A'}, ${guest.state || 'N/A'} - ${guest.pincode || 'N/A'}, ${guest.country || 'N/A'}</span>
           </div>
         </div>
-        
+       
         ${(companyName && companyName !== 'N/A') || (booking.gst_no && booking.gst_no !== 'N/A') ? `
         <div class="section">
           <div class="section-title">Company Information</div>
@@ -806,7 +797,7 @@ const AmendBooking = () => {
           </div>
         </div>
         ` : ''}
-        
+       
         <div class="section">
           <div class="section-title">Room Charges</div>
           <div class="info-grid">
@@ -842,7 +833,7 @@ const AmendBooking = () => {
             </div>
           </div>
         </div>
-        
+       
         ${booking.special_requests || booking.remarks ? `
         <div class="section">
           <div class="section-title">Additional Information</div>
@@ -860,7 +851,7 @@ const AmendBooking = () => {
           ` : ''}
         </div>
         ` : ''}
-        
+       
         <div class="section">
           <div class="section-title">Terms & Conditions</div>
           <div class="terms-content">
@@ -882,7 +873,7 @@ const AmendBooking = () => {
             </div>
           </div>
         </div>
-        
+       
         <div class="signature-section">
           <div class="signature-box">
             <div class="signature-line"></div>
@@ -900,7 +891,7 @@ const AmendBooking = () => {
             <div class="signature-date">Date: _______________</div>
           </div>
         </div>
-        
+       
         <div class="footer">
           <p><strong>HOTEL MANAGEMENT SYSTEM</strong></p>
           <p>This is a computer-generated check-in form. Please sign above to confirm agreement to terms & conditions.</p>
@@ -910,7 +901,7 @@ const AmendBooking = () => {
       </body>
       </html>
     `;
-    
+   
     // Create a hidden iframe for printing
     const iframe = document.createElement('iframe');
     iframe.style.position = 'absolute';
@@ -919,21 +910,21 @@ const AmendBooking = () => {
     iframe.style.width = '0';
     iframe.style.height = '0';
     iframe.style.border = 'none';
-    
+   
     document.body.appendChild(iframe);
-    
+   
     // Flag to prevent duplicate print calls
     let hasPrinted = false;
-    
+   
     const printAndCleanup = () => {
       if (hasPrinted) return;
       hasPrinted = true;
-      
+     
       if (iframe.contentWindow) {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
       }
-      
+     
       // Clean up after printing
       setTimeout(() => {
         if (document.body.contains(iframe)) {
@@ -941,88 +932,124 @@ const AmendBooking = () => {
         }
       }, 1000);
     };
-    
+   
     // Write content to iframe
     const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
     iframeDoc.open();
     iframeDoc.write(printContent);
     iframeDoc.close();
-    
+   
     // Wait for content to load, then print
     iframe.onload = () => {
       printAndCleanup();
     };
-    
+   
     // Fallback: if onload doesn't fire, print after a short delay
     setTimeout(() => {
       printAndCleanup();
     }, 500);
   };
-
   // Save booking amendments
   const saveAmendments = async () => {
     if (!editingBooking) return;
-
     const isOldCheckin = isCheckinOld(editingBooking.checkin_date);
-
     if (!formData.room_ids || formData.room_ids.some(id => !id)) {
       toast.error('Please select all rooms');
       return;
     }
-
+    const currentIsNewCompany = companyQuery && !formData.company_id && filteredCompanies.length === 0;
+    if (currentIsNewCompany) {
+      const gst = newGstNo.trim();
+      if (!gst) {
+        toast.error('GST No is required for new company');
+        return;
+      }
+    }
     // ...other validation logic as in your original code...
-
-    const guestPayload = isOldCheckin ? {
+    const guestPayloadBase = {
       guest_id: editingBooking.guest_id,
-      updated_at: Math.floor(Date.now())
-    } : {
-      guest_id: editingBooking.guest_id,
-      full_name: formData.full_name.trim(),
-      mobile: formData.mobile.trim(),
-      email: formData.email?.trim() || '',
-      gender: formData.gender,
-      nationality: formData.nationality.trim(),
-      id_proof_type: formData.id_proof_type,
-      id_proof_number: formData.id_proof_number.trim(),
-      address: formData.address.trim(),
-      city: formData.city.trim(),
-      state: formData.state.trim(),
-      pincode: formData.pincode.trim(),
-      country: formData.country.trim(),
-      guest_category: formData.guest_category,
-      marital_status: formData.marital_status,
-      anniversary_date: formData.anniversary_date,
-      gst_no: formData.gst_no?.trim() || '',
       updated_at: Math.floor(Date.now())
     };
-
-    const bookingPayload = isOldCheckin ? {
+    let finalGstNo = formData.gst_no?.trim() || '';
+    if (currentIsNewCompany) {
+      finalGstNo = newGstNo.trim();
+    }
+    const guestPayload = {
+      ...guestPayloadBase,
+      gst_no: finalGstNo
+    };
+    if (!isOldCheckin) {
+      guestPayload.full_name = formData.full_name.trim();
+      guestPayload.mobile = formData.mobile.trim();
+      guestPayload.email = formData.email?.trim() || '';
+      guestPayload.gender = formData.gender;
+      guestPayload.nationality = formData.nationality.trim();
+      guestPayload.id_proof_type = formData.id_proof_type;
+      guestPayload.id_proof_number = formData.id_proof_number.trim();
+      guestPayload.address = formData.address.trim();
+      guestPayload.city = formData.city.trim();
+      guestPayload.state = formData.state.trim();
+      guestPayload.pincode = formData.pincode.trim();
+      guestPayload.country = formData.country.trim();
+      guestPayload.guest_category = formData.guest_category;
+      guestPayload.marital_status = formData.marital_status;
+      guestPayload.anniversary_date = formData.anniversary_date;
+    }
+    const bookingPayloadBase = {
       booking_id: editingBooking.booking_id,
       room_id: formData.room_ids,
       room_type: formData.room_type,
-      rate_plan_id: formData.rate_plan_id,
-      company_id: formData.company_id || '',
       no_of_adults: parseInt(formData.no_of_adults) || 1,
       services: formData.services || {},
-      updated_at: Math.floor(Date.now())
-    } : {
-      booking_id: editingBooking.booking_id,
-      checkout_date: Number(formData.checkout_date),
-      room_id: formData.room_ids,
-      room_type: formData.room_type,
-      no_of_adults: parseInt(formData.no_of_adults) || 1,
-      no_of_children: parseInt(formData.no_of_children) || 0,
-      discount: Math.round((parseFloat(formData.discount) || 0) * 100) / 100,
-      booking_source: formData.booking_source || 'Direct',
-      rate_plan_id: formData.rate_plan_id,
-      remarks: formData.remarks || '',
-      special_requests: formData.special_requests || '',
-      company_id: formData.company_id || '',
-      services: formData.services || {},
-      extra_pax: Array.isArray(formData.extra_pax) ? formData.extra_pax : [],
       updated_at: Math.floor(Date.now())
     };
-
+    // Company handling: auto-create when new name + GST are provided
+    try {
+      if (currentIsNewCompany) {
+        if (typeof createCompany === 'function') {
+          const created = await createCompany({
+            name: companyQuery.trim(),
+            gst_no: newGstNo.trim()
+          });
+          const newId = created?.company_id || created?.id || created?._id;
+          if (newId) {
+            bookingPayloadBase.company_id = newId;
+          } else {
+            // Fallback to company_name if API didn't return an id
+            bookingPayloadBase.company_name = companyQuery.trim();
+          }
+        } else {
+          bookingPayloadBase.company_name = companyQuery.trim();
+        }
+      } else {
+        bookingPayloadBase.company_id = formData.company_id || '';
+      }
+    } catch (e) {
+      console.error('Auto-create company failed:', e);
+      toast.error('Failed to create company. Proceeding without company link.');
+      bookingPayloadBase.company_name = companyQuery.trim();
+    }
+    const prevAdvance = parseFloat(editingBooking.partial_payment_amount) || 0;
+    const inputAdvance = parseFloat(newAdvanceAmount) || 0;
+    const totalAdvance = prevAdvance + inputAdvance;
+    const bookingPayload = {
+      ...bookingPayloadBase,
+      partial_payment_amount: totalAdvance, // Use summed amount here
+      advance_payment_mode: formData.advance_payment_mode || '',
+      advance_payment_upi_mode: formData.advance_payment_upi_mode || '',
+    };
+    if (!isOldCheckin) {
+      bookingPayload.checkout_date = Number(formData.checkout_date);
+      bookingPayload.no_of_children = parseInt(formData.no_of_children) || 0;
+      bookingPayload.discount = Math.round((parseFloat(formData.discount) || 0) * 100) / 100;
+      bookingPayload.booking_source = formData.booking_source || 'Direct';
+      bookingPayload.rate_plan_id = formData.rate_plan_id;
+      bookingPayload.remarks = formData.remarks || '';
+      bookingPayload.special_requests = formData.special_requests || '';
+      bookingPayload.extra_pax = Array.isArray(formData.extra_pax) ? formData.extra_pax : [];
+    } else {
+      bookingPayload.rate_plan_id = formData.rate_plan_id;
+    }
     setLoading(true);
     try {
       await amendBooking({
@@ -1030,7 +1057,22 @@ const AmendBooking = () => {
         bookingData: bookingPayload,
         guestData: guestPayload
       });
-
+      // Expense Accounting: Only if cash, inputAdvance > 0
+      if (formData.advance_payment_mode === 'Cash' && inputAdvance > 0) {
+        try {
+          const cashReceivedData = {
+            date: new Date().toLocaleDateString('en-GB'),
+            name: editingBooking.booking_id + '',
+            amount: inputAdvance,
+            description: `Advance payment (cash) - Amendment, Booking ${editingBooking.booking_id}`,
+            receivedId: Math.random().toString(36).substr(2, 9),
+            bill_id: editingBooking.booking_id,
+          };
+          await addExpense({ received: cashReceivedData });
+        } catch (e) {
+          toast.error('Advance payment not added to cash drawer.');
+        }
+      }
       // Handle room status changes for all rooms
       const originalRoomIds = getCurrentRoomIds(editingBooking);
       const newRoomIds = formData.room_ids;
@@ -1043,13 +1085,12 @@ const AmendBooking = () => {
         }
         if (fetchRooms) await fetchRooms();
       }
-
       toast.success('Check-in amended successfully!');
       setShowEditDialog(false);
       setEditingBooking(null);
       setFormData({});
       setCompanyQuery('');
-
+      setNewGstNo('');
       if (fetchBookings) await fetchBookings();
       if (fetchGuests) await fetchGuests();
     } catch (error) {
@@ -1059,7 +1100,18 @@ const AmendBooking = () => {
       setLoading(false);
     }
   };
-
+  const isOldCheckin = editingBooking ? isCheckinOld(editingBooking.checkin_date) : false;
+  const [newAdvanceAmount, setNewAdvanceAmount] = useState('');
+  const upiPlatforms = [
+    { value: 'Paytm', label: 'Paytm' },
+    { value: 'PhonePe', label: 'PhonePe' },
+    { value: 'Google Pay', label: 'Google Pay' },
+    { value: 'Amazon Pay', label: 'Amazon Pay' },
+    { value: 'BHIM', label: 'BHIM' },
+    { value: 'Mobikwik', label: 'Mobikwik' },
+    { value: 'Freecharge', label: 'Freecharge' },
+    { value: 'Others', label: 'Others' },
+  ];
   return (
     <div className="pl-6 max-sm:p-4">
       <div className="mb-8 flex justify-between items-start">
@@ -1073,7 +1125,6 @@ const AmendBooking = () => {
           size="sm"
         />
       </div>
-
       {/* Search and Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
         <div className="lg:col-span-3">
@@ -1097,7 +1148,6 @@ const AmendBooking = () => {
             </CardContent>
           </Card>
         </div>
-
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center">
@@ -1110,7 +1160,6 @@ const AmendBooking = () => {
           </CardContent>
         </Card>
       </div>
-
       {/* Bookings List */}
       <div className="overflow-x-auto">
         {filteredBookings.length === 0 ? (
@@ -1142,8 +1191,7 @@ const AmendBooking = () => {
               const room = getRoomDetails(currentRoomIds[0]);
               const stayDuration = Math.ceil((new Date(booking.checkout_date) - new Date(booking.checkin_date)) / (1000 * 60 * 60 * 24));
               const isOldCheckin = isCheckinOld(booking.checkin_date);
-              const companyName = getCompanyNameById(booking.company_id) || '';
-
+              const companyName = getCompanyNameById(booking.company_id) || booking.company_name || '';
               return (
                 <tr key={booking.booking_id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="px-2 py-2 whitespace-nowrap max-w-[14rem]">
@@ -1151,7 +1199,7 @@ const AmendBooking = () => {
                         <span className="truncate font-medium">
                           {guest.full_name || guest.name || guest.guest_name || 'Guest Name Not Available'}
                         </span>
-                      {!!companyName && (
+                      {!!companyName && companyName !== 'N/A' && (
                         <span className="text-[11px] text-gray-500 truncate">
                             Company: {companyName}
                           </span>
@@ -1193,657 +1241,6 @@ const AmendBooking = () => {
                         <Printer className="h-4 w-4 mr-1" /> Print
                       </Button>
                     </div>
-
-                    {showEditDialog && editingBooking?.booking_id === booking.booking_id && (
-                      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-lg shadow-xl px-4 max-w-[95vw] max-h-[95vh] overflow-y-auto">
-                          <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                            <div>
-                              <h2 className="text-xl font-semibold text-gray-900">Amend Check-in - {booking.booking_id}</h2>
-                              {isOldCheckin && (
-                                <p className="text-sm text-amber-600 flex items-center gap-1 mt-1">
-                                  <AlertCircle className="h-4 w-4" />
-                                  Check-in is more than 24 hours old. Only rate plan, room and adults can be modified.
-                                </p>
-                              )}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setShowEditDialog(false)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {/* Guest Details Section */}
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
-                                <User className="h-3 w-3" />
-                                Guest Information
-                              </h4>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                  <Label className="text-sm font-medium text-gray-700">Full Name *</Label>
-                                  <Input
-                                    value={formData.full_name || ''}
-                                    onChange={(e) => handleInputChange('full_name', e.target.value)}
-                                    placeholder="Enter full name"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Mobile Number *</Label>
-                                  <Input
-                                    value={formData.mobile || ''}
-                                    onChange={(e) => handleInputChange('mobile', e.target.value)}
-                                    placeholder="Enter mobile number"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Email</Label>
-                                  <Input
-                                    value={formData.email || ''}
-                                    onChange={(e) => handleInputChange('email', e.target.value)}
-                                    placeholder="Enter email address"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Gender *</Label>
-                                  <Select
-                                    value={formData.gender || ''}
-                                    onValueChange={(value) => handleInputChange('gender', value)}
-                                    disabled={isOldCheckin}
-                                  >
-                                    <SelectTrigger className="h-7 text-xs">
-                                      <SelectValue placeholder="Select gender" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Male">Male</SelectItem>
-                                      <SelectItem value="Female">Female</SelectItem>
-                                      <SelectItem value="Other">Other</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Nationality *</Label>
-                                  <Input
-                                    value={formData.nationality || ''}
-                                    onChange={(e) => handleInputChange('nationality', e.target.value)}
-                                    placeholder="Enter nationality"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">ID Proof Type *</Label>
-                                  <Select
-                                    value={formData.id_proof_type || ''}
-                                    onValueChange={(value) => handleInputChange('id_proof_type', value)}
-                                    disabled={isOldCheckin}
-                                  >
-                                    <SelectTrigger className="h-7 text-xs">
-                                      <SelectValue placeholder="Select ID type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Aadhar">Aadhar Card</SelectItem>
-                                      <SelectItem value="PAN">PAN Card</SelectItem>
-                                      <SelectItem value="Passport">Passport</SelectItem>
-                                      <SelectItem value="Driving License">Driving License</SelectItem>
-                                      <SelectItem value="Voter ID">Voter ID</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">ID Proof Number *</Label>
-                                  <Input
-                                    value={formData.id_proof_number || ''}
-                                    onChange={(e) => handleInputChange('id_proof_number', e.target.value)}
-                                    placeholder="Enter ID number"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Address *</Label>
-                                  <Input
-                                    value={formData.address || ''}
-                                    onChange={(e) => handleInputChange('address', e.target.value)}
-                                    placeholder="Enter full address"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">City *</Label>
-                                  <Input
-                                    value={formData.city || ''}
-                                    onChange={(e) => handleInputChange('city', e.target.value)}
-                                    placeholder="Enter city"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">State *</Label>
-                                  <Input
-                                    value={formData.state || ''}
-                                    onChange={(e) => handleInputChange('state', e.target.value)}
-                                    placeholder="Enter state"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Country *</Label>
-                                  <Input
-                                    value={formData.country || ''}
-                                    onChange={(e) => handleInputChange('country', e.target.value)}
-                                    placeholder="Enter country"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Pincode *</Label>
-                                  <Input
-                                    value={formData.pincode || ''}
-                                    onChange={(e) => handleInputChange('pincode', e.target.value)}
-                                    placeholder="Enter pincode"
-                                    className="h-7 text-xs"
-                                    disabled={isOldCheckin}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Guest Category *</Label>
-                                  <Select
-                                    value={formData.guest_category || ''}
-                                    onValueChange={(value) => handleInputChange('guest_category', value)}
-                                    disabled={isOldCheckin}
-                                  >
-                                    <SelectTrigger className="h-7 text-xs">
-                                      <SelectValue placeholder="Select category" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="VIP">VIP</SelectItem>
-                                      <SelectItem value="Regular">Regular</SelectItem>
-                                      <SelectItem value="New">New</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Marital Status *</Label>
-                                  <Select
-                                    value={formData.marital_status || ''}
-                                    onValueChange={(value) => handleInputChange('marital_status', value)}
-                                    disabled={isOldCheckin}
-                                  >
-                                    <SelectTrigger className="h-7 text-xs">
-                                      <SelectValue placeholder="Select marital status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Married">Married</SelectItem>
-                                      <SelectItem value="Unmarried">Unmarried</SelectItem>
-                                      <SelectItem value="Divorced">Divorced</SelectItem>
-                                      <SelectItem value="Widowed">Widowed</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                {formData.marital_status === "Married" && (
-                                  <div>
-                                    <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                                      <Calendar className="h-3 w-3 text-gray-500" />
-                                      Anniversary Date
-                                    </Label>
-                                    <Input
-                                      type="date"
-                                      value={formData.anniversary_date ? new Date(formData.anniversary_date).toISOString().split('T')[0] : ""}
-                                      onChange={(e) => {
-                                        const dateValue = e.target.value;
-                                        if (dateValue) {
-                                          const isoDate = new Date(dateValue + 'T00:00:00').toISOString();
-                                          handleInputChange("anniversary_date", isoDate);
-                                        } else {
-                                          handleInputChange("anniversary_date", "");
-                                        }
-                                      }}
-                                      className="h-7 text-xs"
-                                      disabled={isOldCheckin}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Booking Details Section */}
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
-                                <Calendar className="h-3 w-3" />
-                                Booking Information
-                              </h4>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Check-in Date *</Label>
-                                  <Input
-                                    type="date"
-                                    value={formData.checkin_date ? formatDateForInput(formData.checkin_date) : ''}
-                                    className="h-7 text-xs bg-gray-100"
-                                    readOnly
-                                    disabled
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Check-out Date *</Label>
-                                  <Input
-                                    type="date"
-                                    value={formData.checkout_date ? formatDateForInput(formData.checkout_date) : ''}
-                                    onChange={(e) => handleInputChange('checkout_date', e.target.value)}
-                                    className="h-7 text-xs"
-                                    disabled={isCheckinOld(editingBooking?.checkin_date)}
-                                  />
-                                </div>
-                                {formData.room_ids && formData.room_ids.map((roomId, idx) => (
-                                  <div key={idx}>
-                                    <Label className="text-xs font-medium text-gray-700">
-                                      Room {idx + 1} *
-                                    </Label>
-                                    <Select
-                                      value={roomId || ''}
-                                      onValueChange={(value) => handleRoomIdChange(idx, value)}
-                                    >
-                                      <SelectTrigger className="h-7 text-xs">
-                                        <SelectValue placeholder="Select room" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {getAvailableRoomsForDropdown(formData.room_ids, idx).length > 0 ? (
-                                          getAvailableRoomsForDropdown(formData.room_ids, idx).map((room) => (
-                                            <SelectItem key={room.room_id} value={room.room_id}>
-                                              <div className="flex items-center justify-between">
-                                                <span>Room {room.room_number}</span>
-                                                <span className="text-xs text-gray-500 ml-2">({room.room_type})</span>
-                                                {room.room_id === editingBooking?.room_id?.[idx] && (
-                                                  <span className="text-xs text-blue-600 ml-2">(Current)</span>
-                                                )}
-                                              </div>
-                                            </SelectItem>
-                                          ))
-                                        ) : (
-                                          <SelectItem value="no-rooms" disabled>
-                                            No available rooms
-                                          </SelectItem>
-                                        )}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                ))}
-                                {/*<div>*/}
-                                {/*  <Label className="text-xs font-medium text-gray-700">Room Type</Label>*/}
-                                {/*  <Input*/}
-                                {/*    value={formData.room_type || ''}*/}
-                                {/*    placeholder="Auto-filled based on room selection"*/}
-                                {/*    className="h-7 text-xs bg-gray-100"*/}
-                                {/*    readOnly*/}
-                                {/*  />*/}
-                                {/*</div>*/}
-                                {/*<div>*/}
-                                {/*  <Label className="text-xs font-medium text-gray-700">Rate Plan *</Label>*/}
-                                {/*  <Select value={formData.rate_plan_id || ''} onValueChange={(value) => handleInputChange('rate_plan_id', value)}>*/}
-                                {/*    <SelectTrigger className="h-7 text-xs">*/}
-                                {/*      <SelectValue placeholder="Select rate plan" />*/}
-                                {/*    </SelectTrigger>*/}
-                                {/*    <SelectContent>*/}
-                                {/*      {ratePlans && ratePlans.length > 0 ? (*/}
-                                {/*        ratePlans.map((plan) => (*/}
-                                {/*          <SelectItem key={plan.plan_id} value={plan.plan_id}>*/}
-                                {/*            {plan.name} - ₹{(plan.base_tariff).toLocaleString()}*/}
-                                {/*            <span className="text-sm text-gray-500 ml-2">({plan.meal_plan})</span>*/}
-                                {/*          </SelectItem>*/}
-                                {/*        ))*/}
-                                {/*      ) : (*/}
-                                {/*        <SelectItem value="no-plans" disabled>*/}
-                                {/*          No rate plans available*/}
-                                {/*        </SelectItem>*/}
-                                {/*      )}*/}
-                                {/*    </SelectContent>*/}
-                                {/*  </Select>*/}
-                                {/*</div>*/}
-                                <div ref={companyFieldRef}>
-                                  <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                                    <Building className="h-3 w-3 text-gray-500" />
-                                    Company
-                                  </Label>
-                                  <div className="relative">
-                                    <Input
-                                      value={companyQuery}
-                                      onChange={(e) => handleCompanyInputChange(e.target.value)}
-                                      onFocus={() => setShowCompanyDropdown(true)}
-                                      placeholder="Search company (optional)"
-                                      className="h-7 text-xs pr-7"
-                                      disabled={isCheckinOld(editingBooking?.checkin_date)}
-                                    />
-                                    {(companyQuery || formData?.company_id) && !isCheckinOld(editingBooking?.checkin_date) && (
-                                      <button
-                                        type="button"
-                                        aria-label="Clear selected company"
-                                        onClick={clearSelectedCompany}
-                                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                      >
-                                        <X className="h-4 w-4" />
-                                      </button>
-                                    )}
-                                    {showCompanyDropdown && !isCheckinOld(editingBooking?.checkin_date) && (
-                                      <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
-                                        <ul className="max-h-56 overflow-auto py-1">
-                                          {filteredCompanies.length > 0 ? (
-                                            filteredCompanies.map((c) => {
-                                              const name = getCompanyName(c);
-                                              return (
-                                                <li
-                                                  key={getCompanyId(c)}
-                                                  onMouseDown={(e) => {
-                                                    e.preventDefault();
-                                                    handleCompanySelect(c);
-                                                  }}
-                                                  className="cursor-pointer px-3 py-2 hover:bg-gray-50"
-                                                >
-                                                  <div className="text-sm text-gray-900">
-                                                    {name}
-                                                  </div>
-                                                  {c?.gst_no && (
-                                                    <div className="text-xs text-gray-500">
-                                                      GST: {c.gst_no}
-                                                    </div>
-                                                  )}
-                                                </li>
-                                              );
-                                            })
-                                          ) : (
-                                            <li className="px-3 py-2 text-sm text-gray-500">
-                                              No companies found
-                                            </li>
-                                          )}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Booking Source</Label>
-                                  <Select
-                                    value={formData.booking_source || ''}
-                                    onValueChange={(value) => handleInputChange('booking_source', value)}
-                                    disabled={isCheckinOld(editingBooking?.checkin_date)}
-                                  >
-                                    <SelectTrigger className="h-7 text-xs">
-                                      <SelectValue placeholder="Select source" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Direct">Direct</SelectItem>
-                                      <SelectItem value="MakemyTrip">MakemyTrip</SelectItem>
-                                      <SelectItem value="Booking.com">Booking.com</SelectItem>
-                                      <SelectItem value="Agoda">Agoda</SelectItem>
-                                      <SelectItem value="Goibibo">Goibibo</SelectItem>
-                                      <SelectItem value="Yatra">Yatra</SelectItem>
-                                      <SelectItem value="Cleartrip">Cleartrip</SelectItem>
-                                      <SelectItem value="OYO">OYO</SelectItem>
-                                      <SelectItem value="Other">Other</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Adults (1-10)</Label>
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    max="10"
-                                    value={formData.no_of_adults || ''}
-                                    onChange={(e) => handleInputChange('no_of_adults', e.target.value)}
-                                    className="h-7 text-xs"
-                                    disabled={false}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Room Charges (Today) ₹</Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={getTodayRoomCharge()}
-                                    onChange={(e) => {
-                                      const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
-                                      setTodayRoomCharge(val);
-                                      // If adults > 0, recalibrate base per adult for auto-scaling
-                                      const adults = parseInt(formData?.no_of_adults) || 1;
-                                      if (adults > 0 && val !== '') {
-                                        setPerAdultBase(Number(val) / adults);
-                                      }
-                                      setManualChargeEdited(true);
-                                    }}
-                                    className="h-7 text-xs"
-                                    disabled={false}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs font-medium text-gray-700">Children (0-5)</Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    max="5"
-                                    value={formData.no_of_children || ''}
-                                    onChange={(e) => handleInputChange('no_of_children', e.target.value)}
-                                    className="h-7 text-xs"
-                                    disabled={isCheckinOld(editingBooking?.checkin_date)}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Additional Details Section - Full Width */}
-                            <div className="lg:col-span-2 bg-gray-50 p-3 rounded-lg">
-                              <div className="mb-3 flex items-center justify-between">
-                                <h4 className="font-medium text-gray-900 flex items-center gap-2 text-sm">
-                                  <Edit className="h-3 w-3" />
-                                  Additional Information
-                                </h4>
-                                <Button
-                                  type="button"
-                                  onClick={addPax}
-                                  className="h-9 md:h-10 px-3 md:px-4 text-xs md:text-sm bg-green-600 hover:bg-green-700 text-white shadow"
-                                >
-                                  <PlusCircle className="h-4 w-4 mr-2" />
-                                  Add PAX
-                                </Button>
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div className="md:col-span-1">
-                                  <Label className="text-xs font-medium text-gray-700">Special Requests</Label>
-                                  <Textarea
-                                    value={formData.special_requests || ''}
-                                    onChange={(e) => handleInputChange('special_requests', e.target.value)}
-                                    placeholder="Enter any special requests..."
-                                    className="text-xs min-h-[60px]"
-                                    disabled={isCheckinOld(editingBooking?.checkin_date)}
-                                  />
-                                </div>
-                                <div className="md:col-span-1">
-                                  <Label className="text-xs font-medium text-gray-700">Remarks</Label>
-                                  <Textarea
-                                    value={formData.remarks || ''}
-                                    onChange={(e) => handleInputChange('remarks', e.target.value)}
-                                    placeholder="Enter any remarks..."
-                                    className="text-xs min-h-[60px]"
-                                    disabled={isCheckinOld(editingBooking?.checkin_date)}
-                                  />
-                                </div>
-                              </div>
-                              {Array.isArray(formData?.extra_pax) && formData.extra_pax.length > 0 && (
-                                <div className="mt-3 space-y-2">
-                                  <h4 className="text-sm font-semibold text-gray-800">
-                                    PAX Details
-                                  </h4>
-                                  {formData.extra_pax.map((p, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="rounded-md border border-gray-200 bg-white p-3"
-                                    >
-                                      <div className="flex items-center justify-between mb-2">
-                                          <span className="text-xs font-medium text-gray-700">
-                                            PAX {idx + 1}
-                                          </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => removePax(idx)}
-                                          className="text-gray-500 hover:text-red-600"
-                                          aria-label={`Remove PAX ${idx + 1}`}
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                                        <div className="space-y-1">
-                                          <Label className="text-xs font-medium text-gray-700">
-                                            Full Name
-                                          </Label>
-                                          <Input
-                                            value={p.full_name || ''}
-                                            onChange={(e) =>
-                                              updatePaxField(idx, 'full_name', e.target.value)
-                                            }
-                                            placeholder="Enter full name"
-                                            className="h-7 text-xs"
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-xs font-medium text-gray-700">
-                                            Gender
-                                          </Label>
-                                          <Select
-                                            onValueChange={(value) => updatePaxField(idx, 'gender', value)}
-                                            value={p.gender || ''}
-                                          >
-                                            <SelectTrigger className="h-7 text-xs">
-                                              <SelectValue placeholder="Select gender" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="Male">Male</SelectItem>
-                                              <SelectItem value="Female">Female</SelectItem>
-                                              <SelectItem value="Other">Other</SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-xs font-medium text-gray-700">
-                                            Age
-                                          </Label>
-                                          <Input
-                                            type="number"
-                                            min="0"
-                                            max="120"
-                                            value={p.age ?? ''}
-                                            onChange={(e) =>
-                                              updatePaxField(
-                                                idx,
-                                                'age',
-                                                e.target.value === ''
-                                                  ? ''
-                                                  : Math.max(0, parseInt(e.target.value) || 0)
-                                              )
-                                            }
-                                            placeholder="Age"
-                                            className="h-7 text-xs"
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-xs font-medium text-gray-700">
-                                            PAX Amount (₹)
-                                          </Label>
-                                          <Input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={p.extra_pax_amount ?? 0}
-                                            onChange={(e) =>
-                                              updatePaxField(
-                                                idx,
-                                                'extra_pax_amount',
-                                                e.target.value === '' ? '' : parseFloat(e.target.value) || 0
-                                              )
-                                            }
-                                            placeholder="Enter amount"
-                                            className="h-7 text-xs"
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-xs font-medium text-gray-700">
-                                            Room
-                                          </Label>
-                                          <Select
-                                            value={p.room_id || ''}
-                                            onValueChange={(value) => updatePaxField(idx, 'room_id', value)}
-                                          >
-                                            <SelectTrigger className="h-7 text-xs">
-                                              <SelectValue placeholder="Select room" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {(formData?.room_ids || []).map((rid) => {
-                                                const r = getRoomDetails(rid);
-                                                return (
-                                                  <SelectItem key={rid} value={rid}>
-                                                    Room {r.room_number || rid}
-                                                    <span className="text-xs text-gray-500 ml-1">({r.room_type || 'Room'})</span>
-                                                  </SelectItem>
-                                                );
-                                              })}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-between">
-                            <Button
-                              variant="outline"
-                              onClick={resetForm}
-                              disabled={loading}
-                            >
-                              Reset
-                            </Button>
-                            <div className="flex items-center gap-3">
-                              <Button
-                                variant="outline"
-                                onClick={() => printCheckinForm(editingBooking)}
-                                disabled={loading}
-                              >
-                                <Printer className="h-4 w-4 mr-1" /> Print
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => setShowEditDialog(false)}
-                                disabled={loading}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                onClick={saveAmendments}
-                                disabled={loading}
-                              >
-                                {loading ? 'Saving...' : 'Save Changes'}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </td>
                 </tr>
               );
@@ -1852,6 +1249,689 @@ const AmendBooking = () => {
           </table>
         )}
       </div>
+      {/* Edit Modal - Moved outside table */}
+      {showEditDialog && editingBooking && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl px-4 max-w-[95vw] max-h-[95vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Amend Check-in - {editingBooking.booking_id}</h2>
+                {isOldCheckin && (
+                  <p className="text-sm text-amber-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="h-4 w-4" />
+                    Check-in is more than 24 hours old. Only rate plan, room and adults can be modified.
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowEditDialog(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+              {/* Guest Details Section */}
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
+                  <User className="h-3 w-3" />
+                  Guest Information
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Full Name *</Label>
+                    <Input
+                      value={formData.full_name || ''}
+                      onChange={(e) => handleInputChange('full_name', e.target.value)}
+                      placeholder="Enter full name"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Mobile Number *</Label>
+                    <Input
+                      value={formData.mobile || ''}
+                      onChange={(e) => handleInputChange('mobile', e.target.value)}
+                      placeholder="Enter mobile number"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Email</Label>
+                    <Input
+                      value={formData.email || ''}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                      placeholder="Enter email address"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Gender *</Label>
+                    <Select
+                      value={formData.gender || ''}
+                      onValueChange={(value) => handleInputChange('gender', value)}
+                      disabled={isOldCheckin}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Nationality *</Label>
+                    <Input
+                      value={formData.nationality || ''}
+                      onChange={(e) => handleInputChange('nationality', e.target.value)}
+                      placeholder="Enter nationality"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">ID Proof Type *</Label>
+                    <Select
+                      value={formData.id_proof_type || ''}
+                      onValueChange={(value) => handleInputChange('id_proof_type', value)}
+                      disabled={isOldCheckin}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select ID type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Aadhar">Aadhar Card</SelectItem>
+                        <SelectItem value="PAN">PAN Card</SelectItem>
+                        <SelectItem value="Passport">Passport</SelectItem>
+                        <SelectItem value="Driving License">Driving License</SelectItem>
+                        <SelectItem value="Voter ID">Voter ID</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">ID Proof Number *</Label>
+                    <Input
+                      value={formData.id_proof_number || ''}
+                      onChange={(e) => handleInputChange('id_proof_number', e.target.value)}
+                      placeholder="Enter ID number"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Address *</Label>
+                    <Input
+                      value={formData.address || ''}
+                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      placeholder="Enter full address"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">City *</Label>
+                    <Input
+                      value={formData.city || ''}
+                      onChange={(e) => handleInputChange('city', e.target.value)}
+                      placeholder="Enter city"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">State *</Label>
+                    <Input
+                      value={formData.state || ''}
+                      onChange={(e) => handleInputChange('state', e.target.value)}
+                      placeholder="Enter state"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Country *</Label>
+                    <Input
+                      value={formData.country || ''}
+                      onChange={(e) => handleInputChange('country', e.target.value)}
+                      placeholder="Enter country"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Pincode *</Label>
+                    <Input
+                      value={formData.pincode || ''}
+                      onChange={(e) => handleInputChange('pincode', e.target.value)}
+                      placeholder="Enter pincode"
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Guest Category *</Label>
+                    <Select
+                      value={formData.guest_category || ''}
+                      onValueChange={(value) => handleInputChange('guest_category', value)}
+                      disabled={isOldCheckin}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="VIP">VIP</SelectItem>
+                        <SelectItem value="Regular">Regular</SelectItem>
+                        <SelectItem value="New">New</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Marital Status *</Label>
+                    <Select
+                      value={formData.marital_status || ''}
+                      onValueChange={(value) => handleInputChange('marital_status', value)}
+                      disabled={isOldCheckin}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select marital status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Married">Married</SelectItem>
+                        <SelectItem value="Unmarried">Unmarried</SelectItem>
+                        <SelectItem value="Divorced">Divorced</SelectItem>
+                        <SelectItem value="Widowed">Widowed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {formData.marital_status === "Married" && (
+                    <div>
+                      <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                        <Calendar className="h-3 w-3 text-gray-500" />
+                        Anniversary Date
+                      </Label>
+                      <Input
+                        type="date"
+                        value={formData.anniversary_date ? new Date(formData.anniversary_date).toISOString().split('T')[0] : ""}
+                        onChange={(e) => {
+                          const dateValue = e.target.value;
+                          if (dateValue) {
+                            const isoDate = new Date(dateValue + 'T00:00:00').toISOString();
+                            handleInputChange("anniversary_date", isoDate);
+                          } else {
+                            handleInputChange("anniversary_date", "");
+                          }
+                        }}
+                        className="h-7 text-xs"
+                        disabled={isOldCheckin}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Booking Details Section */}
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
+                  <Calendar className="h-3 w-3" />
+                  Booking Information
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Check-in Date *</Label>
+                    <Input
+                      type="date"
+                      value={formData.checkin_date ? formatDateForInput(formData.checkin_date) : ''}
+                      className="h-7 text-xs bg-gray-100"
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Check-out Date *</Label>
+                    <Input
+                      type="date"
+                      value={formData.checkout_date ? formatDateForInput(formData.checkout_date) : ''}
+                      onChange={(e) => handleInputChange('checkout_date', e.target.value)}
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  {formData.room_ids && formData.room_ids.map((roomId, idx) => (
+                    <div key={idx}>
+                      <Label className="text-xs font-medium text-gray-700">
+                        Room {idx + 1} *
+                      </Label>
+                      <Select
+                        value={roomId || ''}
+                        onValueChange={(value) => handleRoomIdChange(idx, value)}
+                      >
+                        <SelectTrigger className="h-7 text-xs">
+                          <SelectValue placeholder="Select room" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableRoomsForDropdown(formData.room_ids, idx).length > 0 ? (
+                            getAvailableRoomsForDropdown(formData.room_ids, idx).map((room) => (
+                              <SelectItem key={room.room_id} value={room.room_id}>
+                                <div className="flex items-center justify-between">
+                                  <span>Room {room.room_number}</span>
+                                  <span className="text-xs text-gray-500 ml-2">({room.room_type})</span>
+                                  {room.room_id === editingBooking?.room_id?.[idx] && (
+                                    <span className="text-xs text-blue-600 ml-2">(Current)</span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-rooms" disabled>
+                              No available rooms
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                  <div ref={companyFieldRef}>
+                    <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                      <Building className="h-3 w-3 text-gray-500" />
+                      Company
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        value={companyQuery}
+                        onChange={(e) => handleCompanyInputChange(e.target.value)}
+                        onFocus={() => setShowCompanyDropdown(true)}
+                        placeholder="Search company (optional)"
+                        className="h-7 text-xs pr-7"
+                      />
+                      {(companyQuery || formData?.company_id) && (
+                        <button
+                          type="button"
+                          aria-label="Clear selected company"
+                          onClick={clearSelectedCompany}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                      {showCompanyDropdown && (
+                        <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
+                          <ul className="max-h-56 overflow-auto py-1">
+                            {filteredCompanies.length > 0 ? (
+                              filteredCompanies.map((c) => {
+                                const name = getCompanyName(c);
+                                return (
+                                  <li
+                                    key={getCompanyId(c)}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      handleCompanySelect(c);
+                                    }}
+                                    className="cursor-pointer px-3 py-2 hover:bg-gray-50"
+                                  >
+                                    <div className="text-sm text-gray-900">
+                                      {name}
+                                    </div>
+                                    {getCompanyGst(c) && (
+                                      <div className="text-xs text-gray-500">
+                                        GST: {getCompanyGst(c)}
+                                      </div>
+                                    )}
+                                  </li>
+                                );
+                              })
+                            ) : (
+                              <li className="px-3 py-2 text-sm text-gray-500">
+                                No companies found
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                    {isNewCompany && (
+                      <div className="mt-2">
+                        <Label className="text-xs font-medium text-gray-700">GST No (required for new company)</Label>
+                        <Input
+                          value={newGstNo}
+                          onChange={(e) => setNewGstNo(e.target.value)}
+                          placeholder="Enter GST number"
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Booking Source</Label>
+                    <Select
+                      value={formData.booking_source || ''}
+                      onValueChange={(value) => handleInputChange('booking_source', value)}
+                      disabled={isOldCheckin}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select source" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Direct">Direct</SelectItem>
+                        <SelectItem value="MakemyTrip">MakemyTrip</SelectItem>
+                        <SelectItem value="Booking.com">Booking.com</SelectItem>
+                        <SelectItem value="Agoda">Agoda</SelectItem>
+                        <SelectItem value="Goibibo">Goibibo</SelectItem>
+                        <SelectItem value="Yatra">Yatra</SelectItem>
+                        <SelectItem value="Cleartrip">Cleartrip</SelectItem>
+                        <SelectItem value="OYO">OYO</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Adults (1-10)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={formData.no_of_adults || ''}
+                      onChange={(e) => handleInputChange('no_of_adults', e.target.value)}
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Room Charges (Today) ₹</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={getTodayRoomCharge()}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                        setTodayRoomCharge(val);
+                        // If adults > 0, recalibrate base per adult for auto-scaling
+                        const adults = parseInt(formData?.no_of_adults) || 1;
+                        if (adults > 0 && val !== '') {
+                          setPerAdultBase(Number(val) / adults);
+                        }
+                        setManualChargeEdited(true);
+                      }}
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Children (0-5)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="5"
+                      value={formData.no_of_children || ''}
+                      onChange={(e) => handleInputChange('no_of_children', e.target.value)}
+                      className="h-7 text-xs"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Advance Payment Amount ₹</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newAdvanceAmount}
+                      onChange={e => setNewAdvanceAmount(e.target.value.replace(/[^\d.]/g, ''))}
+                      className="h-7 text-xs"
+                      placeholder="Enter advance amount"
+                    />
+                    <div className="text-xs text-gray-500 mt-1">
+                      Already paid: ₹{parseFloat(editingBooking?.partial_payment_amount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Advance Payment Mode</Label>
+                    <Select
+                      value={formData.advance_payment_mode || ''}
+                      onValueChange={value => handleInputChange('advance_payment_mode', value)}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="Card">Card</SelectItem>
+                        <SelectItem value="UPI">UPI</SelectItem>
+                        <SelectItem value="Cheque">Cheque</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {formData.advance_payment_mode === 'UPI' && (
+                    <div>
+                      <Label className="text-xs font-medium text-gray-700">UPI Platform</Label>
+                      <Select
+                        value={formData.advance_payment_upi_mode || ''}
+                        onValueChange={value => handleInputChange('advance_payment_upi_mode', value)}
+                      >
+                        <SelectTrigger className="h-7 text-xs">
+                          <SelectValue placeholder="Select UPI platform" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {upiPlatforms.map(u => (
+                            <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Additional Details Section - Full Width */}
+              <div className="lg:col-span-2 bg-gray-50 p-3 rounded-lg">
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="font-medium text-gray-900 flex items-center gap-2 text-sm">
+                    <Edit className="h-3 w-3" />
+                    Additional Information
+                  </h4>
+                  <Button
+                    type="button"
+                    onClick={addPax}
+                    className="h-9 md:h-10 px-3 md:px-4 text-xs md:text-sm bg-green-600 hover:bg-green-700 text-white shadow"
+                    disabled={isOldCheckin}
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Add PAX
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-1">
+                    <Label className="text-xs font-medium text-gray-700">Special Requests</Label>
+                    <Textarea
+                      value={formData.special_requests || ''}
+                      onChange={(e) => handleInputChange('special_requests', e.target.value)}
+                      placeholder="Enter any special requests..."
+                      className="text-xs min-h-[60px]"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Label className="text-xs font-medium text-gray-700">Remarks</Label>
+                    <Textarea
+                      value={formData.remarks || ''}
+                      onChange={(e) => handleInputChange('remarks', e.target.value)}
+                      placeholder="Enter any remarks..."
+                      className="text-xs min-h-[60px]"
+                      disabled={isOldCheckin}
+                    />
+                  </div>
+                </div>
+                {Array.isArray(formData?.extra_pax) && formData.extra_pax.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <h4 className="text-sm font-semibold text-gray-800">
+                      PAX Details
+                    </h4>
+                    {formData.extra_pax.map((p, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-md border border-gray-200 bg-white p-3"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-gray-700">
+                              PAX {idx + 1}
+                            </span>
+                          <button
+                            type="button"
+                            onClick={() => removePax(idx)}
+                            className="text-gray-500 hover:text-red-600"
+                            aria-label={`Remove PAX ${idx + 1}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-medium text-gray-700">
+                              Full Name
+                            </Label>
+                            <Input
+                              value={p.full_name || ''}
+                              onChange={(e) =>
+                                updatePaxField(idx, 'full_name', e.target.value)
+                              }
+                              placeholder="Enter full name"
+                              className="h-7 text-xs"
+                              disabled={isOldCheckin}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-medium text-gray-700">
+                              Gender
+                            </Label>
+                            <Select
+                              onValueChange={(value) => updatePaxField(idx, 'gender', value)}
+                              value={p.gender || ''}
+                              disabled={isOldCheckin}
+                            >
+                              <SelectTrigger className="h-7 text-xs">
+                                <SelectValue placeholder="Select gender" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Male">Male</SelectItem>
+                                <SelectItem value="Female">Female</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-medium text-gray-700">
+                              Age
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="120"
+                              value={p.age ?? ''}
+                              onChange={(e) =>
+                                updatePaxField(
+                                  idx,
+                                  'age',
+                                  e.target.value === ''
+                                    ? ''
+                                    : Math.max(0, parseInt(e.target.value) || 0)
+                                )
+                              }
+                              placeholder="Age"
+                              className="h-7 text-xs"
+                              disabled={isOldCheckin}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-medium text-gray-700">
+                              PAX Amount (₹)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={p.extra_pax_amount ?? 0}
+                              onChange={(e) =>
+                                updatePaxField(
+                                  idx,
+                                  'extra_pax_amount',
+                                  e.target.value === '' ? '' : parseFloat(e.target.value) || 0
+                                )
+                              }
+                              placeholder="Enter amount"
+                              className="h-7 text-xs"
+                              disabled={isOldCheckin}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-medium text-gray-700">
+                              Room
+                            </Label>
+                            <Select
+                              value={p.room_id || ''}
+                              onValueChange={(value) => updatePaxField(idx, 'room_id', value)}
+                              disabled={isOldCheckin}
+                            >
+                              <SelectTrigger className="h-7 text-xs">
+                                <SelectValue placeholder="Select room" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(formData?.room_ids || []).map((rid) => {
+                                  const r = getRoomDetails(rid);
+                                  return (
+                                    <SelectItem key={rid} value={rid}>
+                                      Room {r.room_number || rid}
+                                      <span className="text-xs text-gray-500 ml-1">({r.room_type || 'Room'})</span>
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-between">
+              <Button
+                variant="outline"
+                onClick={resetForm}
+                disabled={loading}
+              >
+                Reset
+              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => printCheckinForm(editingBooking)}
+                  disabled={loading}
+                >
+                  <Printer className="h-4 w-4 mr-1" /> Print
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEditDialog(false)}
+                  disabled={loading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={saveAmendments}
+                  disabled={loading}
+                >
+                  {loading ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

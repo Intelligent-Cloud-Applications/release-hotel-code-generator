@@ -54,6 +54,9 @@ const CheckInForm = ({
     createCompany: null
   };
 
+  // Auto-create company control
+  const [isAutoCreatingCompany, setIsAutoCreatingCompany] = useState(false);
+
   // Create Company Dialog state
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [newCompany, setNewCompany] = useState({
@@ -104,6 +107,11 @@ const CheckInForm = ({
     c?.name || c?.company_name || c?.companyName || "";
   const getCompanyId = (c) => c?.company_id || c?.id || c?.companyId;
   const getCompanyGst = (c) => c?.gst_no || c?.gst_number || c?.gstNo || "";
+  const findCompanyByName = (name) => {
+    if (!name) return null;
+    const q = String(name).trim().toLowerCase();
+    return companies.find((cc) => getCompanyName(cc)?.toLowerCase() === q) || null;
+  };
   const getCompanyNameById = (id) => {
     if (!id) return "";
     const c = companies.find((cc) => getCompanyId(cc) === id);
@@ -127,6 +135,7 @@ const CheckInForm = ({
       const gst = getCompanyGstById(checkInData.company_id);
 
       if (name) setCompanyQuery(name);
+      if (name) handleInputChange("company_name", name);
 
       // Auto-fill GST field if company has GST number and current GST field is empty
       if (gst && !checkInData.gst_no) {
@@ -165,6 +174,7 @@ const CheckInForm = ({
     setCompanyQuery(name);
     setShowCompanyDropdown(false);
     handleInputChange("company_id", id);
+    handleInputChange("company_name", name);
 
     // Auto-fill GST field when company is selected
     if (gst) {
@@ -172,9 +182,38 @@ const CheckInForm = ({
     }
   };
 
+  const attemptAutoCreateCompany = async () => {
+    const typedName = (companyQuery || "").trim();
+    const gst = (checkInData?.gst_no || "").trim();
+    if (!typedName || !gst) return;
+    // Already selected a company id
+    if (checkInData?.company_id) return;
+    // If a matching company by name already exists, select it instead
+    const existing = findCompanyByName(typedName);
+    if (existing) {
+      handleCompanySelect(existing);
+      return;
+    }
+    // Only proceed if API available and not already running
+    if (typeof createCompany !== "function" || isAutoCreatingCompany) return;
+    try {
+      setIsAutoCreatingCompany(true);
+      const created = await createCompany({ name: typedName, gst_no: gst });
+      if (created) {
+        handleCompanySelect(created);
+      }
+    } catch (e) {
+      // Silent fail: keep user input as-is
+      console.error("Auto-create company (check-in) failed:", e);
+    } finally {
+      setIsAutoCreatingCompany(false);
+    }
+  };
+
   const clearSelectedCompany = () => {
     setCompanyQuery("");
     handleInputChange("company_id", "");
+    handleInputChange("company_name", "");
     // Optionally clear GST field when company is cleared
     handleInputChange("gst_no", "");
     setShowCompanyDropdown(false);
@@ -183,6 +222,7 @@ const CheckInForm = ({
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
     setShowCompanyDropdown(!!value.trim());
+    handleInputChange("company_name", value);
     if (checkInData?.company_id) {
       handleInputChange("company_id", "");
       // Clear GST when user starts typing a new company
