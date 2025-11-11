@@ -8,12 +8,12 @@ const BillHeader = ({ bills, billData }) => {
     <div className="border-b-2 border-black border-dashed pb-4 mb-6">
       <div className="flex justify-between items-start mb-4 print:mb-2">
         {/* Left side: Logo (conditional) */}
-        <div className="absolute">
+        <div className="absolute top-2 ">
           {showLogo && logo && (
             <img
               src={logo}
               alt="Hotel Logo"
-              className="h-16 w-auto print:h-12 object-contain"
+              className="h-[5.50rem] w-auto print:h-[5.50rem] object-contain "
             />
           )}
         </div>
