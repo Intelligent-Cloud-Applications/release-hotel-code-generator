@@ -274,6 +274,14 @@ const Reports = () => {
       color: "text-red-600",
       category: "Operations",
     },
+    {
+      id: "settlement",
+      name: "Settlement Report",
+      description: "Guests checked out today",
+      icon: Receipt,
+      color: "text-emerald-700",
+      category: "Financial",
+    },
   ];
 
   return (
