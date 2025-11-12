@@ -2,7 +2,7 @@
   "institutionId": "HOTEL001",
   "product": "dashboard-booking",
   "template": "template2",
-  "s3BucketName": "",
-  "cloudFrontId": "",
-  "domain": ""
+  "s3BucketName": "templatehm.awsaiapp.com",
+  "cloudFrontId": "E2MTGS0B7WKXTR",
+  "domain": "https://templatehm.awsaiapp.com"
 }
