@@ -89,7 +89,7 @@ const LegacySection = () => {
               <div className="flex items-center gap-1 mb-4">
                 <input
                   type="text"
-                  value={lagacyData.title.start}
+                  value={lagacyData?.title?.start}
                   onChange={(e) => {
                     setInstitutionData((prev) => ({
                       ...prev,
@@ -103,11 +103,11 @@ const LegacySection = () => {
                     }));
                   }}
                   className="text-3xl font-semibold text-gray-900 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
-                  style={{ width: `${lagacyData.title.start.length + 2}ch` }}
+                  style={{ width: `${lagacyData?.title?.start.length + 2}ch` }}
                 />
                 <input
                   type="text"
-                  value={lagacyData.title.highlight}
+                  value={lagacyData?.title?.highlight}
                   onChange={(e) => {
                     setInstitutionData((prev) => ({
                       ...prev,
@@ -122,22 +122,22 @@ const LegacySection = () => {
                   }}
                   className="text-3xl font-semibold text-orange-500 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
                   style={{
-                    width: `${lagacyData.title.highlight.length + 2}ch`,
+                    width: `${lagacyData?.title?.highlight.length + 2}ch`,
                   }}
                 />
               </div>
             ) : (
               <h2 className="text-4xl font-semibold mb-4 fjalla">
-                <span className="text-gray-900">{lagacyData.title.start}</span>
+                <span className="text-gray-900">{lagacyData?.title?.start}</span>
                 <span className="text-orange-500">
                   {" "}
-                  {lagacyData.title.highlight}
+                  {lagacyData?.title?.highlight || "edit this"}
                 </span>
               </h2>
             )}
             {isEditMode ? (
               <textarea
-                value={lagacyData.description}
+                value={lagacyData?.description}
                 onChange={(e) => {
                   setInstitutionData((prev) => ({
                     ...prev,
@@ -151,12 +151,12 @@ const LegacySection = () => {
               />
             ) : (
               <p className="text-black mb-12 font-bold cormorant">
-                {lagacyData.description}
+                {lagacyData?.description || "edit this"}
               </p>
             )}
 
             <div className="grid grid-cols-3 gap-6">
-              {lagacyData.stats.map((stat, index) => (
+              {lagacyData?.stats?.map((stat, index) => (
                 <div
                   key={index}
                   className="text-center bg-orange-50 p-6 rounded-lg"
@@ -202,7 +202,7 @@ const LegacySection = () => {
               <div className="col-span-5 row-span-4 relative">
                 <div className="bg-gray-100 h-full rounded-lg overflow-hidden">
                   <img
-                    src={lagacyData.images?.topLeft || ""}
+                    src={lagacyData?.images?.topLeft || ""}
                     alt="Hanging plant"
                     className="w-full h-full object-cover"
                   />

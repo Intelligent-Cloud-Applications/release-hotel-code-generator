@@ -10,7 +10,7 @@ export default function HotelRooms() {
   const [isImageEdit, setIsImageEdit] = React.useState(false);
   const [imageMetaData, setImageMetaData] = React.useState(null);
 
-  const HotelRoomsData = institutionData.hotelRooms;
+  const HotelRoomsData = institutionData?.hotelRooms;
 
   return (
     <div className="relative">
@@ -30,7 +30,7 @@ export default function HotelRooms() {
             <div className="flex justify-center items-center gap-1">
               <input
                 type="text"
-                value={HotelRoomsData.title.start || "Our"}
+                value={HotelRoomsData?.title.start || "Our"}
                 onChange={(e) => {
                   const newTitle = {
                     ...HotelRoomsData.title,
@@ -42,11 +42,11 @@ export default function HotelRooms() {
                   }));
                 }}
                 className="text-4xl font-medium fjalla text-gray-900 border border-gray-300 rounded px-1 py-0.5 text-center"
-                style={{ width: `${HotelRoomsData.title.start.length + 2}ch` }}
+                style={{ width: `${HotelRoomsData?.title.start.length + 2}ch` }}
               />
               <input
                 type="text"
-                value={HotelRoomsData.title.highlight || "Best"}
+                value={HotelRoomsData?.title.highlight || "Best"}
                 onChange={(e) => {
                   const newTitle = {
                     ...HotelRoomsData.title,
@@ -59,12 +59,12 @@ export default function HotelRooms() {
                 }}
                 className="text-4xl font-medium fjalla text-orange-500 border border-gray-300 rounded px-1 py-0.5 text-center"
                 style={{
-                  width: `${HotelRoomsData.title.highlight.length + 2}ch`,
+                  width: `${HotelRoomsData?.title.highlight.length + 2}ch`,
                 }}
               />
               <input
                 type="text"
-                value={HotelRoomsData.title.end || "Rooms!"}
+                value={HotelRoomsData?.title.end || "Rooms!"}
                 onChange={(e) => {
                   const newTitle = {
                     ...HotelRoomsData.title,
@@ -76,22 +76,22 @@ export default function HotelRooms() {
                   }));
                 }}
                 className="text-4xl font-medium fjalla text-gray-900 border border-gray-300 rounded px-1 py-0.5 text-center"
-                style={{ width: `${HotelRoomsData.title.end.length + 2}ch` }}
+                style={{ width: `${HotelRoomsData?.title.end.length + 2}ch` }}
               />
             </div>
           ) : (
             <h2 className="text-5xl font-medium text-center fjalla">
-              {HotelRoomsData.title.start || "Our"}{" "}
+              {HotelRoomsData?.title.start || "Our"}{" "}
               <span className="text-orange-500">
-                {HotelRoomsData.title.highlight || "Best"}
+                {HotelRoomsData?.title.highlight || "Best"}
               </span>{" "}
-              {HotelRoomsData.title.end || "Rooms!"}
+              {HotelRoomsData?.title.end || "Rooms!"}
             </h2>
           )}
           {isEditMode ? (
             <textarea
               value={
-                HotelRoomsData.description || "Description of hotel rooms."
+                HotelRoomsData?.description || "Description of hotel rooms."
               }
               onChange={(e) => {
                 setInstitutionData((prev) => ({
@@ -107,7 +107,7 @@ export default function HotelRooms() {
             />
           ) : (
             <p className="text-black text-center mt-2 text-lg font-bold cormorant">
-              {HotelRoomsData.description || "Description of hotel rooms."}
+              {HotelRoomsData?.description || "Description of hotel rooms."}
             </p>
           )}
 
@@ -118,7 +118,7 @@ export default function HotelRooms() {
                 <>
                   <input
                     type="text"
-                    value={HotelRoomsData.discount.title || "Discount Title"}
+                    value={HotelRoomsData?.discount.title || "Discount Title"}
                     onChange={(e) => {
                       const newDiscount = {
                         ...HotelRoomsData.discount,
@@ -136,7 +136,7 @@ export default function HotelRooms() {
                   />
                   <textarea
                     value={
-                      HotelRoomsData.discount.description ||
+                      HotelRoomsData?.discount.description ||
                       "Discount description goes here."
                     }
                     onChange={(e) => {
@@ -156,7 +156,7 @@ export default function HotelRooms() {
                   />
                   <input
                     type="text"
-                    value={HotelRoomsData.discount.buttonText || "Button Text"}
+                    value={HotelRoomsData?.discount.buttonText || "Button Text"}
                     onChange={(e) => {
                       const newDiscount = {
                         ...HotelRoomsData.discount,
@@ -176,10 +176,10 @@ export default function HotelRooms() {
               ) : (
                 <>
                   <h3 className="text-3xl font-bold fjalla w-[300px] text-[45px] h-[57px] flex items-center justify-center">
-                    {HotelRoomsData.discount.title || "Discount Title"}
+                    {HotelRoomsData?.discount.title || "Discount Title"}
                   </h3>
                   <p className="text-xl font-bold mt-6 cormorant text-purple-950">
-                    {HotelRoomsData.discount.description ||
+                    {HotelRoomsData?.discount.description ||
                       "Discount description goes here."}
                   </p>
                   {/*<button className="bg-white text-orange-500 cormorant text-2xl font-semibold px-5 py-2 mt-20 rounded-lg shadow-md hover:bg-gray-100 transition">*/}
@@ -192,7 +192,7 @@ export default function HotelRooms() {
             {/* Hotel Room Images */}
             <div className="grid grid-cols-1 gap-4 sm:col-span-1 md:col-span-2">
               <div className="grid grid-cols-2 gap-4">
-                {HotelRoomsData.images.slice(0, 2).map((src, index) => (
+                {HotelRoomsData?.images.slice(0, 2).map((src, index) => (
                   <div key={index} className="relative">
                     <img
                       className="rounded-2xl w-full h-56 object-cover shadow-lg"
@@ -244,7 +244,7 @@ export default function HotelRooms() {
                 ))}
               </div>
               <div className="grid grid-cols-2 gap-4">
-                {HotelRoomsData.images.slice(2, 4).map((src, index) => (
+                {HotelRoomsData?.images.slice(2, 4).map((src, index) => (
                   <div key={index + 2} className="relative">
                     <img
                       className="rounded-2xl w-full h-56 object-cover shadow-lg"

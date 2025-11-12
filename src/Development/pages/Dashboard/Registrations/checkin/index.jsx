@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "../../../../components/ui/button.js";
 import { useAppContext } from "../../../../context/AppContext.jsx";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Hotel } from "lucide-react";
 import RefreshButton from "../../../../components/ui/RefreshButton.jsx";
@@ -22,15 +22,20 @@ const CheckIn = () => {
     ratePlans,
     checkInGuest,
     guests,
+    bills,
     staffs,
     fetchGuests,
     fetchBookings,
     fetchRooms,
     fetchStaffs,
     addExpense,
+    companies,
+    createCompany,
+    fetchCompanies,
   } = useAppContext();
   
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pageLoading, setPageLoading] = useState(true);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,6 +52,7 @@ const CheckIn = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [roomAutoSelected, setRoomAutoSelected] = useState(false);
 
   // Helper function to format timestamp to local datetime-local string
   const formatToLocalDateTime = (timestamp) => {
@@ -91,9 +97,10 @@ const CheckIn = () => {
     room_id: [],
     no_of_adults: 1,
     no_of_children: 0,
+    company_id: "",
     company_name: "",
     gst_no: "",
-    discount: 10,
+    discount: 0,
     partial_payment_amount: null,
     advance_payment_mode: "",
     advance_payment_upi_mode: "",
@@ -103,8 +110,41 @@ const CheckIn = () => {
     status: "Reserved",
     assigned_staff_id: "",
     rate_plan_id: "",
+    grc_no: "",
   });
 
+  const checkedInBookingsCount = useMemo(() => {
+    if (!Array.isArray(bookings)) return 0;
+    return bookings.filter((booking) => booking.status === "Checked-in").length;
+  }, [bookings]);
+
+  const totalBillsCount = useMemo(
+    () => (Array.isArray(bills) ? bills.length : 0),
+    [bills]
+  );
+
+  const nextGrcNumber = useMemo(
+    () => totalBillsCount + checkedInBookingsCount + 1,
+    [totalBillsCount, checkedInBookingsCount]
+  );
+
+  const nextCheckInNumber = useMemo(
+    () => checkedInBookingsCount + 1,
+    [checkedInBookingsCount]
+  );
+
+  const nextBillNumber = useMemo(
+    () => totalBillsCount + 1,
+    [totalBillsCount]
+  );
+
+  useEffect(() => {
+    console.log("Next identifiers:", {
+      grcNumber: nextGrcNumber,
+      checkInNumber: nextCheckInNumber,
+      billNumber: nextBillNumber,
+    });
+  }, [nextGrcNumber, nextCheckInNumber, nextBillNumber]);
   // Initialize data on component mount
   useEffect(() => {
     const fetchData = async () => {
@@ -147,6 +187,65 @@ const CheckIn = () => {
       }
     }
   }, [ratePlans, checkInData.rate_plan_id]);
+
+  // Auto-select room from URL parameter (when navigating from RoomList)
+  // Note: This effect must be after getVacantRooms is defined, or we inline the filter logic
+  useEffect(() => {
+    const roomIdFromUrl = searchParams.get('room_id');
+    
+    // Only auto-select if:
+    // 1. room_id is in URL
+    // 2. rooms are loaded and page is not loading
+    // 3. room hasn't been auto-selected yet
+    // 4. no room is currently selected
+    if (
+      roomIdFromUrl && 
+      rooms.length > 0 && 
+      !pageLoading &&
+      !roomAutoSelected && 
+      (!checkInData.room_id || checkInData.room_id.length === 0)
+    ) {
+      // Filter vacant/clean rooms inline (to avoid dependency on getVacantRooms)
+      const vacantRooms = rooms.filter(
+        (room) => room.status === "Clean" || room.status === "Vacant"
+      );
+      
+      // Find the room in the vacant rooms list
+      const roomToSelect = vacantRooms.find(room => {
+        const roomIdStr = String(room.room_id);
+        const urlRoomIdStr = String(roomIdFromUrl);
+        return roomIdStr === urlRoomIdStr;
+      });
+
+      if (roomToSelect) {
+        // Room is already validated as Vacant or Clean by the filter above
+        // Auto-select the room by updating state directly (avoid dependency on handleInputChange)
+        setCheckInData(prev => ({
+          ...prev,
+          room_id: [roomToSelect.room_id]
+        }));
+        
+        // Mark as auto-selected to prevent re-selection
+        setRoomAutoSelected(true);
+        
+        // Clear the URL parameter after a short delay to allow state updates
+        setTimeout(() => {
+          const newSearchParams = new URLSearchParams(searchParams);
+          newSearchParams.delete('room_id');
+          setSearchParams(newSearchParams, { replace: true });
+        }, 100);
+        
+        // Show success message
+        toast.success(`Room ${roomToSelect.room_number} has been auto-selected for check-in`);
+      } else {
+        // Room not found in vacant rooms, clear URL parameter
+        toast.error("Room not found or not available for check-in");
+        const newSearchParams = new URLSearchParams(searchParams);
+        newSearchParams.delete('room_id');
+        setSearchParams(newSearchParams, { replace: true });
+      }
+    }
+  }, [searchParams, rooms, roomAutoSelected, checkInData.room_id, pageLoading, setSearchParams]);
 
   // Refresh function
   const handleRefresh = async () => {
@@ -204,6 +303,7 @@ const CheckIn = () => {
         room_id: selectedBooking.room_id || [],
         no_of_adults: selectedBooking.no_of_adults,
         no_of_children: selectedBooking.no_of_children,
+        company_id: selectedBooking.company_id || "",
         company_name: selectedBooking.company_name || "",
         gst_no: selectedBooking.gst_no || "",
         discount: selectedBooking.discount || 0,
@@ -216,6 +316,7 @@ const CheckIn = () => {
         status: selectedBooking.status || "Checked-in",
         assigned_staff_id: selectedBooking.assigned_staff_id || "",
         rate_plan_id: selectedBooking.rate_plan_id,
+        grc_no: "",
       });
     }
   }, [selectedBooking, guests]);
@@ -660,6 +761,45 @@ const CheckIn = () => {
     isProcessingRef.current = true;
 
     try {
+      // --- PATCH: Check if we need to auto-create company before continuing ---
+      const companyName = (checkInData.company_name || "").trim();
+      const gst = (checkInData.gst_no || "").trim();
+      let companyId = checkInData.company_id;
+      const existCompany = companies && companies.find(c => {
+        const n = (c.name || c.company_name || c.companyName || "").trim().toLowerCase();
+        return n === companyName.toLowerCase();
+      });
+
+      if (!companyId && companyName && gst && !existCompany && typeof createCompany === 'function') {
+        toast.info("Creating company... Please wait");
+        const created = await createCompany({ name: companyName, gst_no: gst });
+        let resolvedId = created && (created.company_id || created.id);
+        if (!resolvedId && typeof fetchCompanies === 'function') {
+          // Refresh and try to resolve by name + gst
+          await fetchCompanies();
+          const match = (companies || []).concat([]).find((c) => {
+            const n = (c.name || c.company_name || c.companyName || "").trim().toLowerCase();
+            const g = (c.gst_no || c.gst_number || c.gstNo || "").trim().toLowerCase();
+            return n === companyName.toLowerCase() && g === gst.toLowerCase();
+          });
+          if (match) {
+            resolvedId = match.company_id || match.id;
+          }
+        }
+        if (!resolvedId) {
+          // Proceed without blocking; keep name/gst set, but warn
+          toast.warning("Company created but ID missing; proceeding without company link.");
+        } else {
+          companyId = resolvedId;
+          setCheckInData(prev => ({ ...prev, company_id: companyId }));
+          toast.success("Company created and selected.");
+        }
+      } else if (!companyId && existCompany) {
+        companyId = existCompany.company_id || existCompany.id;
+        setCheckInData(prev => ({ ...prev, company_id: companyId }));
+      }
+      // --- END PATCH ---
+
       // Generate services data for each selected room
       const services = {};
       const selectedRoomIds = checkInData.room_id || [];
@@ -712,9 +852,14 @@ const CheckIn = () => {
       const phoneNumber = checkInData.mobile || "0000000000";
       const customBookingId = `${phoneNumber}_${day}${month}${year}_${hours}${minutes}`;
 
+      const grcNo = nextGrcNumber;
+      const checkInSequenceNumber = nextCheckInNumber;
+      const billSequenceNumber = nextBillNumber;
+
       const finalCheckInData = {
         ...checkInData,
         status: "Checked-in",
+        company_id: companyId || checkInData.company_id || "",
         company_name: checkInData.company_name || "N/A",
         gst_no: checkInData.gst_no || "N/A",
         // Generate booking ID if not from existing booking
@@ -723,8 +868,18 @@ const CheckIn = () => {
         booking_type: selectedBooking ? checkInData.booking_type : "Walk-in",
         // Add services and room charges
         services: services,
-        room_charges: room_charges
+        room_charges: room_charges,
+        grc_no: grcNo,
+        check_in_number: checkInSequenceNumber,
+        bill_no: billSequenceNumber,
       };
+
+      console.log("Check-in identifiers:", {
+        grcNo,
+        checkInNumber: checkInSequenceNumber,
+        billNo: billSequenceNumber,
+        bookingId: finalCheckInData.booking_id,
+      });
 
       setCheckInData(finalCheckInData);
       
@@ -802,6 +957,7 @@ const CheckIn = () => {
       room_id: [],
       no_of_adults: 1,
       no_of_children: 0,
+      company_id: "",
       company_name: "",
       gst_no: "",
       discount: 0,
@@ -814,6 +970,7 @@ const CheckIn = () => {
       status: "Reserved",
       assigned_staff_id: "",
       rate_plan_id: "",
+      grc_no: "",
     });
     setValidationErrors({});
     setHasUserInteracted(false);
@@ -888,6 +1045,9 @@ const CheckIn = () => {
                 ratePlans={ratePlans}
                 numberOfNights={numberOfNights}
                 onRoomSelectionChange={handleRoomSelectionChange}
+                nextGrcNumber={nextGrcNumber}
+                nextCheckInNumber={nextCheckInNumber}
+                nextBillNumber={nextBillNumber}
               />
 
               {(checkInData.rate_plan_id || (checkInData.room_id && checkInData.room_id.length > 0)) && (

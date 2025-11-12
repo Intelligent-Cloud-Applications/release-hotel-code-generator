@@ -67,7 +67,7 @@ export default function Testimonials() {
             <div className="flex justify-center items-center gap-1 mb-2">
               <input
                 type="text"
-                value={TestimonialData?.title.start || "Know"}
+                value={TestimonialData?.title?.start || "Know"}
                 onChange={(e) => {
                   setInstitutionData((prev) => ({
                     ...prev,
@@ -84,7 +84,7 @@ export default function Testimonials() {
               />
               <input
                 type="text"
-                value={TestimonialData?.title.highlight || "From"}
+                value={TestimonialData?.title?.highlight || "From"}
                 onChange={(e) => {
                   setInstitutionData((prev) => ({
                     ...prev,
@@ -99,12 +99,12 @@ export default function Testimonials() {
                 }}
                 className="text-3xl fjalla text-orange-600 border border-gray-300 rounded px-1 py-0.5 text-center"
                 style={{
-                  width: `${TestimonialData?.title.highlight.length + 3}ch`,
+                  width: `${TestimonialData?.title?.highlight.length + 3}ch`,
                 }}
               />
               <input
                 type="text"
-                value={TestimonialData?.title.end || "Our Customers"}
+                value={TestimonialData?.title?.end || "Our Customers"}
                 onChange={(e) => {
                   setInstitutionData((prev) => ({
                     ...prev,

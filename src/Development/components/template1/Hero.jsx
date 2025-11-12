@@ -49,7 +49,7 @@ const Hero = () => {
         muted
         playsInline
         src={
-          institutionData.hero.videoUrl ||
+          institutionData?.hero?.videoUrl ||
           "https://videos.pexels.com/video-files/855139/855139-hd_1920_1080_30fps.mp4"
         }
       />

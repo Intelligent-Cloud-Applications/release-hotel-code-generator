@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
+import { useNavigate, useLocation } from "react-router";
 import { Wifi, RefreshCw, AlertCircle, Loader2, Filter } from "lucide-react";
 
 import VacantIcon from "../../../assets/Icons/vacant-svg.svg";
@@ -18,6 +19,8 @@ import {
 
 const RoomList = () => {
   const { rooms, fetchRooms, error } = useAppContext();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [pageLoading, setPageLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [dataFetched, setDataFetched] = useState(false);
@@ -218,6 +221,26 @@ const RoomList = () => {
               key={room.room_id} 
               room={room} 
               isLoading={initialLoad}
+              onDoubleClick={(roomId) => {
+                // Find the room to verify its status
+                const clickedRoom = rooms.find(r => 
+                  r.room_id === roomId || 
+                  String(r.room_id) === String(roomId)
+                );
+                
+                if (clickedRoom && (clickedRoom.status === "Vacant" || clickedRoom.status === "Clean")) {
+                  // Navigate to check-in page with room_id parameter
+                  // Determine the correct check-in route based on current location
+                  const isFrontDesk = location.pathname.includes('/frontdesk');
+                  const checkInPath = isFrontDesk 
+                    ? `/dashboard/frontdesk/check_in?room_id=${roomId}`
+                    : `/dashboard/registrations/check_in?room_id=${roomId}`;
+                  navigate(checkInPath);
+                } else if (clickedRoom) {
+                  // Room is not vacant/clean, show a message (optional)
+                  console.log(`Room ${clickedRoom.room_number} is ${clickedRoom.status}, cannot check-in`);
+                }
+              }}
             />
           ))}
         </div>
@@ -261,8 +284,7 @@ const RoomList = () => {
 };
 
 // Reusable Room Card
-const RoomCard = ({ room, isLoading }) => {
-
+const RoomCard = ({ room, isLoading, onDoubleClick }) => {
   const getStatusIcon = (status, isLoading = false) => {
     const iconClass =
       "w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white font-bold relative";
@@ -292,11 +314,26 @@ const RoomCard = ({ room, isLoading }) => {
     }
   };
 
+  const getStatusBackground = (status) => {
+    switch (status) {
+      case "Vacant":
+        return "bg-[#065F46]";
+      case "Reserved":
+        return "bg-[#92400E]";
+      case "Occupied":
+        return "bg-[#3730A3]";
+      case "Dirty":
+        return "bg-[#B91C1C]";
+      case "Under Maintenance":
+        return "bg-[#C2410C]";
+      default:
+        return "bg-gray-400";
+    }
+  };
+
   const getStatusText = (status, isLoading = false) => {
     if (isLoading) {
-      return (
-        <div className="h-3 bg-gray-300 rounded animate-pulse w-16"></div>
-      );
+      return null; // Handled in JSX
     }
 
     switch (status) {
@@ -315,24 +352,58 @@ const RoomCard = ({ room, isLoading }) => {
     }
   };
 
+  const handleDoubleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only allow double-click for vacant/clean rooms
+    if (room.status === "Vacant" || room.status === "Clean") {
+      if (onDoubleClick) {
+        onDoubleClick(room.room_id);
+      }
+    }
+  };
+
+  const bgClass = isLoading ? "bg-gray-100" : getStatusBackground(room.status);
+  
+  // Add cursor pointer for vacant/clean rooms to indicate they're clickable
+  const cursorClass = (!isLoading && (room.status === "Vacant" || room.status === "Clean")) 
+    ? "cursor-pointer hover:shadow-lg" 
+    : "";
+  
+  const tooltipText = !isLoading && (room.status === "Vacant" || room.status === "Clean") 
+    ? "Double-click to check-in" 
+    : "";
 
   return (
-    <div className="bg-[#FBFAF9] h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-700 rounded-lg p-1 sm:p-2 hover:shadow-md transition-shadow cursor-pointer relative min-w-0">
+    <div 
+      className={`${bgClass} ${cursorClass} h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-300 rounded-lg p-1 sm:p-2 hover:shadow-md transition-shadow relative min-w-0`}
+      onDoubleClick={handleDoubleClick}
+      title={tooltipText}
+    >
       {/* Status Icon */}
       <div className="absolute top-1 right-1">
         {getStatusIcon(room.status, isLoading)}
       </div>
 
       {/* Room Number */}
-      <div className="text-xs text-gray-500 mb-1 truncate">Room {room.room_number}</div>
+      {isLoading ? (
+        <div className="h-3 bg-gray-300 rounded animate-pulse w-16 mb-1"></div>
+      ) : (
+        <div className="text-xs text-white mb-1 truncate">Room {room.room_number}</div>
+      )}
 
       {/* Room Type */}
-      <div className="font-bold text-gray-800 mb-1 text-xs sm:text-sm truncate">
-        {room.room_type}
-      </div>
+      {isLoading ? (
+        <div className="h-4 bg-gray-300 rounded animate-pulse w-20 mb-1"></div>
+      ) : (
+        <div className="font-bold text-white mb-1 text-xs sm:text-sm truncate">
+          {room.room_type}
+        </div>
+      )}
 
       {/* Status and Floor */}
-      <div className="text-xs text-gray-500 flex items-center gap-1 flex-row flex-wrap">
+      <div className="text-xs text-white flex items-center gap-1 flex-row flex-wrap">
         {isLoading ? (
           <div className="h-3 bg-gray-300 rounded animate-pulse w-16"></div>
         ) : (
@@ -340,14 +411,15 @@ const RoomCard = ({ room, isLoading }) => {
             {getStatusText(room.status)}
           </div>
         )}
-        <span className="h-1 w-1 rounded-full bg-gray-400 inline-block flex-shrink-0"></span>
-        <div className="truncate text-xs">Floor {room.floor}</div>
+        <span className={`h-1 w-1 rounded-full bg-gray-400 inline-block flex-shrink-0 ${isLoading ? 'invisible' : ''}`}></span>
+        {isLoading ? (
+          <div className="h-3 bg-gray-300 rounded animate-pulse w-12"></div>
+        ) : (
+          <div className="truncate text-xs">Floor {room.floor}</div>
+        )}
       </div>
     </div>
   );
 };
 
 export default RoomList;
-
-
-
