@@ -632,11 +632,12 @@ function calculateDayEndData(
         const ci = getCheckInFromBooking(match);
         const co = getCheckOutFromBooking(match);
         const ciD = toDate(ci);
+        const coD = toDate(co);
 
         detail.guestName = getGuestNameFromBooking(match, guestIndex);
         detail.bookingId = getBookingIdFromBooking(match);
         detail.checkInDate = ciD ? ciD.toLocaleDateString() : "N/A";
-        detail.checkOutDate = toDate(co)?.toLocaleDateString() || "N/A";
+        detail.checkOutDate = coD ? coD.toLocaleDateString() : "N/A";
         detail.adults = getAdultsFromBooking(match);
         detail.children = getChildrenFromBooking(match);
         detail.bookingStatus = match?.status || "Checked-in";
@@ -645,6 +646,38 @@ function calculateDayEndData(
         detail.daysIntoStay = ciD
           ? Math.floor((new Date(targetDate) - ciD) / (1000 * 60 * 60 * 24)) + 1
           : 0;
+
+        // Calculate daily tariff (per day rate, not total)
+        // Priority: 1) Room tariff (base daily rate), 2) Booking daily rate, 3) Calculate from total as fallback
+        const stayDuration = daysBetween(ci, co);
+        const roomDailyTariff = room?.tariff || 0;
+        
+        const bookingDailyRate = 
+          match?.daily_rate || 
+          match?.dailyRate || 
+          match?.rate || 
+          match?.bookingDetails?.dailyRate || 
+          match?.bookingDetails?.rate || 
+          0;
+        
+        const bookingTotalAmount = 
+          match?.total_amount || 
+          match?.totalAmount || 
+          match?.bookingDetails?.totalAmount || 
+          match?.amount || 
+          0;
+        
+        // Use room tariff (daily rate) as primary, then booking daily rate, then calculate from total if needed
+        if (roomDailyTariff > 0) {
+          detail.tariff = roomDailyTariff;
+        } else if (bookingDailyRate > 0) {
+          detail.tariff = bookingDailyRate;
+        } else if (bookingTotalAmount > 0 && stayDuration > 0) {
+          // Fallback: calculate daily rate from total (may not be accurate if discounts apply)
+          detail.tariff = Math.round(bookingTotalAmount / stayDuration);
+        } else {
+          detail.tariff = 0;
+        }
 
         const ids = getRoomIdsFromBooking(match);
         const nums = getRoomNumbersFromBooking(match, rooms);
@@ -1661,7 +1694,7 @@ const DayEnd = () => {
                   <TableHead className="w-[130px]">Check-in</TableHead>
                   <TableHead className="w-[130px]">Check-out</TableHead>
                   <TableHead className="w-[100px]">Guests</TableHead>
-                  <TableHead className="w-[130px] text-right">Tariff</TableHead>
+                  <TableHead className="w-[130px] text-right">Day Tariff</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
