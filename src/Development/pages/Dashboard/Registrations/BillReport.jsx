@@ -247,7 +247,7 @@ const BillReport = ({ billData: rawBillData }) => {
     id_proof_number: billData?.guestDetails?.idProofNumber || "",
     city: billData?.guestDetails?.city || "",
     state: billData?.guestDetails?.state || "",
-    pincode: billData?.guestDetails?.pincode || "",
+    pincode: billData?.guestDetails?.pinCode || "",
     country: billData?.guestDetails?.country || "",
   };
 
