@@ -68,7 +68,7 @@ const PriceSummary = ({
                 </div>
               </div>
             )}
-            
+
             {roomTariff > 0 && selectedRoomsCount === 1 && (
               <div className="flex justify-between text-sm items-center">
                 <span>Room Tariff (per night):</span>
@@ -147,26 +147,26 @@ const PriceSummary = ({
                 </div>
               </div>
             )}
-            
+
             <div className="flex justify-between text-sm items-center">
               <span>Base Amount (per night):</span>
               <div className="flex items-center gap-2">
                 <span>₹</span>
-                                  <Input
-                    type="text"
-                    value={baseTariff + roomTariff + extraPaxAmount || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      // Allow only numbers and decimal point
-                      if (value === '' || /^\d*\.?\d*$/.test(value)) {
-                        const newBaseAmount = parseFloat(value) || 0;
-                        const newRoomTariff = newBaseAmount - baseTariff - extraPaxAmount;
-                        handleInputChange('roomTariff', newRoomTariff);
-                      }
-                    }}
-                    placeholder="0"
-                    className="w-28 h-7 text-sm"
-                  />
+                <Input
+                  type="text"
+                  value={baseTariff + roomTariff + extraPaxAmount || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow only numbers and decimal point
+                    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                      const newBaseAmount = parseFloat(value) || 0;
+                      const newRoomTariff = newBaseAmount - baseTariff - extraPaxAmount;
+                      handleInputChange('roomTariff', newRoomTariff);
+                    }
+                  }}
+                  placeholder="0"
+                  className="w-28 h-7 text-sm"
+                />
               </div>
             </div>
 
@@ -174,19 +174,19 @@ const PriceSummary = ({
               <span>Discount (₹):</span>
               <div className="flex items-center gap-2">
                 <span>₹</span>
-                                  <Input
-                    type="text"
-                    value={discount || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      // Allow only numbers and decimal point
-                      if (value === '' || /^\d*\.?\d*$/.test(value)) {
-                        handleInputChange('discount', value);
-                      }
-                    }}
-                    className="w-28 h-7 text-sm"
-                    placeholder="0"
-                  />
+                <Input
+                  type="text"
+                  value={discount || 0}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow only numbers and decimal point
+                    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                      handleInputChange('discount', value);
+                    }
+                  }}
+                  className="w-28 h-7 text-sm"
+                  placeholder="0"
+                />
               </div>
             </div>
 
@@ -213,7 +213,7 @@ const PriceSummary = ({
                 />
               </div>
             </div>
-            
+
             <div className="flex justify-between text-sm items-center text-orange-600">
               <span>Partial Payment:</span>
               <div className="flex items-center gap-2">
@@ -250,7 +250,7 @@ const PriceSummary = ({
               </div>
             </div>
           </div>
-          
+
           <div className="md:border-l md:pl-4">
             <div className="text-sm text-gray-600">
               <p className="mb-2">

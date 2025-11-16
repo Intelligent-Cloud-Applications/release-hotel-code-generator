@@ -45,7 +45,6 @@ import { Input } from "../../../components/ui/input.tsx";
 import { Label } from "../../../components/ui/label.tsx";
 import { Textarea } from "../../../components/ui/textarea.tsx";
 import { toast } from "sonner";
-
 const Bill = () => {
   const navigate = useNavigate();
   const {
@@ -59,10 +58,13 @@ const Bill = () => {
     updateBooking,
     calculateTotalBill,
     companies,
+    bills,
     checkoutGuest,
+    createCompany,
   } = useAppContext();
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
+
   const [searchParams] = useSearchParams();
   // Helper functions for Indian time conversion
   const toIndianTime = (date) => {
@@ -88,6 +90,7 @@ const Bill = () => {
   const [editingDiscount, setEditingDiscount] = useState(0);
   const [editingRoomCharges, setEditingRoomCharges] = useState(); // New state to track which room charges are being edited
   const [editingAdvancePayment, setEditingAdvancePayment] = useState(0);
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
 
   // New state for editing individual charge amounts
   const [editingChargeAmounts, setEditingChargeAmounts] = useState({});
@@ -105,6 +108,18 @@ const Bill = () => {
   const [companyQuery, setCompanyQuery] = useState("");
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const companyFieldRef = useRef(null);
+  const getCompanyName = (c) =>
+    c?.name || c?.company_name || c?.companyName || "";
+  const getCompanyId = (c) => c?.company_id || c?.id || c?.companyId;
+  const getCompanyGst = (c) => c?.gst_no || c?.gst_number || c?.gstNo || "";
+  // Keep hooks (useMemo) before any early returns to preserve hook order across renders
+  const filteredCompanies = useMemo(() => {
+    const q = (companyQuery || "").trim().toLowerCase();
+    if (!q) return [];
+    return (companies || []).filter((c) =>
+      getCompanyName(c).toLowerCase().includes(q)
+    );
+  }, [companies, companyQuery]);
 
   // State to force refresh bill data
   const [forceRefresh, setForceRefresh] = useState(0);
@@ -220,6 +235,7 @@ const Bill = () => {
       advanceReceived: billData.billingSummary?.partialPayment || 0,
       totalTaxAmount: billData.billingSummary?.totalTaxAmount || 0,
       grandTotal: billData.finalSummary?.totalAmount || 0,
+      balanceDue: billData.billingSummary?.balanceDue || 0,
     };
   };
 
@@ -232,9 +248,20 @@ const Bill = () => {
     setIsCheckoutModalOpen(true);
   };
 
+  // Helper getters for company details (non-hook)
+  const getCompanyNameById = (id) => {
+    if (!id) return "";
+    const c = companies.find((cc) => getCompanyId(cc) === id);
+    return c ? getCompanyName(c) : "";
+  };
+  const getCompanyGstById = (id) => {
+    if (!id) return "";
+    const c = companies.find((cc) => getCompanyId(cc) === id);
+    return c ? getCompanyGst(c) : "";
+  };
+
   useEffect(() => {
     const bookingData = bookings.find((b) => b.booking_id === bookingId);
-
     if (bookingData?.company_id) {
       const name = getCompanyNameById(bookingData.company_id);
       const gst = getCompanyGstById(bookingData.company_id);
@@ -262,6 +289,37 @@ const Bill = () => {
   const processCheckout = async () => {
     if (!booking || !validateCheckoutForm()) {
       return;
+    }
+
+    setIsProcessingCheckout(true);
+
+    // If BTC and a new company is typed with GST, auto-create the company first
+    if (
+      checkoutFormData.payment_mode === "BTC" &&
+      !checkoutFormData.company_id &&
+      (companyQuery || "").trim() &&
+      (checkoutFormData.gst_no || "").trim()
+    ) {
+      try {
+        if (typeof createCompany === "function") {
+          const created = await createCompany({
+            name: (companyQuery || "").trim(),
+            gst_no: (checkoutFormData.gst_no || "").trim(),
+          });
+          const newId = created?.company_id || created?.id || created?._id;
+          if (newId) {
+            // Update local state so downstream uses the id
+            setCheckoutFormData((prev) => ({
+              ...prev,
+              company_id: newId,
+              gst_no: created?.gst_no || prev.gst_no,
+            }));
+          }
+        }
+      } catch (e) {
+        console.error("Auto-create company (checkout) failed:", e);
+        // Continue without blocking checkout
+      }
     }
 
     const billDataExtracted = extractBillDataForCheckout();
@@ -373,13 +431,14 @@ const Bill = () => {
       tax_type: taxType,
       tax_amount: billDataExtracted.totalTaxAmount || 0,
       advance_received: billDataExtracted.advanceReceived || 0,
-      total_amount: billDataExtracted.grandTotal || 0,
+      total_amount: billDataExtracted.balanceDue || 0,
       refund_amount: 0,
       services: services,
-      company_id: checkoutFormData.company_id  || null,
+      company_id: checkoutFormData.company_id || null,
       gst_no: checkoutFormData.gst_no || "N/A",
       bill_summary: billSummary,
       original_bill_data: booking,
+      bill_no: bills?.length + 1,
     };
 
     try {
@@ -405,7 +464,7 @@ const Bill = () => {
 
           // Debug logging for cash received
           console.log("Cash received data being sent:", cashReceivedData);
-          console.log("Checkout total_amount:", checkoutData.total_amount);
+          console.log("Checkout balance due:", billData?.billingSummary?.balanceDue);
           console.log(
             "Bill summary grandTotal:",
             billData?.summary?.grandTotal
@@ -434,6 +493,8 @@ const Bill = () => {
     } catch (error) {
       console.error("Checkout error:", error);
       toast.error("Failed to checkout guest");
+    } finally {
+      setIsProcessingCheckout(false);
     }
   };
 
@@ -956,15 +1017,15 @@ const Bill = () => {
 
       // Find the company details from the companies array
       const rawBookingData = bookings.find((b) => b.booking_id === bookingId);
-
+      console.log("Raw booking data for company ID:", rawBookingData);
       // Try to get company_id from either the processed booking or raw booking data
       const companyIdToUse = booking?.company_id || rawBookingData?.company_id;
-
+      const grcNo = rawBookingData?.grc_no || "N/A";
+      const no_of_adults = rawBookingData?.no_of_adults || 0;
       const companyDetails =
         companies?.find((company) => {
           return company.company_id === companyIdToUse;
         }) || {};
-
       setBillData((prev) => {
         return {
           ...prev,
@@ -1011,6 +1072,8 @@ const Bill = () => {
             numberOfNights: numberOfNights,
             companyName: companyDetails.name || "N/A",
             companyGstNo: companyDetails.gst_no || "N/A",
+            grc_no: grcNo,
+            no_of_adults: no_of_adults,
           },
           billingSummary: {
             // Use the breakdown data for more accurate calculations
@@ -1635,10 +1698,12 @@ const Bill = () => {
 
         // Calculate grand total: subtotal + tax on discounted amount - advance payment
         const calculatedGrandTotal =
-          calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+          calculatedSubTotal + totalTaxAmountOnDiscounted;
+
+        console.log(calculatedGrandTotal);
 
         // Calculate balance due: grand total (same as grand total since no advance payment)
-        const calculatedBalanceDue = calculatedGrandTotal;
+        const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
         return {
           ...prev,
@@ -1654,6 +1719,7 @@ const Bill = () => {
             sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
             totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
             balanceDue: calculatedBalanceDue,
+            grandTotal: calculatedGrandTotal,
           },
           finalSummary: {
             ...prev.finalSummary,
@@ -1686,7 +1752,7 @@ const Bill = () => {
       //   };
       //   console.log("📞 Calling autoUpdateBookingData with:", currentBillData);
       //   await autoUpdateBookingData(currentBillData);
-      //}, 1000);
+      // }, 1000);
     }
   }, [booking, guests, companies, forceRefresh]);
 
@@ -1784,10 +1850,10 @@ const Bill = () => {
 
       // Calculate grand total: subtotal + tax on discounted amount - advance payment
       const calculatedGrandTotal =
-        calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+        calculatedSubTotal + totalTaxAmountOnDiscounted ;
 
       // Calculate balance due: grand total (same as grand total since no advance payment)
-      const calculatedBalanceDue = calculatedGrandTotal;
+      const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
       setBillData((prev) => ({
         ...prev,
@@ -1801,6 +1867,7 @@ const Bill = () => {
           sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
           totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
           balanceDue: calculatedBalanceDue,
+          grandTotal: calculatedGrandTotal,
         },
         finalSummary: {
           ...prev.finalSummary,
@@ -2205,10 +2272,10 @@ const Bill = () => {
 
     // Calculate grand total: subtotal + tax on discounted amount - advance payment
     const calculatedGrandTotal =
-      calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+      calculatedSubTotal + totalTaxAmountOnDiscounted;
 
     // Calculate balance due: grand total (same as grand total since no advance payment)
-    const calculatedBalanceDue = calculatedGrandTotal;
+    const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
     setBillData((prev) => ({
       ...prev,
@@ -2222,6 +2289,7 @@ const Bill = () => {
         sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
         totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
         balanceDue: calculatedBalanceDue,
+        grandTotal: calculatedGrandTotal,
       },
       finalSummary: {
         ...prev.finalSummary,
@@ -2327,10 +2395,10 @@ const Bill = () => {
 
     // Calculate grand total: subtotal + tax on discounted amount - advance payment
     const calculatedGrandTotal =
-      calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+      calculatedSubTotal + totalTaxAmountOnDiscounted ;
 
     // Calculate balance due: grand total (same as grand total since no advance payment)
-    const calculatedBalanceDue = calculatedGrandTotal;
+    const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
     setBillData((prev) => ({
       ...prev,
@@ -2344,6 +2412,7 @@ const Bill = () => {
         sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
         totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
         balanceDue: calculatedBalanceDue,
+        grandTotal: calculatedGrandTotal,
       },
       finalSummary: {
         ...prev.finalSummary,
@@ -2378,21 +2447,6 @@ const Bill = () => {
     );
   }
 
-  const getCompanyName = (c) =>
-    c?.name || c?.company_name || c?.companyName || "";
-  const getCompanyId = (c) => c?.company_id || c?.id || c?.companyId;
-  const getCompanyGst = (c) => c?.gst_no || c?.gst_number || c?.gstNo || "";
-  const getCompanyNameById = (id) => {
-    if (!id) return "";
-    const c = companies.find((cc) => getCompanyId(cc) === id);
-    return c ? getCompanyName(c) : "";
-  };
-  const getCompanyGstById = (id) => {
-    if (!id) return "";
-    const c = companies.find((cc) => getCompanyId(cc) === id);
-    return c ? getCompanyGst(c) : "";
-  };
-
   const handleCompanySelect = (company) => {
     const name = getCompanyName(company);
     const id = getCompanyId(company);
@@ -2417,7 +2471,7 @@ const Bill = () => {
 
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
-    setShowCompanyDropdown(true);
+    setShowCompanyDropdown(!!value.trim());
     if (checkoutFormData?.company_id) {
       handleFieldChange("company_id", "");
       handleFieldChange("gst_no", "");
@@ -2554,9 +2608,10 @@ const Bill = () => {
                         onChange={(e) =>
                           handleCompanyInputChange(e.target.value)
                         }
-                        onFocus={() => setShowCompanyDropdown(true)}
+                        onFocus={() =>
+                          setShowCompanyDropdown(!!companyQuery.trim())
+                        }
                         placeholder="Search company"
-                        
                         className={`h-8 text-xs pr-6 ${
                           validationErrors.company_id
                             ? "border-red-500"
@@ -2569,7 +2624,6 @@ const Bill = () => {
                           aria-label="Clear selected company"
                           onClick={clearSelectedCompany}
                           className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                         
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -2578,8 +2632,8 @@ const Bill = () => {
                       {showCompanyDropdown && (
                         <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
                           <ul className="max-h-56 overflow-auto py-1">
-                            {companies.length > 0 ? (
-                              companies.map((c) => {
+                            {filteredCompanies.length > 0 &&
+                              filteredCompanies.map((c) => {
                                 const name = getCompanyName(c);
                                 const gst = getCompanyGst(c);
                                 return (
@@ -2601,33 +2655,11 @@ const Bill = () => {
                                     )}
                                   </li>
                                 );
-                              })
-                            ) : (
-                              <>
-                                <li className="px-3 py-2 text-sm text-gray-500">
-                                  No companies found
-                                </li>
-                                {companyQuery.trim() && createCompany && (
-                                  <li
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      openCreateCompanyDialog();
-                                    }}
-                                    className="cursor-pointer px-3 py-2 hover:bg-blue-50 border-t border-gray-100"
-                                  >
-                                    <div className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
-                                      <Plus className="h-4 w-4" />
-                                      <span>Create "{companyQuery}"</span>
-                                    </div>
-                                  </li>
-                                )}
-                              </>
-                            )}
+                              })}
                           </ul>
                         </div>
                       )}
                     </div>
-                    
                   </div>
 
                   <div className="bg-gray-50 p-2 rounded">
@@ -2674,9 +2706,9 @@ const Bill = () => {
             {billData && (
               <div className="border-t pt-3 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="font-medium">Total Amount:</span>
+                  <span className="font-medium">Amount to Pay:</span>
                   <span className="font-bold text-lg text-green-600">
-                    ₹{billData.finalSummary?.totalAmount?.toLocaleString() || 0}
+                    ₹{billData.billingSummary?.balanceDue?.toLocaleString() || 0}
                   </span>
                 </div>
               </div>
@@ -2691,9 +2723,27 @@ const Bill = () => {
               >
                 Cancel
               </Button>
-              <Button size="sm" onClick={processCheckout}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Complete Check-Out
+              <Button
+                size="sm"
+                onClick={processCheckout}
+                disabled={isProcessingCheckout}
+                className={
+                  isProcessingCheckout
+                    ? "bg-green-600 text-white hover:bg-green-600"
+                    : "bg-green-600 text-white hover:bg-green-700"
+                }
+              >
+                {isProcessingCheckout ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Processing...
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Complete Check-Out
+                  </div>
+                )}
               </Button>
             </div>
           </div>
@@ -2905,13 +2955,13 @@ const Bill = () => {
             )}
 
             {/* Sync Data Button for testing */}
-            <Button
+            {/* <Button
               onClick={triggerAutoUpdate}
               variant="outline"
               className="flex items-center space-x-2"
             >
               <span>Sync Data</span>
-            </Button>
+            </Button> */}
 
             {/* Main Print Bill Button - Show when no restaurant orders or as fallback */}
             {(!booking?.breakdown?.charges?.serviceCharges?.orderDetails ||
@@ -2929,10 +2979,10 @@ const Bill = () => {
             {/* Add a checkout button here */}
             <Button
               onClick={handleCheckoutClick}
-              className="flex items-center space-x-2"
+              className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white"
             >
               <LogOut className="h-4 w-4" />
-              <span>Checkout</span>
+              <span>Checkout & Settle</span>
             </Button>
           </div>
         </div>
@@ -2992,14 +3042,18 @@ const Bill = () => {
           className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
         >
           <div className="p-8 print:p-6">
-            <BillHeader billData={billData} />
+            <BillHeader
+              billData={billData}
+              institutionData={institutionData}
+              bills={bills?.length + 1}
+            />
             <GuestDetails
               billData={billData}
               guestData={guestData}
               isAmountEditing={isAmountEditing}
               setGuestData={setGuestData}
             />
-            <BookingDetails billData={billData} />
+            {/* <BookingDetails billData={billData} /> */}
             <ChargesBreakdown
               billData={billData}
               isAmountEditing={isAmountEditing}

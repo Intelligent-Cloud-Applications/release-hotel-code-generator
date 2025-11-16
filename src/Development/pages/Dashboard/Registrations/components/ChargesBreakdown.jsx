@@ -32,9 +32,9 @@ const ChargesBreakdown = ({
               <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
                 Date
               </th>
-              <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
+              {/* <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
                 HSN/SAC
-              </th>
+              </th> */}
               <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
                 Room No.
               </th>
@@ -175,12 +175,12 @@ const ChargesBreakdown = ({
                                       }
                                     )}
                                   </td>
-                                  <td
+                                  {/* <td
                                     className="border-r-1 border-black px-2 py-1 text-center align-top"
                                     rowSpan={rowspan}
                                   >
                                     996311
-                                  </td>
+                                  </td> */}
                                   <td
                                     className="border-r-1 border-black px-2 py-1 text-center align-top"
                                     rowSpan={rowspan}
@@ -309,7 +309,7 @@ const ChargesBreakdown = ({
                             <td className="border-r-1 border-black px-2 py-1"></td>
                             <td className="border-r-1 border-black px-2 py-1"></td>
                             <td className="border-r-1 border-black px-2 py-1"></td>
-                            <td className="border-r-1 border-black px-2 py-1"></td>
+                            {/* <td className="border-r-1 border-black px-2 py-1"></td> */}
                             <td className="border-r-1 border-black px-2 py-1 font-bold">
                               ROOM {roomNumber} TOTAL:
                             </td>

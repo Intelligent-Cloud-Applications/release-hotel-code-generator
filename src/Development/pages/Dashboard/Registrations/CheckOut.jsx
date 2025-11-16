@@ -1432,7 +1432,7 @@ const CheckOut = () => {
                                     : booking.restaurant_hold === true
                                     ? "RST Hold"
                                     : "Restricted"
-                                  : "Check Out"}
+                                  : "View Bill"}
                               </span>
                             </Button>
                           </div>

@@ -6,7 +6,9 @@ import {
   OverlayLoader,
 } from "../../../components/LoadingStates.jsx";
 import LoadingButton from "../../../components/ui/LoadingButton.jsx";
+import RefreshButton from "../../../components/ui/RefreshButton.jsx";
 import { Button } from "../../../components/ui/button.js";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +30,7 @@ const Expenses = () => {
     updateClosingBalance,
     updateExpense,
     deleteExpense,
+    listExpenses,
   } = useAppContext();
   console.log("allExpenses", allExpenses);
 
@@ -92,7 +95,24 @@ const Expenses = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [expenseToDelete, setExpenseToDelete] = React.useState(null);
   const [isDeletingExpense, setIsDeletingExpense] = React.useState(false);
-  
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const { listExpenses: fetchExpenses } = useAppContext();
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      if (typeof fetchExpenses === "function") {
+        await fetchExpenses();
+        toast.success("Cash drawer refreshed successfully");
+      }
+    } catch (e) {
+      toast.error("Failed to refresh cash drawer");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // Pagination state
   const [currentPage, setCurrentPage] = React.useState(1);
   const itemsPerPage = 15;
@@ -374,6 +394,7 @@ const Expenses = () => {
             <p className="text-xs sm:text-sm text-gray-500 mt-1">Track cash inflows and outflows</p>
           </div>
           <div className="flex gap-2 sm:gap-3">
+            <RefreshButton onRefresh={handleRefresh} onClick={handleRefresh} loading={refreshing} size="sm" />
             <Button
               className="bg-red-600 hover:bg-red-700 text-white shadow-sm text-xs sm:text-sm px-3 sm:px-4 py-2 h-8 sm:h-9"
               onClick={() => setIsDialogOpen(true)}
