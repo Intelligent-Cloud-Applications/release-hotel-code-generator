@@ -235,6 +235,7 @@ const Bill = () => {
       advanceReceived: billData.billingSummary?.partialPayment || 0,
       totalTaxAmount: billData.billingSummary?.totalTaxAmount || 0,
       grandTotal: billData.finalSummary?.totalAmount || 0,
+      balanceDue: billData.billingSummary?.balanceDue || 0,
     };
   };
 
@@ -247,17 +248,17 @@ const Bill = () => {
     setIsCheckoutModalOpen(true);
   };
 
-    // Helper getters for company details (non-hook)
-    const getCompanyNameById = (id) => {
-      if (!id) return "";
-      const c = companies.find((cc) => getCompanyId(cc) === id);
-      return c ? getCompanyName(c) : "";
-    };
-    const getCompanyGstById = (id) => {
-      if (!id) return "";
-      const c = companies.find((cc) => getCompanyId(cc) === id);
-      return c ? getCompanyGst(c) : "";
-    };
+  // Helper getters for company details (non-hook)
+  const getCompanyNameById = (id) => {
+    if (!id) return "";
+    const c = companies.find((cc) => getCompanyId(cc) === id);
+    return c ? getCompanyName(c) : "";
+  };
+  const getCompanyGstById = (id) => {
+    if (!id) return "";
+    const c = companies.find((cc) => getCompanyId(cc) === id);
+    return c ? getCompanyGst(c) : "";
+  };
 
   useEffect(() => {
     const bookingData = bookings.find((b) => b.booking_id === bookingId);
@@ -291,7 +292,7 @@ const Bill = () => {
     }
 
     setIsProcessingCheckout(true);
-    
+
     // If BTC and a new company is typed with GST, auto-create the company first
     if (
       checkoutFormData.payment_mode === "BTC" &&
@@ -430,10 +431,10 @@ const Bill = () => {
       tax_type: taxType,
       tax_amount: billDataExtracted.totalTaxAmount || 0,
       advance_received: billDataExtracted.advanceReceived || 0,
-      total_amount: billDataExtracted.grandTotal || 0,
+      total_amount: billDataExtracted.balanceDue || 0,
       refund_amount: 0,
       services: services,
-      company_id: checkoutFormData.company_id  || null,
+      company_id: checkoutFormData.company_id || null,
       gst_no: checkoutFormData.gst_no || "N/A",
       bill_summary: billSummary,
       original_bill_data: booking,
@@ -463,7 +464,7 @@ const Bill = () => {
 
           // Debug logging for cash received
           console.log("Cash received data being sent:", cashReceivedData);
-          console.log("Checkout total_amount:", checkoutData.total_amount);
+          console.log("Checkout balance due:", billData?.billingSummary?.balanceDue);
           console.log(
             "Bill summary grandTotal:",
             billData?.summary?.grandTotal
@@ -1016,11 +1017,11 @@ const Bill = () => {
 
       // Find the company details from the companies array
       const rawBookingData = bookings.find((b) => b.booking_id === bookingId);
-console.log("Raw booking data for company ID:", rawBookingData);
+      console.log("Raw booking data for company ID:", rawBookingData);
       // Try to get company_id from either the processed booking or raw booking data
       const companyIdToUse = booking?.company_id || rawBookingData?.company_id;
-     const grcNo = rawBookingData?.grc_no || "N/A";
-     const no_of_adults =rawBookingData?.no_of_adults || 0;
+      const grcNo = rawBookingData?.grc_no || "N/A";
+      const no_of_adults = rawBookingData?.no_of_adults || 0;
       const companyDetails =
         companies?.find((company) => {
           return company.company_id === companyIdToUse;
@@ -1072,7 +1073,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
             companyName: companyDetails.name || "N/A",
             companyGstNo: companyDetails.gst_no || "N/A",
             grc_no: grcNo,
-            no_of_adults: no_of_adults
+            no_of_adults: no_of_adults,
           },
           billingSummary: {
             // Use the breakdown data for more accurate calculations
@@ -1697,10 +1698,12 @@ console.log("Raw booking data for company ID:", rawBookingData);
 
         // Calculate grand total: subtotal + tax on discounted amount - advance payment
         const calculatedGrandTotal =
-          calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+          calculatedSubTotal + totalTaxAmountOnDiscounted;
+
+        console.log(calculatedGrandTotal);
 
         // Calculate balance due: grand total (same as grand total since no advance payment)
-        const calculatedBalanceDue = calculatedGrandTotal;
+        const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
         return {
           ...prev,
@@ -1716,6 +1719,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
             sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
             totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
             balanceDue: calculatedBalanceDue,
+            grandTotal: calculatedGrandTotal,
           },
           finalSummary: {
             ...prev.finalSummary,
@@ -1748,7 +1752,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
       //   };
       //   console.log("📞 Calling autoUpdateBookingData with:", currentBillData);
       //   await autoUpdateBookingData(currentBillData);
-      // }, 1000); 
+      // }, 1000);
     }
   }, [booking, guests, companies, forceRefresh]);
 
@@ -1846,10 +1850,10 @@ console.log("Raw booking data for company ID:", rawBookingData);
 
       // Calculate grand total: subtotal + tax on discounted amount - advance payment
       const calculatedGrandTotal =
-        calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+        calculatedSubTotal + totalTaxAmountOnDiscounted ;
 
       // Calculate balance due: grand total (same as grand total since no advance payment)
-      const calculatedBalanceDue = calculatedGrandTotal;
+      const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
       setBillData((prev) => ({
         ...prev,
@@ -1863,6 +1867,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
           sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
           totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
           balanceDue: calculatedBalanceDue,
+          grandTotal: calculatedGrandTotal,
         },
         finalSummary: {
           ...prev.finalSummary,
@@ -2267,10 +2272,10 @@ console.log("Raw booking data for company ID:", rawBookingData);
 
     // Calculate grand total: subtotal + tax on discounted amount - advance payment
     const calculatedGrandTotal =
-      calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+      calculatedSubTotal + totalTaxAmountOnDiscounted;
 
     // Calculate balance due: grand total (same as grand total since no advance payment)
-    const calculatedBalanceDue = calculatedGrandTotal;
+    const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
     setBillData((prev) => ({
       ...prev,
@@ -2284,6 +2289,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
         sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
         totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
         balanceDue: calculatedBalanceDue,
+        grandTotal: calculatedGrandTotal,
       },
       finalSummary: {
         ...prev.finalSummary,
@@ -2389,10 +2395,10 @@ console.log("Raw booking data for company ID:", rawBookingData);
 
     // Calculate grand total: subtotal + tax on discounted amount - advance payment
     const calculatedGrandTotal =
-      calculatedSubTotal + totalTaxAmountOnDiscounted - advanceReceived;
+      calculatedSubTotal + totalTaxAmountOnDiscounted ;
 
     // Calculate balance due: grand total (same as grand total since no advance payment)
-    const calculatedBalanceDue = calculatedGrandTotal;
+    const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
     setBillData((prev) => ({
       ...prev,
@@ -2406,6 +2412,7 @@ console.log("Raw booking data for company ID:", rawBookingData);
         sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
         totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
         balanceDue: calculatedBalanceDue,
+        grandTotal: calculatedGrandTotal,
       },
       finalSummary: {
         ...prev.finalSummary,
@@ -2439,8 +2446,6 @@ console.log("Raw booking data for company ID:", rawBookingData);
       />
     );
   }
-
-
 
   const handleCompanySelect = (company) => {
     const name = getCompanyName(company);
@@ -2607,7 +2612,6 @@ console.log("Raw booking data for company ID:", rawBookingData);
                           setShowCompanyDropdown(!!companyQuery.trim())
                         }
                         placeholder="Search company"
-                        
                         className={`h-8 text-xs pr-6 ${
                           validationErrors.company_id
                             ? "border-red-500"
@@ -2620,7 +2624,6 @@ console.log("Raw booking data for company ID:", rawBookingData);
                           aria-label="Clear selected company"
                           onClick={clearSelectedCompany}
                           className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                         
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -2657,7 +2660,6 @@ console.log("Raw booking data for company ID:", rawBookingData);
                         </div>
                       )}
                     </div>
-                    
                   </div>
 
                   <div className="bg-gray-50 p-2 rounded">
@@ -2704,9 +2706,9 @@ console.log("Raw booking data for company ID:", rawBookingData);
             {billData && (
               <div className="border-t pt-3 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="font-medium">Total Amount:</span>
+                  <span className="font-medium">Amount to Pay:</span>
                   <span className="font-bold text-lg text-green-600">
-                    ₹{billData.finalSummary?.totalAmount?.toLocaleString() || 0}
+                    ₹{billData.billingSummary?.balanceDue?.toLocaleString() || 0}
                   </span>
                 </div>
               </div>
@@ -2725,7 +2727,11 @@ console.log("Raw booking data for company ID:", rawBookingData);
                 size="sm"
                 onClick={processCheckout}
                 disabled={isProcessingCheckout}
-                className={isProcessingCheckout ? "bg-green-600 text-white hover:bg-green-600" : "bg-green-600 text-white hover:bg-green-700"}
+                className={
+                  isProcessingCheckout
+                    ? "bg-green-600 text-white hover:bg-green-600"
+                    : "bg-green-600 text-white hover:bg-green-700"
+                }
               >
                 {isProcessingCheckout ? (
                   <div className="flex items-center">
@@ -3036,7 +3042,11 @@ console.log("Raw booking data for company ID:", rawBookingData);
           className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
         >
           <div className="p-8 print:p-6">
-            <BillHeader billData={billData} institutionData={institutionData} bills={bills?.length + 1}/>
+            <BillHeader
+              billData={billData}
+              institutionData={institutionData}
+              bills={bills?.length + 1}
+            />
             <GuestDetails
               billData={billData}
               guestData={guestData}

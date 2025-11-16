@@ -1,4 +1,4 @@
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
 import SimpleApiButton from "../../../components/SimpleApiButton.jsx";
 import { useLoading } from "../../../hooks/useLoading.js";
@@ -465,7 +465,7 @@ function calculateDayEndData(
     Occupied: 0,
     Dirty: 0,
     Reserved: 0,
-    UnderMaintenance: 0,
+    "Under Maintenance": 0,
   };
 
   // Detail collections
@@ -518,15 +518,15 @@ function calculateDayEndData(
     if (bookingDate && isSameDay(bookingDate, targetDate)) {
       const bookingStatus = b?.status || "";
       const reservedStatuses = ["Reserved", "reserved"];
-      
+
       if (reservedStatuses.includes(bookingStatus)) {
-      bookingCount++;
-      newBookingsDetails.push({
-        guestName: getGuestNameFromBooking(b, guestIndex),
-        bookingId: getBookingIdFromBooking(b),
-        roomType: getRoomTypeFromBooking(b),
-        bookingType: getBookingTypeFromBooking(b),
-        bookingSource: getBookingSourceFromBooking(b),
+        bookingCount++;
+        newBookingsDetails.push({
+          guestName: getGuestNameFromBooking(b, guestIndex),
+          bookingId: getBookingIdFromBooking(b),
+          roomType: getRoomTypeFromBooking(b),
+          bookingType: getBookingTypeFromBooking(b),
+          bookingSource: getBookingSourceFromBooking(b),
           checkInDate: ci ? ci.toLocaleDateString() : "N/A",
           checkOutDate: co ? co.toLocaleDateString() : "N/A",
           roomNumbers: roomNums.length ? roomNums.join(", ") : "N/A",
@@ -536,44 +536,164 @@ function calculateDayEndData(
     }
 
     // Check-ins (only for checked-in status)
-    if (ci && isSameDay(ci, targetDate)) {
-      const bookingStatus = b?.status || "";
-      const checkedInStatuses = ["Checked-in", "checked-in", "CheckedIn", "In-House", "Inhouse", "In House"];
-      
-      if (checkedInStatuses.includes(bookingStatus)) {
+    // if (ci && isSameDay(ci, targetDate)) {
+    //   const bookingStatus = b?.status || "";
+    //   const checkedInStatuses = [
+    //     "Checked-in",
+    //     "checked-in",
+    //     "CheckedIn",
+    //     "In-House",
+    //     "Inhouse",
+    //     "In House",
+    //   ];
+
+    //   if (checkedInStatuses.includes(bookingStatus)) {
+    //     checkInCount++;
+    //     checkInsDetails.push({
+    //       guestName: getGuestNameFromBooking(b, guestIndex),
+    //       roomType: getRoomTypeFromBooking(b),
+    //       bookingId: getBookingIdFromBooking(b),
+    //       mobile: getMobileFromBooking(b, guestIndex),
+    //       adults: getAdultsFromBooking(b),
+    //       children: getChildrenFromBooking(b),
+    //       checkOutDate: co ? co.toLocaleDateString() : "N/A",
+    //       roomNumbers: roomNums.length ? roomNums.join(", ") : "N/A",
+    //       numberOfRooms: roomIds.length || roomNums.length || 1,
+    //     });
+    //   }
+    // }
+
+    // Check-outs (only for checked-out status)
+    // if (co && isSameDay(co, targetDate)) {
+    //   const bookingStatus = b?.status || "";
+    //   const checkedOutStatuses = [
+    //     "Checked-out",
+    //     "checked-out",
+    //     "CheckedOut",
+    //     "Checked Out",
+    //   ];
+
+    //   if (checkedOutStatuses.includes(bookingStatus)) {
+    //     checkOutsCount++;
+    //     checkOutsDetails.push({
+    //       guestName: getGuestNameFromBooking(b, guestIndex),
+    //       billNo: b?.bill_id || b?.billId || "N/A",
+    //       roomType: getRoomTypeFromBooking(b),
+    //       bookingId: getBookingIdFromBooking(b),
+    //       mobile: getMobileFromBooking(b, guestIndex),
+    //       checkInDate: ci ? ci.toLocaleDateString() : "N/A",
+    //       stayDuration: daysBetween(ciRaw, coRaw),
+    //       roomNumbers: roomNums.length ? roomNums.join(", ") : "N/A",
+    //       numberOfRooms: roomIds.length || roomNums.length || 1,
+    //     });
+    //   }
+    // }
+  });
+
+  //Checkins from bookings
+  (bookings || []).forEach((b) => {
+    const roomIds = getRoomIdsFromBooking(b);
+    const roomNums = getRoomNumbersFromBooking(b, rooms);
+
+    // Use helper to robustly parse various check-in formats
+    const ciRaw = getCheckInFromBooking(b);
+    let ci = new Date(ciRaw).toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+    });
+    ci = new Date(ci);
+    if (!ci) return;
+
+    // Compare against the targetDate provided to this function (normalize both)
+    const target = new Date(targetDate);
+    target.setHours(0, 0, 0, 0);
+    ci.setHours(0, 0, 0, 0);
+
+    if (
+      ci.getTime() === target.getTime() &&
+      (b?.status === "Checked-in" ||
+        b?.status === "checked-in" ||
+        b?.status === "In-House" ||
+        b?.status === "Inhouse" ||
+        b?.status === "In House")
+    ) {
+      console.log(b);
+      console.log(ci, b);
+
+      const co = toDate(getCheckOutFromBooking(b));
       checkInCount++;
       checkInsDetails.push({
+        grcNo: b?.grc_no || "N/A",
         guestName: getGuestNameFromBooking(b, guestIndex),
         roomType: getRoomTypeFromBooking(b),
         bookingId: getBookingIdFromBooking(b),
         mobile: getMobileFromBooking(b, guestIndex),
         adults: getAdultsFromBooking(b),
         children: getChildrenFromBooking(b),
-          checkOutDate: co ? co.toLocaleDateString() : "N/A",
-          roomNumbers: roomNums.length ? roomNums.join(", ") : "N/A",
-          numberOfRooms: roomIds.length || roomNums.length || 1,
-        });
-      }
+        checkOutDate: co ? co.toLocaleDateString() : "N/A",
+        isCheckedOut: false,
+        roomNumbers: roomNums.length ? roomNums.join(", ") : "N/A",
+        numberOfRooms: roomIds.length || roomNums.length || 1,
+      });
     }
+  });
 
-    // Check-outs (only for checked-out status)
-    if (co && isSameDay(co, targetDate)) {
-      const bookingStatus = b?.status || "";
-      const checkedOutStatuses = ["Checked-out", "checked-out", "CheckedOut", "Checked Out"];
-      
-      if (checkedOutStatuses.includes(bookingStatus)) {
+  // Checkins from bills
+  (bills || []).forEach((bill) => {
+    const bd = bill?.bill;
+    if (!bd) return;
+    const ci = toDate(bd?.bookingDetails?.checkIn);
+    if (!ci) return;
+    ci.setHours(0, 0, 0, 0);
+    const target = new Date(targetDate);
+    target.setHours(0, 0, 0, 0);
+
+    if (ci.getTime() === target.getTime()) {
+      const co = toDate(bd?.bookingDetails?.checkOut);
+      checkInCount++;
+      checkInsDetails.push({
+        grcNo: bd?.bookingDetails?.grc_no || "N/A",
+        guestName: bd?.guestDetails?.guestName || "Unknown Guest",
+        roomType: bd?.bookingDetails?.roomType || "Unknown",
+        bookingId: bd?.bookingDetails?.bookingId || bill?.bill_id || "N/A",
+        mobile: bd?.guestDetails?.mobile || "",
+        adults: bd?.bookingDetails?.no_of_adults || 0,
+        children: bd?.bookingDetails?.no_of_children || 0,
+        checkOutDate: co ? co.toLocaleDateString() : "N/A",
+        isCheckedOut: true,
+        roomNumbers: bd?.bookingDetails?.roomNumber || "N/A",
+        numberOfRooms: bd?.bookingDetails?.numberOfRooms || 1,
+      });
+    }
+  });
+
+  //checkouts from bills
+  (bills || []).forEach((bill) => {
+    const bd = bill?.bill;
+    if (!bd) return;
+    const co = toDate(bd?.bookingDetails?.checkOut);
+    if (!co) return;
+    co.setHours(0, 0, 0, 0);
+    const target = new Date(targetDate);
+    target.setHours(0, 0, 0, 0);
+    if (co.getTime() === target.getTime()) {
+      const ci = toDate(bd?.bookingDetails?.checkIn);
+
       checkOutsCount++;
       checkOutsDetails.push({
-        guestName: getGuestNameFromBooking(b, guestIndex),
-        roomType: getRoomTypeFromBooking(b),
-        bookingId: getBookingIdFromBooking(b),
-        mobile: getMobileFromBooking(b, guestIndex),
-          checkInDate: ci ? ci.toLocaleDateString() : "N/A",
-        stayDuration: daysBetween(ciRaw, coRaw),
-          roomNumbers: roomNums.length ? roomNums.join(", ") : "N/A",
-          numberOfRooms: roomIds.length || roomNums.length || 1,
+        grcNo: bd?.bookingDetails?.grc_no || "N/A",
+        guestName: bd?.guestDetails?.guestName || "Unknown Guest",
+        billNo: bd?.billHeader?.bill_no || "N/A",
+        roomType: bd?.bookingDetails?.roomType || "Unknown",
+        bookingId: bd?.bookingDetails?.bookingId || bill?.bill_id || "N/A",
+        mobile: bd?.guestDetails?.mobile || "",
+        checkInDate: ci ? ci.toLocaleDateString() : "N/A",
+        stayDuration: daysBetween(
+          bd?.bookingDetails?.checkIn,
+          bd?.bookingDetails?.checkOut
+        ),
+        roomNumbers: bd?.bookingDetails?.roomNumber || "N/A",
+        numberOfRooms: bd?.bookingDetails?.numberOfRooms || 1,
       });
-      }
     }
   });
 
@@ -589,6 +709,8 @@ function calculateDayEndData(
 
   (rooms || []).forEach((room) => {
     const status = room?.status || "Vacant";
+    console.log(status);
+
     roomStatusCounts[status] = (roomStatusCounts[status] || 0) + 1;
 
     const detail = {
@@ -651,22 +773,22 @@ function calculateDayEndData(
         // Priority: 1) Room tariff (base daily rate), 2) Booking daily rate, 3) Calculate from total as fallback
         const stayDuration = daysBetween(ci, co);
         const roomDailyTariff = room?.tariff || 0;
-        
-        const bookingDailyRate = 
-          match?.daily_rate || 
-          match?.dailyRate || 
-          match?.rate || 
-          match?.bookingDetails?.dailyRate || 
-          match?.bookingDetails?.rate || 
+
+        const bookingDailyRate =
+          match?.daily_rate ||
+          match?.dailyRate ||
+          match?.rate ||
+          match?.bookingDetails?.dailyRate ||
+          match?.bookingDetails?.rate ||
           0;
-        
-        const bookingTotalAmount = 
-          match?.total_amount || 
-          match?.totalAmount || 
-          match?.bookingDetails?.totalAmount || 
-          match?.amount || 
+
+        const bookingTotalAmount =
+          match?.total_amount ||
+          match?.totalAmount ||
+          match?.bookingDetails?.totalAmount ||
+          match?.amount ||
           0;
-        
+
         // Use room tariff (daily rate) as primary, then booking daily rate, then calculate from total if needed
         if (roomDailyTariff > 0) {
           detail.tariff = roomDailyTariff;
@@ -722,48 +844,73 @@ function calculateDayEndData(
     if (!isSameDay(co, targetDate)) return;
 
     // Log bill data structure for debugging
-    console.log('=== DAY END BILL PROCESSING ===');
-    console.log('Bill ID:', bill?.bill_id);
-    console.log('Full bill object:', bill);
-    console.log('Bill details (bd):', bd);
-    
+    console.log("=== DAY END BILL PROCESSING ===");
+    console.log("Bill ID:", bill?.bill_id);
+    console.log("Full bill object:", bill);
+    console.log("Bill details (bd):", bd);
+
     // Log all possible sources of total bill amount
-    console.log('=== TOTAL BILL AMOUNT SOURCES ===');
-    console.log('1. bd?.billingSummary?.balanceDue:', bd?.billingSummary?.balanceDue);
-    console.log('2. bd?.finalSummary?.totalAmount:', bd?.finalSummary?.totalAmount);
-    console.log('3. bd?.billingSummary?.grandTotal:', bd?.billingSummary?.grandTotal);
-    console.log('4. bd?.billingSummary?.totalAmount:', bd?.billingSummary?.totalAmount);
-    console.log('5. bd?.summary?.grandTotal:', bd?.summary?.grandTotal);
-    console.log('6. bd?.summary?.totalAmount:', bd?.summary?.totalAmount);
-    console.log('7. bd?.breakdown?.grandTotal:', bd?.breakdown?.grandTotal);
-    console.log('8. bd?.breakdown?.totalAmount:', bd?.breakdown?.totalAmount);
-    console.log('9. bd?.calculatedTotal:', bd?.calculatedTotal);
-    console.log('10. bd?.remainingBalance:', bd?.remainingBalance);
-    console.log('11. bill?.total_amount:', bill?.total_amount);
-    console.log('12. bill?.grandTotal:', bill?.grandTotal);
+    console.log("=== TOTAL BILL AMOUNT SOURCES ===");
+    console.log(
+      "1. bd?.billingSummary?.balanceDue:",
+      bd?.billingSummary?.balanceDue
+    );
+    console.log(
+      "2. bd?.finalSummary?.totalAmount:",
+      bd?.finalSummary?.totalAmount
+    );
+    console.log(
+      "3. bd?.billingSummary?.grandTotal:",
+      bd?.billingSummary?.grandTotal
+    );
+    console.log(
+      "4. bd?.billingSummary?.totalAmount:",
+      bd?.billingSummary?.totalAmount
+    );
+    console.log("5. bd?.summary?.grandTotal:", bd?.summary?.grandTotal);
+    console.log("6. bd?.summary?.totalAmount:", bd?.summary?.totalAmount);
+    console.log("7. bd?.breakdown?.grandTotal:", bd?.breakdown?.grandTotal);
+    console.log("8. bd?.breakdown?.totalAmount:", bd?.breakdown?.totalAmount);
+    console.log("9. bd?.calculatedTotal:", bd?.calculatedTotal);
+    console.log("10. bd?.remainingBalance:", bd?.remainingBalance);
+    console.log("11. bill?.total_amount:", bill?.total_amount);
+    console.log("12. bill?.grandTotal:", bill?.grandTotal);
 
     // Total revenue (bill-level)
     const billAmount = Number(
       bd?.billingSummary?.balanceDue ?? bd?.finalSummary?.totalAmount ?? 0
     );
-    
-    console.log('=== SELECTED BILL AMOUNT ===');
-    console.log('Selected billAmount:', billAmount);
-    console.log('Source used:', bd?.billingSummary?.balanceDue ? 'billingSummary.balanceDue' : 'finalSummary.totalAmount');
-    
+
+    console.log("=== SELECTED BILL AMOUNT ===");
+    console.log("Selected billAmount:", billAmount);
+    console.log(
+      "Source used:",
+      bd?.billingSummary?.balanceDue
+        ? "billingSummary.balanceDue"
+        : "finalSummary.totalAmount"
+    );
+
     totalRevenue += billAmount;
 
     // Room revenue KPI (bill-level)
     const roomSpecificRevenue = Number(
       bd?.billingSummary?.totalRoomServices ?? bd?.billingSummary?.subTotal ?? 0
     );
-    
-    console.log('=== ROOM REVENUE CALCULATION ===');
-    console.log('bd?.billingSummary?.totalRoomServices:', bd?.billingSummary?.totalRoomServices);
-    console.log('bd?.billingSummary?.subTotal:', bd?.billingSummary?.subTotal);
-    console.log('Selected roomSpecificRevenue:', roomSpecificRevenue);
-    console.log('Source used:', bd?.billingSummary?.totalRoomServices ? 'billingSummary.totalRoomServices' : 'billingSummary.subTotal');
-    
+
+    console.log("=== ROOM REVENUE CALCULATION ===");
+    console.log(
+      "bd?.billingSummary?.totalRoomServices:",
+      bd?.billingSummary?.totalRoomServices
+    );
+    console.log("bd?.billingSummary?.subTotal:", bd?.billingSummary?.subTotal);
+    console.log("Selected roomSpecificRevenue:", roomSpecificRevenue);
+    console.log(
+      "Source used:",
+      bd?.billingSummary?.totalRoomServices
+        ? "billingSummary.totalRoomServices"
+        : "billingSummary.subTotal"
+    );
+
     roomRevenue += roomSpecificRevenue;
 
     const billBookingRef =
@@ -849,17 +996,26 @@ function calculateDayEndData(
     }
 
     // Apply ALL-DAY charges to breakdown (attribute them on checkout date)
-    console.log('=== REVENUE BREAKDOWN CALCULATION ===');
-    console.log('allDays object:', allDays);
-    console.log('bd?.billingSummary?.totalRoomServices:', bd?.billingSummary?.totalRoomServices);
-    
-    const roomChargesToAdd = allDays.roomCharges > 0
-      ? allDays.roomCharges
-      : Number(bd?.billingSummary?.totalRoomServices) || 0;
-    
-    console.log('Room charges to add:', roomChargesToAdd);
-    console.log('Source used:', allDays.roomCharges > 0 ? 'allDays.roomCharges' : 'billingSummary.totalRoomServices');
-    
+    console.log("=== REVENUE BREAKDOWN CALCULATION ===");
+    console.log("allDays object:", allDays);
+    console.log(
+      "bd?.billingSummary?.totalRoomServices:",
+      bd?.billingSummary?.totalRoomServices
+    );
+
+    const roomChargesToAdd =
+      allDays.roomCharges > 0
+        ? allDays.roomCharges
+        : Number(bd?.billingSummary?.totalRoomServices) || 0;
+
+    console.log("Room charges to add:", roomChargesToAdd);
+    console.log(
+      "Source used:",
+      allDays.roomCharges > 0
+        ? "allDays.roomCharges"
+        : "billingSummary.totalRoomServices"
+    );
+
     revenueBreakdown.roomCharges += roomChargesToAdd;
     revenueBreakdown.foodCharges += allDays.foodCharges;
     revenueBreakdown.laundryCharges += allDays.laundryCharges;
@@ -871,24 +1027,37 @@ function calculateDayEndData(
     revenueBreakdown.dailyTotal += allDays.dailyTotal;
 
     // Taxes and discounts (once per bill)
-    console.log('=== TAXES AND DISCOUNTS ===');
-    console.log('bd?.billingSummary?.serviceTaxAmount:', bd?.billingSummary?.serviceTaxAmount);
-    console.log('bd?.billingSummary?.roomTaxAmount:', bd?.billingSummary?.roomTaxAmount);
-    console.log('bd?.billingSummary?.totalDiscount:', bd?.billingSummary?.totalDiscount);
-    console.log('bd?.billingSummary?.discountAmount:', bd?.billingSummary?.discountAmount);
-    
+    console.log("=== TAXES AND DISCOUNTS ===");
+    console.log(
+      "bd?.billingSummary?.serviceTaxAmount:",
+      bd?.billingSummary?.serviceTaxAmount
+    );
+    console.log(
+      "bd?.billingSummary?.roomTaxAmount:",
+      bd?.billingSummary?.roomTaxAmount
+    );
+    console.log(
+      "bd?.billingSummary?.totalDiscount:",
+      bd?.billingSummary?.totalDiscount
+    );
+    console.log(
+      "bd?.billingSummary?.discountAmount:",
+      bd?.billingSummary?.discountAmount
+    );
+
     const serviceTax = Number(bd?.billingSummary?.serviceTaxAmount) || 0;
     const roomTax = Number(bd?.billingSummary?.roomTaxAmount) || 0;
-    const discount = Number(
-      bd?.billingSummary?.totalDiscount ??
-        bd?.billingSummary?.discountAmount ??
-        0
-    ) || 0;
-    
-    console.log('Calculated serviceTax:', serviceTax);
-    console.log('Calculated roomTax:', roomTax);
-    console.log('Calculated discount:', discount);
-    
+    const discount =
+      Number(
+        bd?.billingSummary?.totalDiscount ??
+          bd?.billingSummary?.discountAmount ??
+          0
+      ) || 0;
+
+    console.log("Calculated serviceTax:", serviceTax);
+    console.log("Calculated roomTax:", roomTax);
+    console.log("Calculated discount:", discount);
+
     revenueBreakdown.serviceTaxAmount += serviceTax;
     revenueBreakdown.roomTaxAmount += roomTax;
     revenueBreakdown.totalDiscount += discount;
@@ -1078,26 +1247,32 @@ const TimerDisplay = React.memo(() => {
   useEffect(() => {
     const getIndianTime = () => {
       const now = new Date();
-      const indianTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const indianTime = new Date(
+        now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
       return indianTime;
     };
 
     const updateTimer = () => {
       const indianTime = getIndianTime();
-      
+
       // Calculate time until next midnight (Indian time)
       const midnight = new Date(indianTime);
       midnight.setHours(24, 0, 0, 0);
-      
+
       const diff = midnight.getTime() - indianTime.getTime();
       const hours = Math.floor(diff / (1000 * 60 * 60));
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      
-      const newTimeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      
+
+      const newTimeString = `${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+
       // Only update state if the time string has actually changed
-      setTimeToMidnight(prev => prev !== newTimeString ? newTimeString : prev);
+      setTimeToMidnight((prev) =>
+        prev !== newTimeString ? newTimeString : prev
+      );
     };
 
     updateTimer(); // Initial update
@@ -1133,8 +1308,38 @@ const DayEnd = () => {
     listExpenses,
     expenses: allExpenses,
     institutionId = "HOTEL001",
-    handleDailyEnd
+    handleDailyEnd,
   } = useAppContext();
+
+  useEffect(() => {
+    const checkinsToday = bookings.filter((b) => {
+      const rawCi = getCheckInFromBooking(b);
+      let ci = new Date(
+        rawCi.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const now = new Date();
+      ci.setHours(0, 0, 0, 0);
+      now.setHours(0, 0, 0, 0);
+      return ci.getTime() === now.getTime();
+    });
+
+    const checkingsFromBills = bills.filter((bill) => {
+      const ci = new Date(
+        bill.bill.bookingDetails.checkIn.toLocaleString("en-US", {
+          timeZone: "Asia/Kolkata",
+        })
+      );
+      const now = new Date();
+      if (!ci) return false;
+      ci.setHours(0, 0, 0, 0);
+      now.setHours(0, 0, 0, 0);
+      return ci.getTime() === now.getTime();
+    });
+
+    console.log(checkingsFromBills);
+
+    console.log(checkinsToday);
+  }, [bills, bookings]);
 
   const { withLoading, isKeyLoading } = useLoading();
   useEffect(() => {
@@ -1156,79 +1361,100 @@ const DayEnd = () => {
     setExpenses(allExpenses.expenses || []);
   }, [allExpenses]);
 
-
-
   // -------------- Auto day-end processing logic --------------
 
   // Get Indian Standard Time
   const getIndianTime = () => {
     const now = new Date();
-    const indianTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const indianTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+    );
     return indianTime;
   };
 
-  const handleAutoProcessDayEnd = React.useCallback(async (dateToProcess) => {
-    try {
-      // Show processing notification
-      setStatus({
-        type: "info",
-        message: `Automatic day-end processing for ${dateToProcess.toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })}...`,
-        icon: <Clock className="h-5 w-5 text-blue-500" />,
-      });
-      
-      // Calculate day-end data for the date
-      const autoData = calculateDayEndData(
-        bookings,
-        bills,
-        rooms,
-        guests,
-        expenses,
-        dateToProcess,
-        institutionId
-      );
+  const handleAutoProcessDayEnd = React.useCallback(
+    async (dateToProcess) => {
+      try {
+        // Show processing notification
+        setStatus({
+          type: "info",
+          message: `Automatic day-end processing for ${dateToProcess.toLocaleDateString(
+            "en-US",
+            {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }
+          )}...`,
+          icon: <Clock className="h-5 w-5 text-blue-500" />,
+        });
 
-      // Set the data temporarily for processing
-      setDayEndData(autoData);
-      setDateToProcess(dateToProcess);
+        // Calculate day-end data for the date
+        const autoData = calculateDayEndData(
+          bookings,
+          bills,
+          rooms,
+          guests,
+          expenses,
+          dateToProcess,
+          institutionId
+        );
 
-      // Process the day-end
-      const dateForAPI = formatDateForAPI(dateToProcess);
-      await processDayEndInternal(dateForAPI);
+        // Set the data temporarily for processing
+        setDayEndData(autoData);
+        setDateToProcess(dateToProcess);
 
-      // Show success notification
-      setStatus({
-        type: "success",
-        message: `Automatic day-end completed successfully for ${dateToProcess.toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })}`,
-        icon: <Lock className="h-5 w-5 text-green-500" />,
-      });
+        // Process the day-end
+        const dateForAPI = formatDateForAPI(dateToProcess);
+        await processDayEndInternal(dateForAPI);
 
-      // Set today's day-end as closed
-      setTodayDayEndClosed(true);
+        // Show success notification
+        setStatus({
+          type: "success",
+          message: `Automatic day-end completed successfully for ${dateToProcess.toLocaleDateString(
+            "en-US",
+            {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }
+          )}`,
+          icon: <Lock className="h-5 w-5 text-green-500" />,
+        });
 
-      // Page will reload after processDayEndInternal completes
-      
-    } catch (error) {
-      // Show error notification
-      setStatus({
-        type: "error",
-        message: `Automatic day-end failed for ${dateToProcess.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        })}. Please process manually.`,
-        icon: <AlertCircle className="h-5 w-5 text-red-500" />,
-      });
-    }
-  }, [processdayEnd, bookings, bills, rooms, guests, expenses, institutionId, dayEndData, dateToProcess]);
+        // Set today's day-end as closed
+        setTodayDayEndClosed(true);
+
+        // Page will reload after processDayEndInternal completes
+      } catch (error) {
+        // Show error notification
+        setStatus({
+          type: "error",
+          message: `Automatic day-end failed for ${dateToProcess.toLocaleDateString(
+            "en-US",
+            {
+              month: "short",
+              day: "numeric",
+            }
+          )}. Please process manually.`,
+          icon: <AlertCircle className="h-5 w-5 text-red-500" />,
+        });
+      }
+    },
+    [
+      processdayEnd,
+      bookings,
+      bills,
+      rooms,
+      guests,
+      expenses,
+      institutionId,
+      dayEndData,
+      dateToProcess,
+    ]
+  );
 
   // Auto day-end process at 11:59:30 PM or 12:00 AM Indian time
   useEffect(() => {
@@ -1237,13 +1463,14 @@ const DayEnd = () => {
       const currentHour = indianTime.getHours();
       const currentMinute = indianTime.getMinutes();
       const currentSecond = indianTime.getSeconds();
-      
+
       // Trigger at 11:59:30 PM (23:59:30) or 12:00 AM (00:00:00)
-      const isTriggerTime = (currentHour === 23 && currentMinute === 59 && currentSecond >= 30) || 
-                           (currentHour === 0 && currentMinute === 0 && currentSecond < 5);
-      
+      const isTriggerTime =
+        (currentHour === 23 && currentMinute === 59 && currentSecond >= 30) ||
+        (currentHour === 0 && currentMinute === 0 && currentSecond < 5);
+
       if (!isTriggerTime) return;
-      
+
       // Always use today's date for processing
       const todayStr = formatDateForAPI(indianTime);
       if (lastProcessedDate === todayStr) {
@@ -1254,9 +1481,9 @@ const DayEnd = () => {
       if (recentDateReport && recentDateReport.dayEndStatus) {
         return; // Already processed
       }
-      
+
       setLastProcessedDate(todayStr);
-      
+
       // Auto-trigger day-end for today
       setTimeout(() => {
         handleAutoProcessDayEnd(indianTime);
@@ -1345,7 +1572,7 @@ const DayEnd = () => {
 
           const recentDateStr = recentDateReportData.date;
           const recentDate = parseUSDateString(recentDateStr);
-          
+
           if (!recentDate) return;
           recentDate.setHours(0, 0, 0, 0);
 
@@ -1368,8 +1595,8 @@ const DayEnd = () => {
           );
 
           // Check if day end is already closed for the recent date
-          const isDayEndClosed = recentDateReportData?.dayEndStatus === "completed";
-          
+          const isDayEndClosed = recentDateReportData?.dayEndStatus;
+
           // Check if today's day-end is already closed
           const isTodayClosed = isSameDay(recentDate, today) && isDayEndClosed;
           setTodayDayEndClosed(isTodayClosed);
@@ -1390,7 +1617,7 @@ const DayEnd = () => {
               icon: <Clock className="h-5 w-5 text-blue-500" />,
             });
           }
-          
+
           // Always show close button for today
           setShowCloseButton(true);
           setButtonDay(todayFormatted);
@@ -1437,17 +1664,17 @@ const DayEnd = () => {
   // Create a separate isolated dialog component outside the main component
   const IsolatedDialog = React.memo(({ title, children }) => {
     const [isOpen, setIsOpen] = React.useState(false);
-    
+
     const handleOpenChange = React.useCallback((open) => {
       setIsOpen(open);
     }, []);
-    
+
     const handleButtonClick = React.useCallback((e) => {
       e.preventDefault();
       e.stopPropagation();
       setIsOpen(true);
     }, []);
-    
+
     return (
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogTrigger asChild>
@@ -1472,82 +1699,86 @@ const DayEnd = () => {
     );
   });
 
-  const DataCard = React.memo(({
-    title,
-    value,
-    subtitle,
-    icon,
-    colorClass = "text-blue-600",
-    dialogContent,
-    hasDetails = false,
-  }) => (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <div className={colorClass}>{icon}</div>
-          <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
-        </div>
-        {hasDetails && (
-          <IsolatedDialog title={title}>
-            {dialogContent}
-          </IsolatedDialog>
-        )}
-      </div>
-      <div className="text-2xl font-bold text-gray-900 mb-1">
-        {dataLoading ? (
-          <div className="animate-pulse bg-gray-200 h-8 w-16 rounded"></div>
-        ) : (
-          value
-        )}
-      </div>
-      {subtitle && <div className="text-xs text-gray-500">{subtitle}</div>}
-    </div>
-  ));
-
-  const DetailCard = React.memo(({ title, data, icon, colorClass = "text-blue-500" }) => (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <div className={colorClass}>{icon}</div>
-        <h3 className="font-semibold text-gray-800">{title}</h3>
-      </div>
-      {dataLoading ? (
-        <div className="animate-pulse space-y-2">
-          <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-          <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-          <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-        </div>
-      ) : (
-        <div className="space-y-1 text-sm text-gray-600">
-          {data && typeof data === "object" ? (
-            Object.entries(data).map(([key, value]) => (
-              <div key={key} className="flex justify-between items-center">
-                <span className="capitalize">
-                  {key.replace(/([A-Z])/g, " $1").trim()}:
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{value}</span>
-                  {value > 0 && (
-                    <IsolatedDialog title={key}>
-                      {title.includes("Room Status") ? (
-                        <IndividualStatusModal status={key} />
-                      ) : (
-                        <IndividualRoomTypeModal roomType={key} />
-                      )}
-                    </IsolatedDialog>
-                  )}
-                </div>
-              </div>
-            ))
-          ) : (
-            <span>{data || "No data available"}</span>
+  const DataCard = React.memo(
+    ({
+      title,
+      value,
+      subtitle,
+      icon,
+      colorClass = "text-blue-600",
+      dialogContent,
+      hasDetails = false,
+    }) => (
+      <div className="bg-white rounded border-2 border-gray-100 p-3">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1">
+            <div className={colorClass}>{icon}</div>
+            <h3 className="font-medium text-gray-700 text-xs">{title}</h3>
+          </div>
+          {hasDetails && (
+            <IsolatedDialog title={title}>{dialogContent}</IsolatedDialog>
           )}
         </div>
-      )}
-    </div>
-  ));
+        <div className="text-xl font-semibold text-gray-900 mb-1">
+          {dataLoading ? (
+            <div className="animate-pulse bg-gray-200 h-6 w-12 rounded"></div>
+          ) : (
+            value
+          )}
+        </div>
+        {subtitle && <div className="text-xs text-gray-400">{subtitle}</div>}
+      </div>
+    )
+  );
+
+  const DetailCard = React.memo(
+    ({ title, data, icon, colorClass = "text-blue-500" }) => (
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className={colorClass}>{icon}</div>
+          <h3 className="font-semibold text-gray-800">{title}</h3>
+        </div>
+        {dataLoading ? (
+          <div className="animate-pulse space-y-2">
+            <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+            <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+          </div>
+        ) : (
+          <div className="space-y-1 text-sm text-gray-600">
+            {data && typeof data === "object" ? (
+              Object.entries(data).map(([key, value]) => (
+                <div key={key} className="flex justify-between items-center">
+                  <span className="capitalize">
+                    {key.replace(/([A-Z])/g, " $1").trim()}:
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{value}</span>
+                    {value > 0 && (
+                      <IsolatedDialog title={key}>
+                        {title.includes("Room Status") ? (
+                          <IndividualStatusModal status={key} />
+                        ) : (
+                          <IndividualRoomTypeModal roomType={key} />
+                        )}
+                      </IsolatedDialog>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <span>{data || "No data available"}</span>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  );
 
   const BookingsModal = React.useMemo(() => {
     const data = dayEndData?.details?.newBookings || [];
+    console.log("data", data);
+
     return (
       <div className="space-y-4">
         {data.length > 0 ? (
@@ -1605,16 +1836,16 @@ const DayEnd = () => {
   // Pagination hooks for modals
   const checkInsData = dayEndData?.details?.checkIns || [];
   const checkInsPagination = usePagination(checkInsData, 15);
-  
+
   const occupiedRoomsData = dayEndData?.details?.occupiedRooms || [];
   const occupiedRoomsPagination = usePagination(occupiedRoomsData, 15);
-  
+
   const roomRevenueData = dayEndData?.details?.roomRevenue || [];
   const roomRevenuePagination = usePagination(roomRevenueData, 15);
-  
+
   const checkOutsData = dayEndData?.details?.checkOuts || [];
   const checkOutsPagination = usePagination(checkOutsData, 15);
-  
+
   const expensesData = dayEndData?.details?.expenses || [];
   const expensesPagination = usePagination(expensesData, 15);
 
@@ -1627,14 +1858,10 @@ const DayEnd = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px]">Guest Name</TableHead>
-                  <TableHead className="w-[160px]">Booking ID</TableHead>
+                  <TableHead className="w-[160px]">GRC ID</TableHead>
                   <TableHead className="w-[120px]">Room Type</TableHead>
                   <TableHead className="w-[120px]">Mobile</TableHead>
-                  <TableHead className="w-[70px]">Adults</TableHead>
-                  <TableHead className="w-[70px]">Children</TableHead>
-                  <TableHead className="w-[80px]">Rooms</TableHead>
                   <TableHead className="w-[160px]">Room Numbers</TableHead>
-                  <TableHead className="w-[110px]">Check-out Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1643,16 +1870,10 @@ const DayEnd = () => {
                     <TableCell className="font-medium">
                       {row.guestName}
                     </TableCell>
-                    <TableCell>{row.bookingId}</TableCell>
+                    <TableCell>{row.grcNo}</TableCell>
                     <TableCell>{row.roomType}</TableCell>
                     <TableCell>{row.mobile}</TableCell>
-                    <TableCell>{row.adults}</TableCell>
-                    <TableCell>{row.children}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{row.numberOfRooms}</Badge>
-                    </TableCell>
                     <TableCell className="text-xs">{row.roomNumbers}</TableCell>
-                    <TableCell>{row.checkOutDate}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1687,14 +1908,13 @@ const DayEnd = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[120px]">Room</TableHead>
-                  <TableHead className="w-[200px]">Guest Name</TableHead>
-                  <TableHead className="w-[180px]">Booking ID</TableHead>
+
                   <TableHead className="w-[140px]">Room Type</TableHead>
                   <TableHead className="w-[100px]">Floor</TableHead>
-                  <TableHead className="w-[130px]">Check-in</TableHead>
-                  <TableHead className="w-[130px]">Check-out</TableHead>
-                  <TableHead className="w-[100px]">Guests</TableHead>
-                  <TableHead className="w-[130px] text-right">Day Tariff</TableHead>
+
+                  <TableHead className="w-[130px] text-right">
+                    Day Tariff
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1703,15 +1923,10 @@ const DayEnd = () => {
                     <TableCell className="font-medium">
                       {room.roomNumber}
                     </TableCell>
-                    <TableCell>{room.guestName || "Unknown Guest"}</TableCell>
-                    <TableCell>{room.bookingId || "N/A"}</TableCell>
+
                     <TableCell>{room.roomType}</TableCell>
                     <TableCell>{room.floor}</TableCell>
-                    <TableCell>{room.checkInDate || "N/A"}</TableCell>
-                    <TableCell>{room.checkOutDate || "N/A"}</TableCell>
-                    <TableCell>
-                      {room.adults || 0}A, {room.children || 0}C
-                    </TableCell>
+
                     <TableCell className="text-right">
                       ₹{(room.tariff || 0).toLocaleString()}
                     </TableCell>
@@ -1753,8 +1968,8 @@ const DayEnd = () => {
               ₹{(dayEndData?.roomRevenue || 0).toLocaleString()}
             </div>
             <div className="text-xs text-indigo-500 mt-1">
-              From {roomRevenueData.length} room{roomRevenueData.length !== 1 ? "s" : ""} that checked
-              out today
+              From {roomRevenueData.length} room
+              {roomRevenueData.length !== 1 ? "s" : ""} that checked out today
             </div>
           </div>
         </div>
@@ -1856,6 +2071,8 @@ const DayEnd = () => {
   }, [roomRevenueData, roomRevenuePagination, dayEndData?.roomRevenue]);
 
   const CheckOutsModal = React.useMemo(() => {
+    console.log("Checkout: ", checkOutsData);
+
     return (
       <div className="space-y-4">
         {checkOutsData.length > 0 ? (
@@ -1864,7 +2081,7 @@ const DayEnd = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px]">Guest Name</TableHead>
-                  <TableHead className="w-[160px]">Booking ID</TableHead>
+                  <TableHead className="w-[160px]">Bill ID</TableHead>
                   <TableHead className="w-[120px]">Room Type</TableHead>
                   <TableHead className="w-[120px]">Mobile</TableHead>
                   <TableHead className="w-[110px]">Check-in Date</TableHead>
@@ -1883,7 +2100,7 @@ const DayEnd = () => {
                     <TableCell className="font-medium">
                       {row.guestName}
                     </TableCell>
-                    <TableCell>{row.bookingId}</TableCell>
+                    <TableCell>{row.billNo}</TableCell>
                     <TableCell>{row.roomType}</TableCell>
                     <TableCell>{row.mobile}</TableCell>
                     <TableCell>{row.checkInDate}</TableCell>
@@ -2020,6 +2237,8 @@ const DayEnd = () => {
   const IndividualRoomTypeModal = React.memo(({ roomType }) => {
     const data = dayEndData?.details?.roomTypes?.[roomType] || [];
     const pagination = usePagination(data, 15);
+    console.log(pagination);
+
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-4">
@@ -2034,12 +2253,8 @@ const DayEnd = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[140px]">Room Number</TableHead>
-                  <TableHead className="w-[200px]">Guest Name</TableHead>
-                  <TableHead className="w-[180px]">Booking ID</TableHead>
+                  <TableHead className="w-[140px]">Room Type</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[120px]">Check-in</TableHead>
-                  <TableHead className="w-[120px]">Check-out</TableHead>
-                  <TableHead className="w-[100px]">Guests</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2048,16 +2263,9 @@ const DayEnd = () => {
                     <TableCell className="font-medium">
                       {room.roomNumber}
                     </TableCell>
-                    <TableCell>{room.guestName || "N/A"}</TableCell>
-                    <TableCell>{room.bookingId || "N/A"}</TableCell>
-                    <TableCell>
-                      {room.bookingStatus || room.status || "Occupied"}
-                    </TableCell>
-                    <TableCell>{room.checkInDate || "N/A"}</TableCell>
-                    <TableCell>{room.checkOutDate || "N/A"}</TableCell>
-                    <TableCell>
-                      {room.adults || 0}A, {room.children || 0}C
-                    </TableCell>
+                    <TableCell>{room.roomType}</TableCell>
+
+                    <TableCell>{room.status || "Occupied"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -2096,8 +2304,8 @@ const DayEnd = () => {
               ₹{(dayEndData?.totalExpenses || 0).toLocaleString()}
             </div>
             <div className="text-xs text-red-500 mt-1">
-              From {expensesData.length} expense{expensesData.length !== 1 ? "s" : ""} recorded
-              on this date
+              From {expensesData.length} expense
+              {expensesData.length !== 1 ? "s" : ""} recorded on this date
             </div>
           </div>
         </div>
@@ -2140,7 +2348,12 @@ const DayEnd = () => {
         )}
       </div>
     );
-  }, [expensesData, expensesPagination, dayEndData?.totalExpenses, dayEndData?.date]);
+  }, [
+    expensesData,
+    expensesPagination,
+    dayEndData?.totalExpenses,
+    dayEndData?.date,
+  ]);
 
   return (
     <div className="min-h-[calc(100vh-100px)] bg-gray-50 px-4 py-8">
@@ -2172,9 +2385,9 @@ const DayEnd = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
               <DataCard
-                title="New Bookings"
+                title="Bookings"
                 value={dayEndData?.bookingCount || 0}
                 subtitle="From Bookings"
                 icon={<BookOpen className="h-5 w-5" />}
@@ -2304,7 +2517,7 @@ const DayEnd = () => {
             <div className="space-y-4">
               {/* Timer Display */}
               <TimerDisplay />
-              
+
               <p className="text-sm text-gray-600">
                 Ready to close the business day for{" "}
                 <span className="font-semibold text-gray-800">{buttonDay}</span>
@@ -2312,7 +2525,10 @@ const DayEnd = () => {
               <SimpleApiButton
                 onClick={handleDayEnd}
                 disabled={
-                  loading || dataLoading || isKeyLoading("day-end-process") || todayDayEndClosed
+                  loading ||
+                  dataLoading ||
+                  isKeyLoading("day-end-process") ||
+                  todayDayEndClosed
                 }
                 size="lg"
                 className="px-8 py-3 text-lg font-semibold"
@@ -2326,7 +2542,7 @@ const DayEnd = () => {
                   buttonLabel
                 )}
               </SimpleApiButton>
-              
+
               {/* Show day end closed status below button */}
               {todayDayEndClosed && (
                 <div className="flex items-center justify-center gap-2 text-green-600">
@@ -2334,7 +2550,7 @@ const DayEnd = () => {
                   <span className="text-sm font-medium">Day end closed</span>
                 </div>
               )}
-              
+
               {dayEndData && (
                 <div className="space-y-2">
                   <p className="text-xs text-gray-500 max-w-md mx-auto">
