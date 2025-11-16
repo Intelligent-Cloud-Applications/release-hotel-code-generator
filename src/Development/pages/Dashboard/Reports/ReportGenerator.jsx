@@ -293,6 +293,8 @@ const ReportGenerator = () => {
         { key: "occupied_rooms", label: "Occupied Rooms", type: "number" },
         // { key: 'room_revenue', label: 'Room Revenue', type: 'currency' },
         { key: "total_revenue", label: "Total Revenue", type: "currency" },
+        { key: "opening_balance", label: "Opening Balance", type: "currency" },
+        { key: "closing_balance", label: "Closing Balance", type: "currency" },
       ],
     },
     occupancy: {
@@ -1349,6 +1351,9 @@ const ReportGenerator = () => {
         const checkInsCount = r.summary.totalCheckins || 0;
         const checkOutsCount = r.summary.totalCheckouts || 0;
         const occupiedRoomsCount = r.summary.roomStatusCounts.occupied || 0;
+        const openingBalance = r.openingBalance;
+        const closingBalance = r.closingBalance;
+        
 
         const totalRevenue = Number(r.financialSummary?.totalCollection ?? 0);
 
@@ -1359,6 +1364,8 @@ const ReportGenerator = () => {
           check_outs: checkOutsCount || 0,
           occupied_rooms: occupiedRoomsCount || 0,
           total_revenue: totalRevenue,
+          opening_balance: openingBalance || 0,
+          closing_balance: closingBalance || 0,
         });
       });
 
