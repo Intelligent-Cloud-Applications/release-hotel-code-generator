@@ -11,6 +11,8 @@ const BillingSummary = ({
 }) => {
   // Local state for percentage input
   const [editingDiscountPercentage, setEditingDiscountPercentage] = React.useState('');
+  console.log("Bill",billData);
+  
 
   // Calculate percentage from discount amount when editing starts
   React.useEffect(() => {
@@ -420,7 +422,8 @@ const BillingSummary = ({
           <div className="flex justify-between">
             <span>GRAND TOTAL:</span>
             <span>
-              ₹{(billData?.finalSummary?.totalAmount || 0).toFixed(2)}
+              
+              ₹{(billData?.billingSummary?.grandTotal || 0).toFixed(2)}
             </span>
           </div>
           <div className="flex justify-between border-t pt-1 font-bold">
