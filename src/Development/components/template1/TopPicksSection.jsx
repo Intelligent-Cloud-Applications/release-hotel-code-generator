@@ -29,7 +29,7 @@ const TopPicksSection = () => {
           <div className="flex items-center justify-center gap-1 mb-4">
             <input
               type="text"
-              value={topPicksData.title.start || ""}
+              value={topPicksData?.title?.start || "edit this"}
               onChange={(e) => {
                 setInstitutionData({
                   ...institutionData,
@@ -43,11 +43,11 @@ const TopPicksSection = () => {
                 });
               }}
               className="text-3xl font-semibold text-gray-900 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
-              style={{ width: `${topPicksData.title.start.length + 4}ch` }}
+              style={{ width: `${topPicksData?.title?.start.length + 4}ch` }}
             />
             <input
               type="text"
-              value={topPicksData.title.highlight || ""}
+              value={topPicksData?.title?.highlight || "edit this"}
               onChange={(e) => {
                 setInstitutionData({
                   ...institutionData,
@@ -61,20 +61,20 @@ const TopPicksSection = () => {
                 });
               }}
               className="text-3xl font-semibold text-orange-500 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
-              style={{ width: `${topPicksData.title.highlight.length + 4}ch` }}
+              style={{ width: `${topPicksData?.title?.highlight.length + 4}ch` }}
             />
           </div>
         ) : (
           <h2 className="text-4xl font-semibold text-orange-500 fjalla">
-            <span className="text-gray-900">{topPicksData.title.start}</span>
+            <span className="text-gray-900">{topPicksData?.title?.start}</span>
             <span className="text-orange-500">
-              {topPicksData.title.highlight}
+              {topPicksData?.title?.highlight || "edit this"}
             </span>
           </h2>
         )}
         {isEditMode ? (
           <textarea
-            value={topPicksData.description || ""}
+            value={topPicksData?.description || "edit this"}
             onChange={(e) => {
               setInstitutionData({
                 ...institutionData,
@@ -89,7 +89,7 @@ const TopPicksSection = () => {
           />
         ) : (
           <p className="text-black mt-2 max-w-2xl cormorant font-bold mx-auto">
-            {topPicksData.description}
+            {topPicksData?.description || "edit this"}
           </p>
         )}
 
@@ -97,7 +97,7 @@ const TopPicksSection = () => {
           {/* Left Image */}
           <div className="bg-white rounded-lg shadow flex items-center justify-center relative">
             <img
-              src={topPicksData.images?.left}
+              src={topPicksData?.images?.left || "https://via.placeholder.com/300"}
               alt="Top Pick 1"
               className="w-full h-64 object-cover rounded-lg"
             />
@@ -147,7 +147,7 @@ const TopPicksSection = () => {
           {/* Middle Image */}
           <div className="bg-white rounded-lg shadow flex items-center justify-center relative">
             <img
-              src={topPicksData.images?.middle}
+              src={topPicksData?.images?.middle || "https://via.placeholder.com/300"}
               alt="Top Pick 2"
               className="w-full h-64 object-cover rounded-lg"
             />
@@ -197,7 +197,7 @@ const TopPicksSection = () => {
           {/* Right Image */}
           <div className="bg-white rounded-lg shadow flex items-center justify-center relative">
             <img
-              src={topPicksData.images?.right}
+              src={topPicksData?.images?.right || "https://via.placeholder.com/300"}
               alt="Top Pick 3"
               className="w-full h-64 object-cover rounded-lg"
             />

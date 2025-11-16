@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button.js";
 
 const AdminLayout = () => {
   const { rooms, bookings, fetchRooms, fetchBookings } = useAppContext();
-  const [activeTab, setActiveTab] = useState("");
+  const [activeTab, setActiveTab] = useState("room_list");
   const [pageLoading, setPageLoading] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -63,9 +63,17 @@ const AdminLayout = () => {
   useEffect(() => {
     const path = location.pathname.split("/").pop();
     const matchingTab = topTabs.find((tab) => tab.id === path);
-    setActiveTab(matchingTab ? matchingTab.id : "");
-    if (matchingTab) setMobileTab("main");
-  }, [location.pathname]);
+    
+    if (matchingTab) {
+      setActiveTab(matchingTab.id);
+      setMobileTab("main");
+    } else {
+      // Default to room_list and navigate there
+      setActiveTab("room_list");
+      setMobileTab("main");
+      navigate("room_list");
+    }
+  }, [location.pathname, navigate]);
 
   // Statistics data - using real-time room statuses
   const keyStats = {

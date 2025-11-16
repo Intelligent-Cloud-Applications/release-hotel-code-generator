@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import {signIn, signOut} from "aws-amplify/auth";
+import { signIn, signOut } from "aws-amplify/auth";
 import { get } from "aws-amplify/api";
 import { institutionId } from "../../Operation/data.json";
 import { GlobalLoader } from "../components/LoadingStates.jsx";
@@ -27,7 +27,7 @@ export const AuthContextProvider = ({ children }) => {
     } catch (error) {
       console.error(error);
       console.log(error.name);
-      if (error.name === 'UserAlreadyAuthenticatedException') {
+      if (error.name === "UserAlreadyAuthenticatedException") {
         await signOut();
         await login(username, password);
       }
@@ -48,13 +48,31 @@ export const AuthContextProvider = ({ children }) => {
       phoneNumber: user.mobile || user.phoneNumber,
       userName: user.name || user.userName,
       userType: user.role || user.userType,
-    }
+    };
 
     if (Array.isArray(returnVal.userType)) {
-      returnVal.userTypes = returnVal.userType.map((userType) => userType.toLowerCase());
-      returnVal.userType = returnVal.userType[0];
-    }
-    else {
+      returnVal.userTypes = returnVal.userType.map((userType) =>
+        userType.toLowerCase()
+      );
+      returnVal.userType =
+        localStorage.getItem("userType") &&
+        returnVal.userTypes.includes(
+          localStorage.getItem("userType").toLowerCase()
+        )
+          ? localStorage.getItem("userType").toLowerCase()
+          : returnVal?.userTypes.includes("admin")
+          ? "admin"
+          : returnVal?.userTypes[0];
+
+      if (
+        !localStorage.getItem("userType") ||
+        !returnVal.userTypes.includes(
+          localStorage.getItem("userType").toLowerCase()
+        )
+      ) {
+        localStorage.setItem("userType", returnVal.userType);
+      }
+    } else {
       returnVal.userType = returnVal.userType.toLowerCase();
       returnVal.userTypes = [returnVal.userType];
     }

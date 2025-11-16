@@ -9,4 +9,4 @@ const LoadingState = ({ message = "Loading..." }) => {
   );
 };
 
-export default LoadingState; 
+export default LoadingState;

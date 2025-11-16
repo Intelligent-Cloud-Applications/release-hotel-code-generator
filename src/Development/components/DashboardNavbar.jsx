@@ -81,8 +81,8 @@ const DashboardNavbar = () => {
     <nav className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sticky top-0 z-50">
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center space-x-2 sm:space-x-4">
-          <span className="text-red-600 font-[900] text-lg sm:text-xl">
-            HotelPro
+          <span className="text-blue-600 font-[900] text-lg sm:text-xl">
+            Tekkzy
           </span>
           <div className="min-w-[140px]">
             <Select
@@ -96,6 +96,7 @@ const DashboardNavbar = () => {
                 setActiveTab('');
                 setActiveItem('');
                 setUserData({ ...userData, userType: val });
+                localStorage.setItem("userType", val);
                 navigate(route);
               }}
             >
