@@ -285,7 +285,7 @@ console.log("listExpenses", expenses);
         { key: 'check_ins', label: 'Check-ins', type: 'number' },
         { key: 'check_outs', label: 'Check-outs', type: 'number' },
         { key: 'occupied_rooms', label: 'Occupied Rooms', type: 'number' },
-        { key: 'room_revenue', label: 'Room Revenue', type: 'currency' },
+        // { key: 'room_revenue', label: 'Room Revenue', type: 'currency' },
         { key: 'total_revenue', label: 'Total Revenue', type: 'currency' }
       ]
     },
@@ -1142,34 +1142,32 @@ console.log("listExpenses", expenses);
     if (selectedReport === 'night') {
       const rowsMap = new Map();
 
-      (data || []).forEach((r) => {
-        const dKey = toYMD(r?.date || r?.metadata?.targetDate || r?.calculatedData?.metadata?.targetDate);
+      const dayEndData = data.filter(r => {
+        return r.dayEndStatus;
+      });
+
+      console.log(dayEndData);
+      
+
+      (dayEndData || []).forEach((r) => {
+        const dKey = r.date;
+        
         if (!dKey) return;
 
-        const details = r?.calculatedData?.details || {};
-        const summary = r?.calculatedData?.summary || {};
-        const roomStatusCounts = summary?.roomStatusCounts || r?.roomStatusCounts || {};
+        const newBookingsCount = r.summary.totalReservedBookings || 0;
+        const checkInsCount = r.summary.totalCheckins || 0;
+        const checkOutsCount = r.summary.totalCheckouts || 0;
+        const occupiedRoomsCount = r.summary.roomStatusCounts.occupied || 0;
+      
 
-        const newBookingsCount = Array.isArray(details?.newBookings) ? details.newBookings.length : Number(r?.bookingCount ?? 0);
-        const checkInsCount = Array.isArray(details?.checkIns) ? details.checkIns.length : Number(r?.checkInCount ?? 0);
-        const checkOutsCount = Array.isArray(details?.checkOuts) ? details.checkOuts.length : Number(r?.checkOutsCount ?? 0);
-
-        const occupiedRooms = Number(
-          summary?.occupiedRoomCount ??
-          roomStatusCounts?.Occupied ??
-          0
-        );
-
-        const totalRevenue = Number(summary?.totalRevenue ?? 0);
-        const roomRevenue = Number(summary?.roomRevenue ?? r?.roomRevenue ?? 0);
+        const totalRevenue = Number(r.financialSummary?.totalCollection ?? 0);
 
         rowsMap.set(dKey, {
           date: dKey,
           new_bookings: newBookingsCount || 0,
           check_ins: checkInsCount || 0,
           check_outs: checkOutsCount || 0,
-          occupied_rooms: occupiedRooms || 0,
-          room_revenue: roomRevenue,
+          occupied_rooms: occupiedRoomsCount || 0,
           total_revenue: totalRevenue
         });
       });
