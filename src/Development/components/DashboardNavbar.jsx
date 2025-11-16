@@ -96,6 +96,7 @@ const DashboardNavbar = () => {
                 setActiveTab('');
                 setActiveItem('');
                 setUserData({ ...userData, userType: val });
+                localStorage.setItem("userType", val);
                 navigate(route);
               }}
             >

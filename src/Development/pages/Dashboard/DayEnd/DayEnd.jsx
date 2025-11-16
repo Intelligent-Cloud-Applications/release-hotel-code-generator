@@ -481,7 +481,7 @@ function calculateDayEndData(
     Reserved: [],
     "Under Maintenance": [],
   };
-  const roomTypeDetails = {}; 
+  const roomTypeDetails = {};
 
   // Revenue breakdown (mapped to bill sample)
   const revenueBreakdown = {
@@ -597,22 +597,28 @@ function calculateDayEndData(
 
     // Use helper to robustly parse various check-in formats
     const ciRaw = getCheckInFromBooking(b);
-    let ci = new Date(ciRaw).toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    let ci = new Date(ciRaw).toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+    });
     ci = new Date(ci);
     if (!ci) return;
-    
 
     // Compare against the targetDate provided to this function (normalize both)
     const target = new Date(targetDate);
     target.setHours(0, 0, 0, 0);
     ci.setHours(0, 0, 0, 0);
-    
 
-    if (ci.getTime() === target.getTime() && (b?.status === "Checked-in" || b?.status === "checked-in" || b?.status === "In-House" || b?.status === "Inhouse" || b?.status === "In House")) {  
+    if (
+      ci.getTime() === target.getTime() &&
+      (b?.status === "Checked-in" ||
+        b?.status === "checked-in" ||
+        b?.status === "In-House" ||
+        b?.status === "Inhouse" ||
+        b?.status === "In House")
+    ) {
       console.log(b);
       console.log(ci, b);
-      
-          
+
       const co = toDate(getCheckOutFromBooking(b));
       checkInCount++;
       checkInsDetails.push({
@@ -631,17 +637,16 @@ function calculateDayEndData(
     }
   });
 
-
   // Checkins from bills
   (bills || []).forEach((bill) => {
     const bd = bill?.bill;
     if (!bd) return;
-    const ci = toDate(bd?.bookingDetails?.checkIn); 
+    const ci = toDate(bd?.bookingDetails?.checkIn);
     if (!ci) return;
     ci.setHours(0, 0, 0, 0);
     const target = new Date(targetDate);
     target.setHours(0, 0, 0, 0);
-    
+
     if (ci.getTime() === target.getTime()) {
       const co = toDate(bd?.bookingDetails?.checkOut);
       checkInCount++;
@@ -672,16 +677,20 @@ function calculateDayEndData(
     target.setHours(0, 0, 0, 0);
     if (co.getTime() === target.getTime()) {
       const ci = toDate(bd?.bookingDetails?.checkIn);
+
       checkOutsCount++;
       checkOutsDetails.push({
         grcNo: bd?.bookingDetails?.grc_no || "N/A",
         guestName: bd?.guestDetails?.guestName || "Unknown Guest",
-        billNo: bill?.billHeader?.bill_no || "N/A",
+        billNo: bd?.billHeader?.bill_no || "N/A",
         roomType: bd?.bookingDetails?.roomType || "Unknown",
         bookingId: bd?.bookingDetails?.bookingId || bill?.bill_id || "N/A",
         mobile: bd?.guestDetails?.mobile || "",
         checkInDate: ci ? ci.toLocaleDateString() : "N/A",
-        stayDuration: daysBetween(bd?.bookingDetails?.checkIn, bd?.bookingDetails?.checkOut),
+        stayDuration: daysBetween(
+          bd?.bookingDetails?.checkIn,
+          bd?.bookingDetails?.checkOut
+        ),
         roomNumbers: bd?.bookingDetails?.roomNumber || "N/A",
         numberOfRooms: bd?.bookingDetails?.numberOfRooms || 1,
       });
@@ -701,7 +710,7 @@ function calculateDayEndData(
   (rooms || []).forEach((room) => {
     const status = room?.status || "Vacant";
     console.log(status);
-    
+
     roomStatusCounts[status] = (roomStatusCounts[status] || 0) + 1;
 
     const detail = {
@@ -1700,24 +1709,24 @@ const DayEnd = () => {
       dialogContent,
       hasDetails = false,
     }) => (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
+      <div className="bg-white rounded border-2 border-gray-100 p-3">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1">
             <div className={colorClass}>{icon}</div>
-            <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
+            <h3 className="font-medium text-gray-700 text-xs">{title}</h3>
           </div>
           {hasDetails && (
             <IsolatedDialog title={title}>{dialogContent}</IsolatedDialog>
           )}
         </div>
-        <div className="text-2xl font-bold text-gray-900 mb-1">
+        <div className="text-xl font-semibold text-gray-900 mb-1">
           {dataLoading ? (
-            <div className="animate-pulse bg-gray-200 h-8 w-16 rounded"></div>
+            <div className="animate-pulse bg-gray-200 h-6 w-12 rounded"></div>
           ) : (
             value
           )}
         </div>
-        {subtitle && <div className="text-xs text-gray-500">{subtitle}</div>}
+        {subtitle && <div className="text-xs text-gray-400">{subtitle}</div>}
       </div>
     )
   );
@@ -1848,7 +1857,6 @@ const DayEnd = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  
                   <TableHead className="w-[180px]">Guest Name</TableHead>
                   <TableHead className="w-[160px]">GRC ID</TableHead>
                   <TableHead className="w-[120px]">Room Type</TableHead>
@@ -1866,7 +1874,6 @@ const DayEnd = () => {
                     <TableCell>{row.roomType}</TableCell>
                     <TableCell>{row.mobile}</TableCell>
                     <TableCell className="text-xs">{row.roomNumbers}</TableCell>
-                    
                   </TableRow>
                 ))}
               </TableBody>
@@ -2064,8 +2071,8 @@ const DayEnd = () => {
   }, [roomRevenueData, roomRevenuePagination, dayEndData?.roomRevenue]);
 
   const CheckOutsModal = React.useMemo(() => {
-    console.log("Checkout: ", 	checkOutsData);
-    
+    console.log("Checkout: ", checkOutsData);
+
     return (
       <div className="space-y-4">
         {checkOutsData.length > 0 ? (
@@ -2378,9 +2385,9 @@ const DayEnd = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
               <DataCard
-                title="New Bookings"
+                title="Bookings"
                 value={dayEndData?.bookingCount || 0}
                 subtitle="From Bookings"
                 icon={<BookOpen className="h-5 w-5" />}

@@ -966,6 +966,12 @@ const AmendBooking = () => {
         return;
       }
     }
+    // Validate advance payment mode if advance amount is entered
+    const advanceAmount = parseFloat(newAdvanceAmount) || 0;
+    if (advanceAmount > 0 && !formData.advance_payment_mode) {
+      toast.error('Advance Payment Mode is required when entering an advance amount');
+      return;
+    }
     // ...other validation logic as in your original code...
     const guestPayloadBase = {
       guest_id: editingBooking.guest_id,
@@ -1679,7 +1685,9 @@ const AmendBooking = () => {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-xs font-medium text-gray-700">Advance Payment Mode</Label>
+                    <Label className="text-xs font-medium text-gray-700">
+                      Advance Payment Mode{parseFloat(newAdvanceAmount) > 0 ? ' *' : ''}
+                    </Label>
                     <Select
                       value={formData.advance_payment_mode || ''}
                       onValueChange={value => handleInputChange('advance_payment_mode', value)}
