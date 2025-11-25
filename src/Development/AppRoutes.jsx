@@ -84,6 +84,7 @@ import CheckIn from "./pages/Dashboard/Registrations/checkin/index.jsx";
 import LoadingDemo from "./pages/LoadingDemo.jsx";
 import RoomsPage from "@/Development/pages/Rooms.jsx";
 import Restaurant from "@/Development/pages/Restaurant.jsx";
+import Store from "./pages/Dashboard/Store/Store.jsx";
 import { template } from "../Operation/data.json"
 
 const AppRoutes = () => {
@@ -264,6 +265,16 @@ const AppRoutes = () => {
           }
         />
 
+        {/* Store */}
+        <Route
+          path="/dashboard/store"
+          element={
+            <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
+              {product === "dashboard-booking" ? <Store /> : <SubscribeNow />}
+            </RoleBasedRoute>
+          }
+        />
+
         {/* Report Generator - for exported data */}
         <Route
           path="/dashboard/report-generator"
@@ -338,13 +349,13 @@ const AppRoutes = () => {
           <Route path="/dashboard/admin/staff_list" element={<Staffs />} />
           <Route path="/dashboard/admin/revenue" element={<AdminReports />} />
           <Route
-          path="/dashboard/admin/reports"
-          element={
-            <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
-              {product === "dashboard-booking" ? <ReportGenerator /> : <SubscribeNow />}
-            </RoleBasedRoute>
-          }
-        />
+            path="/dashboard/admin/reports"
+            element={
+              <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
+                {product === "dashboard-booking" ? <ReportGenerator /> : <SubscribeNow />}
+              </RoleBasedRoute>
+            }
+          />
         </Route>
 
         <Route

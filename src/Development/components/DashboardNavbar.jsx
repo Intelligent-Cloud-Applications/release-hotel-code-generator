@@ -59,6 +59,7 @@ const DashboardNavbar = () => {
         { id: "guest_history", label: "Guest History", hasDropdown: false },
         { id: "company", label: "Company Details", hasDropdown: false },
         { id: "expenses", label: "Expenses", hasDropdown: false },
+        { id: "store", label: "Store", hasDropdown: false },
         { id: "reports", label: "Reports", hasDropdown: false },
       ];
     }
@@ -75,7 +76,7 @@ const DashboardNavbar = () => {
     ) || [];
     console.log(nowMs, notifications, ns);
     setActiveNotifications(ns);
-  }, [ notifications ]);
+  }, [notifications]);
 
   return (
     <nav className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sticky top-0 z-50">
@@ -100,11 +101,10 @@ const DashboardNavbar = () => {
                 navigate(route);
               }}
             >
-              <SelectTrigger className={`h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-md border transition-colors duration-200 ${
-                activeTab === userData?.userType || activeTab === ''
+              <SelectTrigger className={`h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-md border transition-colors duration-200 ${activeTab === userData?.userType || activeTab === ''
                   ? 'bg-blue-200 text-blue-900 border-blue-400'
                   : 'bg-gray-200 text-gray-900 border-gray-400'
-              }`}>
+                }`}>
                 <SelectValue placeholder="Select Role" />
               </SelectTrigger>
               <SelectContent>
@@ -116,22 +116,22 @@ const DashboardNavbar = () => {
               </SelectContent>
             </Select>
           </div>
-           {/*{(userData?.userTypes || []).includes('frontdesk') && (*/}
-           {/*  <Button*/}
-           {/*    variant={"ghost"}*/}
-           {/*    onClick={() => {*/}
-           {/*      setActiveTab("housekeeping");*/}
-           {/*      navigate("/dashboard/housekeeping/room_status_list");*/}
-           {/*    }}*/}
-           {/*    className={`px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer font-medium rounded-md border transition-colors duration-200 flex items-center gap-1 ${*/}
-           {/*      activeTab === "housekeeping"*/}
-           {/*        ? "bg-blue-200 text-blue-900 border-blue-400 hover:bg-blue-300 hover:text-blue-800"*/}
-           {/*        : "bg-gray-200 text-gray-900 border-gray-400 hover:bg-gray-300 hover:text-gray-800"*/}
-           {/*    }`}*/}
-           {/*  >*/}
-           {/*    Housekeeping*/}
-           {/*  </Button>*/}
-           {/*)}*/}
+          {/*{(userData?.userTypes || []).includes('frontdesk') && (*/}
+          {/*  <Button*/}
+          {/*    variant={"ghost"}*/}
+          {/*    onClick={() => {*/}
+          {/*      setActiveTab("housekeeping");*/}
+          {/*      navigate("/dashboard/housekeeping/room_status_list");*/}
+          {/*    }}*/}
+          {/*    className={`px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer font-medium rounded-md border transition-colors duration-200 flex items-center gap-1 ${*/}
+          {/*      activeTab === "housekeeping"*/}
+          {/*        ? "bg-blue-200 text-blue-900 border-blue-400 hover:bg-blue-300 hover:text-blue-800"*/}
+          {/*        : "bg-gray-200 text-gray-900 border-gray-400 hover:bg-gray-300 hover:text-gray-800"*/}
+          {/*    }`}*/}
+          {/*  >*/}
+          {/*    Housekeeping*/}
+          {/*  </Button>*/}
+          {/*)}*/}
         </div>
 
         <div className="hidden md:flex items-center justify-center space-x-1 flex-1">
@@ -144,11 +144,10 @@ const DashboardNavbar = () => {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md flex items-center space-x-1 cursor-pointer ${
-                          activeTab === item.id
+                        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md flex items-center space-x-1 cursor-pointer ${activeTab === item.id
                             ? "bg-green-700 text-white hover:bg-green-800"
                             : "text-gray-700 hover:bg-green-800"
-                        }`}
+                          }`}
                       >
                         <span>{item.label}</span>
                         <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -159,11 +158,10 @@ const DashboardNavbar = () => {
                         item.dropdownItems.map((dropdownItem) => (
                           <DropdownMenuItem
                             key={dropdownItem.id}
-                            className={`my-1 ${
-                              activeItem === dropdownItem.id
+                            className={`my-1 ${activeItem === dropdownItem.id
                                 ? "bg-gray-200 hover:bg-gray-200"
                                 : ""
-                            } cursor-pointer`}
+                              } cursor-pointer`}
                             onClick={() => {
                               setActiveTab(item.id);
                               setActiveItem(dropdownItem.id);
@@ -180,11 +178,10 @@ const DashboardNavbar = () => {
                 ) : (
                   <div
                     variant="ghost"
-                    className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md cursor-pointer ${
-                      activeTab === item.id
+                    className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md cursor-pointer ${activeTab === item.id
                         ? "bg-green-800 text-white hover:bg-green-800"
                         : "text-gray-700 hover:bg-gray-400 hover:text-white"
-                    }`}
+                      }`}
                     onClick={() => {
                       setActiveTab(item.id);
                       navigate(item.id);
@@ -222,22 +219,22 @@ const DashboardNavbar = () => {
                   variant="ghost"
                   className={`relative flex items-center gap-2 min-w-[48px] px-3 py-2 rounded-full transition-all
         ${activeNotifications.length > 0
-                    ? "bg-pink-50 ring-2 ring-pink-400 ring-offset-2 shadow-lg"
-                    : ""}
+                      ? "bg-pink-50 ring-2 ring-pink-400 ring-offset-2 shadow-lg"
+                      : ""}
       `}
                   aria-label="Show notifications"
                 >
                   <Bell
                     className={`h-5 w-5 sm:h-6 sm:w-6 transition-colors duration-300
           ${activeNotifications.length > 0
-                      ? "text-pink-500 drop-shadow-[0_0_8px_pink]"
-                      : "text-gray-600"}
+                        ? "text-pink-500 drop-shadow-[0_0_8px_pink]"
+                        : "text-gray-600"}
         `}
                   />
                   {activeNotifications.length > 0 && (
                     <span className="ml-2 text-sm font-semibold text-pink-700">
-          Attention, {activeNotifications.length} notification{activeNotifications.length > 1 ? "s" : ""}
-        </span>
+                      Attention, {activeNotifications.length} notification{activeNotifications.length > 1 ? "s" : ""}
+                    </span>
                   )}
                 </Button>
               </PopoverTrigger>
@@ -332,11 +329,10 @@ const DashboardNavbar = () => {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        className={`w-full justify-start px-4 py-2 text-sm font-medium rounded-md flex items-center space-x-1 cursor-pointer ${
-                          activeTab === item.id
+                        className={`w-full justify-start px-4 py-2 text-sm font-medium rounded-md flex items-center space-x-1 cursor-pointer ${activeTab === item.id
                             ? "bg-green-700 text-white hover:bg-green-800"
                             : "text-gray-700 hover:bg-green-800"
-                        }`}
+                          }`}
                       >
                         <span>{item.label}</span>
                         <ChevronDown className="h-4 w-4 ml-auto" />
@@ -347,11 +343,10 @@ const DashboardNavbar = () => {
                         item.dropdownItems.map((dropdownItem) => (
                           <DropdownMenuItem
                             key={dropdownItem.id}
-                            className={`my-1 ${
-                              activeItem === dropdownItem.id
+                            className={`my-1 ${activeItem === dropdownItem.id
                                 ? "bg-gray-200 hover:bg-gray-200"
                                 : ""
-                            } cursor-pointer`}
+                              } cursor-pointer`}
                             onClick={() => {
                               setActiveTab(item.id);
                               setActiveItem(dropdownItem.id);
@@ -369,11 +364,10 @@ const DashboardNavbar = () => {
                 ) : (
                   <div
                     variant="ghost"
-                    className={`px-4 py-2 text-sm font-medium rounded-md cursor-pointer ${
-                      activeTab === item.id
+                    className={`px-4 py-2 text-sm font-medium rounded-md cursor-pointer ${activeTab === item.id
                         ? "bg-green-800 text-white hover:bg-green-800"
                         : "text-gray-700 hover:bg-gray-400 hover:text-white"
-                    }`}
+                      }`}
                     onClick={() => {
                       setActiveTab(item.id);
                       navigate(item.id);
