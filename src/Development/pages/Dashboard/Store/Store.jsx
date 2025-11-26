@@ -5,8 +5,9 @@ import {
     Search,
     X,
     Eye,
+    Trash2,
 } from "lucide-react";
-import { get, post } from "aws-amplify/api";
+import { get, post, del } from "aws-amplify/api";
 import { useAuthContext } from "../../../context/AuthContext";
 
 /* ----------------------- AUTOCOMPLETE INPUT ------------------------ */
@@ -85,7 +86,8 @@ export default function Store() {
     const [form, setForm] = useState({
         name: "",
         category: "",
-        unit: "pcs",
+        unit: "",
+        price: "",
     });
 
     const [stockForm, setStockForm] = useState({
@@ -136,7 +138,14 @@ export default function Store() {
         const map = {};
 
         if (Array.isArray(stockHistory)) {
-            stockHistory.forEach((entry) => {
+            // Sort to process create-item first to ensure price is set
+            const sorted = [...stockHistory].sort((a, b) => {
+                if (a.actionType === "create-item") return -1;
+                if (b.actionType === "create-item") return 1;
+                return 0;
+            });
+
+            sorted.forEach((entry) => {
                 const key = entry.itemName + "_" + entry.unit + "_" + entry.category;
 
                 if (!map[key]) {
@@ -145,7 +154,13 @@ export default function Store() {
                         category: entry.category,
                         unit: entry.unit,
                         quantity: 0,
+                        price: 0, // Initialize unit price
                     };
+                }
+
+                // Update price if this entry has a non-zero price (from create-item)
+                if (entry.price && entry.price > 0 && entry.actionType === "create-item") {
+                    map[key].price = entry.price;
                 }
 
                 if (entry.actionType === "add") map[key].quantity += entry.quantity;
@@ -177,7 +192,7 @@ export default function Store() {
     /* ----------------------- HANDLERS ------------------------ */
 
     const addNewItem = async () => {
-        if (!form.name || !form.category || !form.unit)
+        if (!form.name || !form.category || !form.unit || !form.price)
             return alert("Fill all fields");
 
         try {
@@ -189,6 +204,7 @@ export default function Store() {
                         itemName: form.name,
                         category: form.category,
                         unit: form.unit,
+                        price: parseFloat(form.price),
                         quantity: 0,
                         actionType: "create-item",
                         description: "Item created",
@@ -196,7 +212,7 @@ export default function Store() {
                 },
             }).response;
 
-            setForm({ name: "", category: "", unit: "pcs" });
+            setForm({ name: "", category: "", unit: "", price: "" });
             setShowAddItem(false);
             await fetchStockHistory(); // Refresh the list
         } catch (error) {
@@ -219,6 +235,10 @@ export default function Store() {
         if (stockForm.action === "distributed" && qty > selectedItem.quantity)
             return alert("Not enough stock");
 
+        // Calculate total price = quantity × unit price
+        const unitPrice = selectedItem.price || 0;
+        const totalPrice = qty * unitPrice;
+
         try {
             await post({
                 apiName: "frontdesk",
@@ -229,6 +249,7 @@ export default function Store() {
                         category: selectedItem.category,
                         unit: selectedItem.unit,
                         quantity: qty,
+                        price: totalPrice, // Send total price (quantity × unit price)
                         actionType: stockForm.action, // add or distributed
                         description: stockForm.description,
                     },
@@ -246,6 +267,54 @@ export default function Store() {
     const viewHistory = (item) => {
         setSelectedItem(item);
         setPage("history");
+    };
+
+    const deleteHistoryEntry = async (dateEpoch) => {
+        if (!window.confirm("Are you sure you want to delete this entry?")) {
+            return;
+        }
+
+        try {
+            await del({
+                apiName: "frontdesk",
+                path: `/stock/${dateEpoch}?institutionId=${institutionId}`,
+            }).response;
+
+            await fetchStockHistory(); // Refresh the list
+            alert("Entry deleted successfully");
+        } catch (error) {
+            console.error("Error deleting entry:", error);
+            alert("Failed to delete entry");
+        }
+    };
+
+    const deleteItem = async (item) => {
+        if (!window.confirm(`Are you sure you want to delete "${item.itemName}" and all its history?`)) {
+            return;
+        }
+
+        try {
+            // Get all history entries for this item
+            const itemLogs = stockHistory.filter(
+                (log) => log.itemName === item.itemName &&
+                    log.category === item.category &&
+                    log.unit === item.unit
+            );
+
+            // Delete all entries
+            for (const log of itemLogs) {
+                await del({
+                    apiName: "frontdesk",
+                    path: `/stock/${log.dateEpoch}?institutionId=${institutionId}`,
+                }).response;
+            }
+
+            await fetchStockHistory(); // Refresh the list
+            alert("Item deleted successfully");
+        } catch (error) {
+            console.error("Error deleting item:", error);
+            alert("Failed to delete item");
+        }
     };
 
     /* ----------------------- UI ------------------------ */
@@ -309,11 +378,16 @@ export default function Store() {
                         filtered={filtered}
                         openStockModal={openStockModal}
                         viewHistory={viewHistory}
+                        onDelete={deleteItem}
                     />
                 )}
 
                 {page === "history" && (
-                    <HistoryPage selectedItem={selectedItem} stockHistory={stockHistory} />
+                    <HistoryPage
+                        selectedItem={selectedItem}
+                        stockHistory={stockHistory}
+                        onDelete={deleteHistoryEntry}
+                    />
                 )}
             </div>
 
@@ -341,6 +415,13 @@ export default function Store() {
                             value={form.unit}
                             suggestions={unitSuggestions}
                             onChange={(v) => setForm({ ...form, unit: v })}
+                        />
+
+                        <Input
+                            type="number"
+                            placeholder="Price"
+                            value={form.price}
+                            onChange={(e) => setForm({ ...form, price: e.target.value })}
                         />
 
                         <button
@@ -419,7 +500,7 @@ export default function Store() {
 
 /* ----------------------- ITEMS PAGE TABLE ------------------------ */
 
-function ItemsPage({ filtered, openStockModal, viewHistory }) {
+function ItemsPage({ filtered, openStockModal, viewHistory, onDelete }) {
     return (
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
             <table className="w-full text-sm">
@@ -429,6 +510,7 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
                         <Th>Category</Th>
                         <Th>Qty</Th>
                         <Th>Unit</Th>
+                        <Th>Unit Price</Th>
                         <Th right>Actions</Th>
                     </tr>
                 </thead>
@@ -440,6 +522,7 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
                             <Td>{item.category}</Td>
                             <Td>{item.quantity}</Td>
                             <Td>{item.unit}</Td>
+                            <Td>₹{item.price}</Td>
 
                             <Td right>
                                 <div className="flex gap-3 justify-end">
@@ -451,6 +534,10 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
                                         onClick={() => openStockModal(item)}
                                         icon={<Package size={16} className="text-green-600" />}
                                     />
+                                    <IconBtn
+                                        onClick={() => onDelete(item)}
+                                        icon={<Trash2 size={16} className="text-red-600" />}
+                                    />
                                 </div>
                             </Td>
                         </tr>
@@ -458,7 +545,7 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
 
                     {filtered.length === 0 && (
                         <tr>
-                            <td colSpan="5" className="py-10 text-center text-gray-500">
+                            <td colSpan="6" className="py-10 text-center text-gray-500">
                                 No items found.
                             </td>
                         </tr>
@@ -471,7 +558,7 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
 
 /* ----------------------- HISTORY PAGE ------------------------ */
 
-function HistoryPage({ selectedItem, stockHistory }) {
+function HistoryPage({ selectedItem, stockHistory, onDelete }) {
     const logs = stockHistory
         .filter((log) => log.itemName === selectedItem.itemName)
         .sort((a, b) => b.dateEpoch - a.dateEpoch);
@@ -485,7 +572,9 @@ function HistoryPage({ selectedItem, stockHistory }) {
                         <Th>Date</Th>
                         <Th>Action</Th>
                         <Th>Qty</Th>
+                        <Th>Price</Th>
                         <Th>Description</Th>
+                        <Th right>Actions</Th>
                     </tr>
                 </thead>
 
@@ -509,13 +598,29 @@ function HistoryPage({ selectedItem, stockHistory }) {
 
                             <Td>{log.quantity} {log.unit}</Td>
 
+                            <Td>
+                                {log.actionType === "create-item"
+                                    ? `₹${log.price} (unit)`
+                                    : log.price
+                                        ? `₹${log.price}`
+                                        : "-"
+                                }
+                            </Td>
+
                             <Td>{log.description || "-"}</Td>
+
+                            <Td right>
+                                <IconBtn
+                                    onClick={() => onDelete(log.dateEpoch)}
+                                    icon={<Trash2 size={16} className="text-red-600" />}
+                                />
+                            </Td>
                         </tr>
                     ))}
 
                     {logs.length === 0 && (
                         <tr>
-                            <td colSpan="4" className="py-10 text-center text-gray-500">
+                            <td colSpan="6" className="py-10 text-center text-gray-500">
                                 No history available.
                             </td>
                         </tr>
