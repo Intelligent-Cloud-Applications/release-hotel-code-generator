@@ -5,8 +5,9 @@ import {
     Search,
     X,
     Eye,
+    Trash2,
 } from "lucide-react";
-import { get, post } from "aws-amplify/api";
+import { get, post, del } from "aws-amplify/api";
 import { useAuthContext } from "../../../context/AuthContext";
 
 /* ----------------------- AUTOCOMPLETE INPUT ------------------------ */
@@ -72,6 +73,7 @@ export default function Store() {
 
     const [stockHistory, setStockHistory] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState(false);
 
     const [search, setSearch] = useState("");
 
@@ -85,7 +87,8 @@ export default function Store() {
     const [form, setForm] = useState({
         name: "",
         category: "",
-        unit: "pcs",
+        unit: "",
+        price: "",
     });
 
     const [stockForm, setStockForm] = useState({
@@ -136,7 +139,14 @@ export default function Store() {
         const map = {};
 
         if (Array.isArray(stockHistory)) {
-            stockHistory.forEach((entry) => {
+            // Sort to process create-item first to ensure price is set
+            const sorted = [...stockHistory].sort((a, b) => {
+                if (a.actionType === "create-item") return -1;
+                if (b.actionType === "create-item") return 1;
+                return 0;
+            });
+
+            sorted.forEach((entry) => {
                 const key = entry.itemName + "_" + entry.unit + "_" + entry.category;
 
                 if (!map[key]) {
@@ -145,7 +155,13 @@ export default function Store() {
                         category: entry.category,
                         unit: entry.unit,
                         quantity: 0,
+                        price: 0, // Initialize unit price
                     };
+                }
+
+                // Update price if this entry has a non-zero price (from create-item)
+                if (entry.price && entry.price > 0 && entry.actionType === "create-item") {
+                    map[key].price = entry.price;
                 }
 
                 if (entry.actionType === "add") map[key].quantity += entry.quantity;
@@ -177,10 +193,11 @@ export default function Store() {
     /* ----------------------- HANDLERS ------------------------ */
 
     const addNewItem = async () => {
-        if (!form.name || !form.category || !form.unit)
+        if (!form.name || !form.category || !form.unit || !form.price)
             return alert("Fill all fields");
 
         try {
+            setActionLoading(true);
             await post({
                 apiName: "frontdesk",
                 path: `/stock?institutionId=${institutionId}`,
@@ -189,6 +206,7 @@ export default function Store() {
                         itemName: form.name,
                         category: form.category,
                         unit: form.unit,
+                        price: parseFloat(form.price),
                         quantity: 0,
                         actionType: "create-item",
                         description: "Item created",
@@ -196,12 +214,14 @@ export default function Store() {
                 },
             }).response;
 
-            setForm({ name: "", category: "", unit: "pcs" });
+            setForm({ name: "", category: "", unit: "", price: "" });
             setShowAddItem(false);
             await fetchStockHistory(); // Refresh the list
         } catch (error) {
             console.error("Error creating item:", error);
             alert("Failed to create item");
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -219,6 +239,12 @@ export default function Store() {
         if (stockForm.action === "distributed" && qty > selectedItem.quantity)
             return alert("Not enough stock");
 
+        setActionLoading(true);
+
+        // Calculate total price = quantity × unit price
+        const unitPrice = selectedItem.price || 0;
+        const totalPrice = qty * unitPrice;
+
         try {
             await post({
                 apiName: "frontdesk",
@@ -229,6 +255,7 @@ export default function Store() {
                         category: selectedItem.category,
                         unit: selectedItem.unit,
                         quantity: qty,
+                        price: totalPrice, // Send total price (quantity × unit price)
                         actionType: stockForm.action, // add or distributed
                         description: stockForm.description,
                     },
@@ -240,12 +267,70 @@ export default function Store() {
         } catch (error) {
             console.error("Error updating stock:", error);
             alert("Failed to update stock");
+        } finally {
+            setActionLoading(false);
         }
     };
 
     const viewHistory = (item) => {
         setSelectedItem(item);
         setPage("history");
+    };
+
+    const deleteHistoryEntry = async (dateEpoch) => {
+        if (!window.confirm("Are you sure you want to delete this entry?")) {
+            return;
+        }
+
+        setActionLoading(true);
+
+        try {
+            await del({
+                apiName: "frontdesk",
+                path: `/stock/${dateEpoch}?institutionId=${institutionId}`,
+            }).response;
+
+            await fetchStockHistory(); // Refresh the list
+            alert("Entry deleted successfully");
+        } catch (error) {
+            console.error("Error deleting entry:", error);
+            alert("Failed to delete entry");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const deleteItem = async (item) => {
+        if (!window.confirm(`Are you sure you want to delete "${item.itemName}" and all its history?`)) {
+            return;
+        }
+
+        setActionLoading(true);
+
+        try {
+            // Get all history entries for this item
+            const itemLogs = stockHistory.filter(
+                (log) => log.itemName === item.itemName &&
+                    log.category === item.category &&
+                    log.unit === item.unit
+            );
+
+            // Delete all entries
+            for (const log of itemLogs) {
+                await del({
+                    apiName: "frontdesk",
+                    path: `/stock/${log.dateEpoch}?institutionId=${institutionId}`,
+                }).response;
+            }
+
+            await fetchStockHistory(); // Refresh the list
+            alert("Item deleted successfully");
+        } catch (error) {
+            console.error("Error deleting item:", error);
+            alert("Failed to delete item");
+        } finally {
+            setActionLoading(false);
+        }
     };
 
     /* ----------------------- UI ------------------------ */
@@ -309,11 +394,16 @@ export default function Store() {
                         filtered={filtered}
                         openStockModal={openStockModal}
                         viewHistory={viewHistory}
+                        onDelete={deleteItem}
                     />
                 )}
 
                 {page === "history" && (
-                    <HistoryPage selectedItem={selectedItem} stockHistory={stockHistory} />
+                    <HistoryPage
+                        selectedItem={selectedItem}
+                        stockHistory={stockHistory}
+                        onDelete={deleteHistoryEntry}
+                    />
                 )}
             </div>
 
@@ -343,11 +433,22 @@ export default function Store() {
                             onChange={(v) => setForm({ ...form, unit: v })}
                         />
 
+                        <Input
+                            type="number"
+                            placeholder="Price"
+                            value={form.price}
+                            onChange={(e) => setForm({ ...form, price: e.target.value })}
+                        />
+
                         <button
                             onClick={addNewItem}
-                            className="w-full bg-gray-900 text-white py-2 rounded"
+                            disabled={actionLoading}
+                            className="w-full bg-gray-900 text-white py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                            Create Item
+                            {actionLoading && (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            )}
+                            {actionLoading ? "Creating..." : "Create Item"}
                         </button>
                     </div>
                 </Modal>
@@ -406,12 +507,26 @@ export default function Store() {
 
                         <button
                             onClick={applyStockChange}
-                            className="w-full bg-gray-900 text-white py-2 rounded"
+                            disabled={actionLoading}
+                            className="w-full bg-gray-900 text-white py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                            Apply
+                            {actionLoading && (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            )}
+                            {actionLoading ? "Updating..." : "Apply"}
                         </button>
                     </div>
                 </Modal>
+            )}
+
+            {/* LOADING OVERLAY */}
+            {actionLoading && (
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
+                    <div className="bg-white rounded-lg p-6 flex flex-col items-center gap-3">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+                        <p className="text-gray-700 font-medium">Processing...</p>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -419,16 +534,17 @@ export default function Store() {
 
 /* ----------------------- ITEMS PAGE TABLE ------------------------ */
 
-function ItemsPage({ filtered, openStockModal, viewHistory }) {
+function ItemsPage({ filtered, openStockModal, viewHistory, onDelete }) {
     return (
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="bg-gray-50 border-b">
+                    <tr className="bg-gray-900 border-b">
                         <Th>Item</Th>
                         <Th>Category</Th>
                         <Th>Qty</Th>
                         <Th>Unit</Th>
+                        <Th>Unit Price</Th>
                         <Th right>Actions</Th>
                     </tr>
                 </thead>
@@ -440,17 +556,31 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
                             <Td>{item.category}</Td>
                             <Td>{item.quantity}</Td>
                             <Td>{item.unit}</Td>
+                            <Td>₹{item.price}</Td>
 
                             <Td right>
-                                <div className="flex gap-3 justify-end">
-                                    <IconBtn
+                                <div className="flex gap-2 justify-end">
+                                    <button
                                         onClick={() => viewHistory(item)}
-                                        icon={<Eye size={16} className="text-blue-600" />}
-                                    />
-                                    <IconBtn
+                                        className="flex items-center gap-1 px-3 py-1.5 text-xs border border-blue-300 text-blue-600 rounded hover:bg-blue-50 transition"
+                                    >
+                                        <Eye size={14} />
+                                        View
+                                    </button>
+                                    <button
                                         onClick={() => openStockModal(item)}
-                                        icon={<Package size={16} className="text-green-600" />}
-                                    />
+                                        className="flex items-center gap-1 px-3 py-1.5 text-xs border border-green-300 text-green-600 rounded hover:bg-green-50 transition"
+                                    >
+                                        <Package size={14} />
+                                        Update
+                                    </button>
+                                    <button
+                                        onClick={() => onDelete(item)}
+                                        className="flex items-center gap-1 px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 transition"
+                                    >
+                                        <Trash2 size={14} />
+                                        Delete
+                                    </button>
                                 </div>
                             </Td>
                         </tr>
@@ -458,7 +588,7 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
 
                     {filtered.length === 0 && (
                         <tr>
-                            <td colSpan="5" className="py-10 text-center text-gray-500">
+                            <td colSpan="6" className="py-10 text-center text-gray-500">
                                 No items found.
                             </td>
                         </tr>
@@ -471,7 +601,7 @@ function ItemsPage({ filtered, openStockModal, viewHistory }) {
 
 /* ----------------------- HISTORY PAGE ------------------------ */
 
-function HistoryPage({ selectedItem, stockHistory }) {
+function HistoryPage({ selectedItem, stockHistory, onDelete }) {
     const logs = stockHistory
         .filter((log) => log.itemName === selectedItem.itemName)
         .sort((a, b) => b.dateEpoch - a.dateEpoch);
@@ -480,12 +610,14 @@ function HistoryPage({ selectedItem, stockHistory }) {
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
 
             <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-gray-900 border-b">
                     <tr>
                         <Th>Date</Th>
                         <Th>Action</Th>
                         <Th>Qty</Th>
+                        <Th>Price</Th>
                         <Th>Description</Th>
+                        <Th right>Actions</Th>
                     </tr>
                 </thead>
 
@@ -509,13 +641,32 @@ function HistoryPage({ selectedItem, stockHistory }) {
 
                             <Td>{log.quantity} {log.unit}</Td>
 
+                            <Td>
+                                {log.actionType === "create-item"
+                                    ? `₹${log.price} (unit)`
+                                    : log.price
+                                        ? `₹${log.price}`
+                                        : "-"
+                                }
+                            </Td>
+
                             <Td>{log.description || "-"}</Td>
+
+                            <Td right>
+                                <button
+                                    onClick={() => onDelete(log.dateEpoch)}
+                                    className="flex items-center gap-1 px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 transition"
+                                >
+                                    <Trash2 size={14} />
+                                    Delete
+                                </button>
+                            </Td>
                         </tr>
                     ))}
 
                     {logs.length === 0 && (
                         <tr>
-                            <td colSpan="4" className="py-10 text-center text-gray-500">
+                            <td colSpan="6" className="py-10 text-center text-gray-500">
                                 No history available.
                             </td>
                         </tr>
@@ -530,7 +681,7 @@ function HistoryPage({ selectedItem, stockHistory }) {
 
 const Th = ({ children, right }) => (
     <th
-        className={`p-3 text-xs text-gray-600 font-medium ${right ? "text-right" : "text-left"
+        className={`p-3 text-xs text-white font-medium ${right ? "text-right" : "text-left"
             }`}
     >
         {children}
