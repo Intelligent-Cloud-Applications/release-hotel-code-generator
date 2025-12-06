@@ -1501,7 +1501,7 @@ const Bill = () => {
               if (bookingExtraPax && Array.isArray(bookingExtraPax)) {
                 const roomExtraPax = bookingExtraPax.find(
                   (pax) =>
-                    pax.room_id === roomUsage.room_id ||
+                    pax.room_id === room.room_id ||
                     pax.room_number === roomNumber
                 );
                 if (roomExtraPax?.extra_pax_amount) {
