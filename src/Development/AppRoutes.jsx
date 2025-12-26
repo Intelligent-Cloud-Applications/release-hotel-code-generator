@@ -31,7 +31,7 @@
 import { Routes, Route, Navigate } from "react-router";
 import Home1 from "./pages/Home1.jsx";
 import Home2 from "./pages/Home2.jsx";
-import AboutUs1 from "../Development/components/template1/AboutUs.jsx"
+import AboutUs1 from "../Development/components/template1/AboutUs.jsx";
 import AboutUs2 from "./pages/AboutUs.jsx";
 import Login from "@/Development/pages/Auth/Login.jsx";
 import LogOut from "@/Development/pages/Auth/Logout.jsx";
@@ -85,18 +85,31 @@ import LoadingDemo from "./pages/LoadingDemo.jsx";
 import RoomsPage from "@/Development/pages/Rooms.jsx";
 import Restaurant from "@/Development/pages/Restaurant.jsx";
 import Store from "./pages/Dashboard/Store/Store.jsx";
-import { template } from "../Operation/data.json"
+import { template } from "../Operation/data.json";
+import Accounting from "./pages/Dashboard/Accounting/Accounting.jsx";
+import AccountingLayout from "./layouts/AccountingLayout.jsx";
+import BillPosting from "./pages/Dashboard/Accounting/BillPosting.jsx";
+import RevenuePosting from "./pages/Dashboard/Accounting/RevenuePosting.jsx";
 
 const AppRoutes = () => {
   return (
     <Routes>
-      <Route path="/" element={template === "template1" ? <Home1 /> : <Home2 />} />
-      <Route path="/about" element={template === "template1" ? <AboutUs1 /> : <AboutUs2 />} />
+      <Route
+        path="/"
+        element={template === "template1" ? <Home1 /> : <Home2 />}
+      />
+      <Route
+        path="/about"
+        element={template === "template1" ? <AboutUs1 /> : <AboutUs2 />}
+      />
       <Route path="/rooms" element={<RoomsPage />} />
       <Route path="/restaurant" element={<Restaurant />} />
       <Route path="/book-now" element={<HomeBooking />} />
       <Route path="/blogs" element={<Blogs />} />
-      <Route path="/contact" element={template === "template1" ? <Contact1 /> : <Contact2 />} />
+      <Route
+        path="/contact"
+        element={template === "template1" ? <Contact1 /> : <Contact2 />}
+      />
       <Route path="/faq" element={<Faq />} />
       <Route path="/legal" element={<Legal />} />
       <Route path="/privacy" element={<Privacy />} />
@@ -200,6 +213,23 @@ const AppRoutes = () => {
         />
 
         <Route
+          path="/dashboard/accounting"
+          element={
+            <RoleBasedRoute allowedRoles={["admin", "accountant"]}>
+              {product === "dashboard-booking" ? (
+                <AccountingLayout />
+              ) : (
+                <SubscribeNow />
+              )}
+            </RoleBasedRoute>
+          }
+        >
+          <Route index element={<Accounting />} />
+          <Route path="revenue-posting" element={<RevenuePosting />} />
+          <Route path="bill-posting" element={<BillPosting />} />
+        </Route>
+
+        <Route
           path="/dashboard/company"
           element={
             <RoleBasedRoute allowedRoles={["frontdesk", "admin"]}>
@@ -250,7 +280,11 @@ const AppRoutes = () => {
           path="/dashboard/reports"
           element={
             <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
-              {product === "dashboard-booking" ? <ReportGenerator /> : <SubscribeNow />}
+              {product === "dashboard-booking" ? (
+                <ReportGenerator />
+              ) : (
+                <SubscribeNow />
+              )}
             </RoleBasedRoute>
           }
         />
@@ -260,7 +294,11 @@ const AppRoutes = () => {
           path="/dashboard/expenses"
           element={
             <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
-              {product === "dashboard-booking" ? <Expenses /> : <SubscribeNow />}
+              {product === "dashboard-booking" ? (
+                <Expenses />
+              ) : (
+                <SubscribeNow />
+              )}
             </RoleBasedRoute>
           }
         />
@@ -312,7 +350,9 @@ const AppRoutes = () => {
         <Route
           path="/dashboard/housekeeping"
           element={
-            <RoleBasedRoute allowedRoles={["housekeeping", "admin", "frontdesk"]}>
+            <RoleBasedRoute
+              allowedRoles={["housekeeping", "admin", "frontdesk"]}
+            >
               {product === "dashboard-booking" ? (
                 <HousekeepingLayout />
               ) : (
@@ -352,7 +392,11 @@ const AppRoutes = () => {
             path="/dashboard/admin/reports"
             element={
               <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
-                {product === "dashboard-booking" ? <ReportGenerator /> : <SubscribeNow />}
+                {product === "dashboard-booking" ? (
+                  <ReportGenerator />
+                ) : (
+                  <SubscribeNow />
+                )}
               </RoleBasedRoute>
             }
           />
