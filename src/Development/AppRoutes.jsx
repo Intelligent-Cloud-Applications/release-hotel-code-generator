@@ -90,6 +90,7 @@ import Accounting from "./pages/Dashboard/Accounting/Accounting.jsx";
 import AccountingLayout from "./layouts/AccountingLayout.jsx";
 import BillPosting from "./pages/Dashboard/Accounting/BillPosting.jsx";
 import RevenuePosting from "./pages/Dashboard/Accounting/RevenuePosting.jsx";
+import DailyRevenue from "./pages/Dashboard/Accounting/DailyRevenue.jsx";
 
 const AppRoutes = () => {
   return (
@@ -227,6 +228,8 @@ const AppRoutes = () => {
           <Route index element={<Accounting />} />
           <Route path="revenue-posting" element={<RevenuePosting />} />
           <Route path="bill-posting" element={<BillPosting />} />
+
+          <Route path="daily-revenue" element={<DailyRevenue />} />
         </Route>
 
         <Route

@@ -94,6 +94,7 @@ const DashboardNavbar = () => {
                 if (val === 'housekeeping') route = '/dashboard/housekeeping/room_status_list';
                 if (val === 'frontdesk') route = '/dashboard/frontdesk';
                 if (val === 'admin') route = '/dashboard/admin';
+                if (val === 'accountant') route = '/dashboard/accounting/bill-posting';
                 setActiveTab('');
                 setActiveItem('');
                 setUserData({ ...userData, userType: val });

@@ -29,12 +29,13 @@ import {
   Download,
   Eye,
   X,
+  Edit,
 } from "lucide-react";
 import { OrderDetailsDialog } from "@/Development/pages/Dashboard/Guest History/OrderDetailsDialog.jsx";
 import BillReport from "../Registrations/BillReport.jsx";
 
 const GuestHistory = () => {
-  const { bookings, guests, bills, orders, fetchBookings, fetchGuests } =
+  const { bookings, guests, bills, orders, fetchBookings, fetchGuests, updatePaymentMethod  } =
     useAppContext();
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("");
@@ -49,6 +50,9 @@ const GuestHistory = () => {
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
   const [isBillDialogOpen, setIsBillDialogOpen] = useState(false);
+  const [isEditPaymentDialogOpen, setIsEditPaymentDialogOpen] = useState(false);
+  const [editingGuest, setEditingGuest] = useState(null);
+  const [newPaymentMethod, setNewPaymentMethod] = useState("");
   console.log("bills", bills);
   const filteredBills = bills;
   const filteredBills2 = filteredBills;
@@ -83,6 +87,7 @@ const GuestHistory = () => {
 
     return {
       guestName: guestDetails?.guestName,
+      bill_id: bill?.bill_id,
       bookingId: bookingDetails?.bookingId,
       checkinDate: bookingDetails?.checkIn,
       checkoutDate: bookingDetails?.checkOut,
@@ -218,6 +223,58 @@ const GuestHistory = () => {
   const handleViewBill = (billData, guestName) => {
     setSelectedBill({ bill: billData, guestName });
     setIsBillDialogOpen(true);
+  };
+
+  // Check if edit is allowed (within 24 hours of checkout)
+  const isEditAllowed = (checkoutDate) => {
+    if (!checkoutDate) return false;
+    const checkout = new Date(checkoutDate);
+    const now = new Date();
+    const hoursDiff = (now - checkout) / (1000 * 60 * 60);
+    return hoursDiff <= 24;
+  };
+
+  // Handle opening edit payment dialog
+  const handleEditPaymentMethod = (guest) => {
+    setEditingGuest(guest);
+    setNewPaymentMethod(guest.payment_mode);
+    setIsEditPaymentDialogOpen(true);
+    console.log("gue", guest);
+    
+  };
+
+  // Handle saving payment method
+  const handleSavePaymentMethod = async () => {
+    if (!editingGuest || !newPaymentMethod) return;
+
+    try {
+      // Here you would typically make an API call to update the payment method
+      // For now, we'll just log it
+      console.log('Updating payment method for booking:', editingGuest);
+      console.log('New payment method:', newPaymentMethod);
+      
+      // TODO: Implement API call to update payment method
+      console.log(editingGuest);
+      
+      // await updatePaymentMethod(editingGuest.bookingId, newPaymentMethod);
+      await updatePaymentMethod({
+        bill_id: editingGuest.bill_id,
+        paymentMethod: newPaymentMethod
+      });
+      
+      // Close dialog
+      setIsEditPaymentDialogOpen(false);
+      setEditingGuest(null);
+      setNewPaymentMethod("");
+      
+      // You might want to refresh the data here
+      // await fetchBookings();
+      
+      alert('Payment method updated successfully!');
+    } catch (error) {
+      console.error('Error updating payment method:', error);
+      alert('Failed to update payment method');
+    }
   };
 
   if (loading || !guests || !bookings) {
@@ -581,6 +638,19 @@ const GuestHistory = () => {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditPaymentMethod(guest)}
+                        disabled={!isEditAllowed(guest.checkoutDate)}
+                        title={
+                          isEditAllowed(guest.checkoutDate)
+                            ? "Edit payment method"
+                            : "Edit not allowed (24 hours have passed)"
+                        }
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
                       <OrderDetailsDialog
                         servicesData={guest.detailedServices}
                         orders={orders}
@@ -807,6 +877,112 @@ const GuestHistory = () => {
               {selectedBill?.bill && (
                 <BillReport billData={selectedBill.bill} />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Payment Method Dialog */}
+      {isEditPaymentDialogOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setIsEditPaymentDialogOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Edit Payment Method
+              </h2>
+              <X
+                onClick={() => setIsEditPaymentDialogOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold cursor-pointer"
+              />
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">
+                    Guest Name
+                  </Label>
+                  <Input
+                    value={editingGuest?.guestName || ""}
+                    disabled
+                    className="bg-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">
+                    Booking ID
+                  </Label>
+                  <Input
+                    value={editingGuest?.bookingId || ""}
+                    disabled
+                    className="bg-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">
+                    Current Payment Method
+                  </Label>
+                  <Input
+                    value={editingGuest?.payment_mode || "N/A"}
+                    disabled
+                    className="bg-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-2">
+                    New Payment Method *
+                  </Label>
+                  <Select
+                    value={newPaymentMethod}
+                    onValueChange={setNewPaymentMethod}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Cash">Cash</SelectItem>
+                      <SelectItem value="Card">Card</SelectItem>
+                      <SelectItem value="UPI">UPI</SelectItem>
+                      <SelectItem value="Net Banking">Net Banking</SelectItem>
+                      <SelectItem value="Cheque">Cheque</SelectItem>
+                      <SelectItem value="Others">Others</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                  <p className="text-xs text-yellow-800">
+                    <strong>Note:</strong> This edit is only allowed within 24 hours of checkout.
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditPaymentDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleSavePaymentMethod({ bill_id: editingGuest?.bill_id })}
+                  disabled={!newPaymentMethod || newPaymentMethod === editingGuest?.payment_mode}
+                >
+                  Save Changes
+                </Button>
+              </div>
             </div>
           </div>
         </div>

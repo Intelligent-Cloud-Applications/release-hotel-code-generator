@@ -46,12 +46,12 @@ const AccountingSidebar = () => {
       items: [
         { id: "revenue-posting", label: "Revenue Posting", icon: TrendingUp },
         { id: "bill-posting", label: "Bill Posting", icon: FileText },
-        {
-          id: "payments-receipts",
-          label: "Payments & Receipts",
-          icon: CreditCard,
-        },
-        { id: "journal-entries", label: "Journal Entries", icon: BookOpen },
+        // {
+        //   id: "payments-receipts",
+        //   label: "Payments & Receipts",
+        //   icon: CreditCard,
+        // },
+        // { id: "journal-entries", label: "Journal Entries", icon: BookOpen },
       ],
     },
     {
@@ -59,29 +59,29 @@ const AccountingSidebar = () => {
       title: "Reports & Analytics",
       icon: BarChart3,
       items: [
-        {
-          id: "financial-reports",
-          label: "Financial Reports",
-          icon: FileCheck,
-        },
+        // {
+        //   id: "financial-reports",
+        //   label: "Financial Reports",
+        //   icon: FileCheck,
+        // },
         { id: "daily-revenue", label: "Daily Revenue Report", icon: Receipt },
-        { id: "audit-trail", label: "Audit Trail", icon: Clock },
+        // { id: "audit-trail", label: "Audit Trail", icon: Clock },
       ],
     },
-    {
-      id: "management",
-      title: "Account Management",
-      icon: Users,
-      items: [
-        {
-          id: "accounts-receivable",
-          label: "Accounts Receivable",
-          icon: TrendingUp,
-        },
-        { id: "accounts-payable", label: "Accounts Payable", icon: FileText },
-        { id: "general-ledger", label: "General Ledger", icon: BookOpen },
-      ],
-    },
+    // {
+    //   id: "management",
+    //   title: "Account Management",
+    //   icon: Users,
+    //   items: [
+    //     {
+    //       id: "accounts-receivable",
+    //       label: "Accounts Receivable",
+    //       icon: TrendingUp,
+    //     },
+    //     { id: "accounts-payable", label: "Accounts Payable", icon: FileText },
+    //     { id: "general-ledger", label: "General Ledger", icon: BookOpen },
+    //   ],
+    // },
   ];
 
   const [selectedItem, setSelectedItem] = useState(null);
@@ -90,7 +90,7 @@ const AccountingSidebar = () => {
     setSelectedItem(itemId);
   };
   return (
-    <aside className="w-80 overflow-y-auto max-h-[93vh] ">
+    <aside className="w-80 overflow-y-auto max-h-[93vh] border-r bg-white">
       <div className="p-6 border-b">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <LucideReceiptIndianRupee className="w-6 h-6" />
@@ -105,7 +105,7 @@ const AccountingSidebar = () => {
             {/* Section Header */}
             <button
               onClick={() => toggleSection(section.id)}
-              className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 transition-colors group"
+              className="w-full flex items-center font-medium justify-between p-3 rounded-lg hover:bg-gray-100 transition-colors group"
             >
               <div className="flex items-center gap-3">
                 <section.icon className="w-5 h-5 text-gray-600 group-hover:text-blue-600" />
@@ -127,7 +127,7 @@ const AccountingSidebar = () => {
                   <button
                     key={item.id}
                     onClick={() => handleItemClick(item.id)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                    className={`w-full flex items-center font-normal gap-3 p-3 rounded-lg transition-all ${
                       activeTab === item.id
                         ? "bg-blue-50 text-blue-700 border-l-4 border-blue-600"
                         : "hover:bg-gray-50 text-gray-600 hover:text-gray-800 border-l-4 border-transparent"

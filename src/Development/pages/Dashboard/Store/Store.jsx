@@ -465,7 +465,7 @@ export default function Store() {
 
     return (
         <div className="h-[calc(100vh-70px)] bg-[#f7f7f7] p-6">
-            <div className="max-w-7xl mx-auto space-y-4">
+            <div className="mx-auto space-y-4">
 
                 {/* HEADER */}
                 <div className="flex justify-between items-center">
