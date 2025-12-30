@@ -34,6 +34,7 @@ export default function LoginPage() {
         admin: "/dashboard/admin/room_list",
         frontdesk: "/dashboard/frontdesk",
         housekeeping: "/dashboard/housekeeping/room_status_list",
+        accountant: "/dashboard/accounting",
       };
       const redirectPath =
         product === "booking"
