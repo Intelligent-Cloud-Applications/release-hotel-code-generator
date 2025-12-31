@@ -31,6 +31,7 @@ import {
   CreditCard as CreditCardIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { set } from 'date-fns/set';
 
 const AmendBooking = () => {
   const {
@@ -60,6 +61,7 @@ const AmendBooking = () => {
   const [manualChargeEdited, setManualChargeEdited] = useState(false);
   // Company autocomplete state (UI only, stores company_id in formData, sourced from booking)
   const [companyQuery, setCompanyQuery] = useState('');
+  const [isRoomChanged, setIsRoomChanged] = useState(false);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const companyFieldRef = useRef(null);
   // New company GST state
@@ -299,9 +301,16 @@ const AmendBooking = () => {
     setFormData(prev => {
       const newRoomIds = [...(prev.room_ids || [])];
       // Prevent duplicate selection
+      setIsRoomChanged({
+        oldRoom: newRoomIds[index],
+        newRoom: value
+      })
       if (newRoomIds.includes(value) && newRoomIds[index] !== value) return prev;
       newRoomIds[index] = value;
+      
       const selectedRoom = getRoomDetails(value);
+      
+      
       // Adjust PAX room assignments if any PAX is linked to a room no longer selected
       const adjustedExtraPax = Array.isArray(prev.extra_pax)
         ? prev.extra_pax.map(p => {
@@ -337,15 +346,22 @@ const AmendBooking = () => {
   };
   const getTodayRoomCharge = () => {
     const roomNumber = getPrimaryRoomNumber();
+
+    const roomTariff = rooms.find((r) => r.room_number == roomNumber).tariff;
+
+    
+    
     const todayKey = getTodayYMD();
+    
     const services = formData?.services || {};
+    
     const dayEntry = services?.[roomNumber]?.[todayKey];
     if (dayEntry && dayEntry.room_charges !== undefined && dayEntry.room_charges !== null) {
       return dayEntry.room_charges;
     }
     // Fallback: booking-level room_charges map (by room number)
     const roomChargesMap = formData?.room_charges || (editingBooking?.room_charges || {});
-    return roomChargesMap?.[roomNumber] ?? '';
+    return roomChargesMap?.[roomNumber] ?? (roomTariff || 0);
   };
   const setTodayRoomCharge = (amount) => {
     const roomNumber = getPrimaryRoomNumber();
@@ -1010,6 +1026,112 @@ const AmendBooking = () => {
       services: formData.services || {},
       updated_at: Math.floor(Date.now())
     };
+
+    // Handle services update when room is changed
+    if (isRoomChanged) {
+      const originalRoomIds = getCurrentRoomIds(editingBooking);
+      const newRoomIds = formData.room_ids;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to midnight for accurate comparison
+      const todayYMD = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      
+      const updatedServices = { ...bookingPayloadBase.services };
+
+      // Process each room that was changed
+      for (let i = 0; i < originalRoomIds.length; i++) {
+        const oldRoomId = originalRoomIds[i];
+        const newRoomId = newRoomIds[i];
+
+        if (oldRoomId !== newRoomId) {
+          const oldRoom = getRoomDetails(oldRoomId);
+          const newRoom = getRoomDetails(newRoomId);
+          const oldRoomNumber = oldRoom?.room_number?.toString() || oldRoomId;
+          const newRoomNumber = newRoom?.room_number?.toString() || newRoomId;
+
+          
+
+          // Get check-in date
+          const checkinDate = new Date(editingBooking.checkin_date);
+          checkinDate.setHours(0, 0, 0, 0);
+
+          // Get the rate plan to determine room charges
+         
+          const oldRoomCharges = bookingPayloadBase.services?.[oldRoomNumber]?.[checkinDate].room_charges || oldRoom.tariff;
+          const newRoomCharges = newRoom.tariff || 0;
+
+          // Initialize old room entry if it doesn't exist
+          if (!updatedServices[oldRoomNumber]) {
+            updatedServices[oldRoomNumber] = {};
+          }
+
+          // Fill in missing dates for old room from check-in to today (inclusive)
+          const currentDate = new Date(checkinDate);
+          while (currentDate <= today) {
+            const dateYMD = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+            
+            if (updatedServices[oldRoomNumber][dateYMD]) {
+              // Entry exists, only update room_charges
+              updatedServices[oldRoomNumber][dateYMD] = {
+                ...updatedServices[oldRoomNumber][dateYMD],
+                room_charges: oldRoomCharges
+              };
+            } else {
+              // Create new entry for this date
+              updatedServices[oldRoomNumber][dateYMD] = {
+                room_charges: oldRoomCharges,
+                extra_bed_charges: 0,
+                food_charges: 0,
+                laundry_charges: 0,
+                manual_charges: 0,
+                minibar_charges: 0
+              };
+            }
+            
+            currentDate.setDate(currentDate.getDate() + 1);
+          }
+
+          // Remove any future entries from old room (after today)
+          if (updatedServices[oldRoomNumber]) {
+            const oldRoomDates = Object.keys(updatedServices[oldRoomNumber]);
+            oldRoomDates.forEach(dateStr => {
+              const entryDate = new Date(dateStr);
+              entryDate.setHours(0, 0, 0, 0);
+              if (entryDate > today) {
+                delete updatedServices[oldRoomNumber][dateStr];
+              }
+            });
+          }
+
+          // Initialize new room entry if it doesn't exist
+          if (!updatedServices[newRoomNumber]) {
+            updatedServices[newRoomNumber] = {};
+          }
+
+          // Add/update today's entry for the new room
+          if (updatedServices[newRoomNumber][todayYMD]) {
+            // Preserve existing charges, only update room_charges
+            updatedServices[newRoomNumber][todayYMD] = {
+              ...updatedServices[newRoomNumber][todayYMD],
+              room_charges: newRoomCharges
+            };
+          } else {
+            // Create new entry for today
+            updatedServices[newRoomNumber][todayYMD] = {
+              room_charges: newRoomCharges,
+              extra_bed_charges: 0,
+              food_charges: 0,
+              laundry_charges: 0,
+              manual_charges: 0,
+              minibar_charges: 0
+            };
+          }
+        }
+      }
+
+      bookingPayloadBase.services = updatedServices;
+      bookingPayloadBase.hold = true;
+    }
+    
     // Company handling: auto-create when new name + GST are provided
     try {
       if (currentIsNewCompany) {
@@ -1036,6 +1158,9 @@ const AmendBooking = () => {
       toast.error('Failed to create company. Proceeding without company link.');
       bookingPayloadBase.company_name = companyQuery.trim();
     }
+
+    console.log("😒", bookingPayloadBase.services);
+    
     const prevAdvance = parseFloat(editingBooking.partial_payment_amount) || 0;
     const inputAdvance = parseFloat(newAdvanceAmount) || 0;
     const totalAdvance = prevAdvance + inputAdvance;
@@ -1638,7 +1763,7 @@ const AmendBooking = () => {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs font-medium text-gray-700">Room Charges (Today) ₹</Label>
+                    <Label className="text-xs font-medium text-gray-700">Room Charges * (Today) ₹</Label>
                     <Input
                       type="number"
                       min="0"

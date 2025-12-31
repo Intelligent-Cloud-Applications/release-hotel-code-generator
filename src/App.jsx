@@ -8,7 +8,6 @@ const STAGE = import.meta.env.VITE_STAGE || "DEV";
 
 console.log(STAGE);
 
-
 Amplify.configure({
   API: {
     REST: {
@@ -66,6 +65,13 @@ Amplify.configure({
             ? import.meta.env.VITE_REGION
             : import.meta.env.VITE_PROD_REGION,
       },
+      accounting: {
+        endpoint:
+          STAGE === "DEV"
+            ? import.meta.env.VITE_ACCOUNTING_ENDPOINT
+            : import.meta.env.VITE_PROD_ACCOUNTING_ENDPOINT,
+      },
+
       restaurant: {
         endpoint:
           STAGE === "DEV"

@@ -86,7 +86,7 @@ export const AppContextProvider = ({ children }) => {
     }
   }
 
-   async function handleDailyEnd() {
+  async function handleDailyEnd() {
     try {
       const { body } = await post({
         apiName: "common",
@@ -228,6 +228,28 @@ export const AppContextProvider = ({ children }) => {
       console.error("Error updating room status:", error);
       setError("Failed to update room status");
       return { success: false, error };
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updatePaymentMethod({bill_id, paymentMethod}) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { body } = await put({
+        apiName: "frontdesk",
+        path: `/resettlement/${bill_id}`,
+        options: {
+          queryParams: {
+            institutionId: institutionId,
+            paymentMethod: paymentMethod,
+          },
+        },
+      }).response;
+    } catch (error) {
+      console.error("Error updating payment method:", error);
+      setError("Failed to update payment method");
     } finally {
       setLoading(false);
     }
@@ -1384,7 +1406,8 @@ export const AppContextProvider = ({ children }) => {
         updateClosingBalance,
         restaurantOrders,
         fetchRestaurantOrders,
-        handleDailyEnd
+        handleDailyEnd,
+        updatePaymentMethod
       }}
     >
       {children}

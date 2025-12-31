@@ -107,7 +107,7 @@ const Staffs = () => {
   });
 
   const [currentStaff, setCurrentStaff] = useState(null);
-  const availableRoles = ["admin", "frontdesk", "housekeeping"].map((r) => ({
+  const availableRoles = ["admin", "frontdesk", "housekeeping", "accountant"].map((r) => ({
     label: r.charAt(0).toUpperCase() + r.slice(1),
     value: r,
   }));
