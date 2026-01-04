@@ -271,7 +271,7 @@ const BillPosting = () => {
   return (
     <div className="h-[calc(100vh-70px)] bg-[#f7f7f7] p-6 overflow-y-auto">
       <div className="max-w-7xl mx-auto space-y-4">
-        /* Header */
+        
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-semibold text-gray-900">Bill Posting</h1>
             <Button onClick={fetchData} variant="default" disabled={loading}>
