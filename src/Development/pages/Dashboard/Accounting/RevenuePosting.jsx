@@ -110,6 +110,8 @@ const RevenuePosting = () => {
 
     // Get services from bookingDetails.services (room-wise, date-wise)
     const services = bookingDetails?.services || {};
+    console.log("▶️", services);
+    
 
     Object.keys(services).forEach((roomNumber) => {
       const roomServices = services[roomNumber] || {};
@@ -125,22 +127,22 @@ const RevenuePosting = () => {
     });
 
     // Also check detailedServices for food orders
-    const detailedServices = bookingDetails?.detailedServices || {};
-    Object.keys(detailedServices).forEach((roomNumber) => {
-      const roomDetailedServices = detailedServices[roomNumber] || {};
-      Object.keys(roomDetailedServices).forEach((date) => {
-        const dailyOrders = roomDetailedServices[date] || [];
-        if (Array.isArray(dailyOrders)) {
-          dailyOrders.forEach((order) => {
-            foodCharges += order.food_charges || 0;
-            laundryCharges += order.laundry_charges || 0;
-            minibarCharges += order.minibar_charges || 0;
-            extraBedCharges += order.extra_bed_charges || 0;
-            manualCharges += order.manual_charges || 0;
-          });
-        }
-      });
-    });
+    // const detailedServices = bookingDetails?.detailedServices || {};
+    // Object.keys(detailedServices).forEach((roomNumber) => {
+    //   const roomDetailedServices = detailedServices[roomNumber] || {};
+    //   Object.keys(roomDetailedServices).forEach((date) => {
+    //     const dailyOrders = roomDetailedServices[date] || [];
+    //     if (Array.isArray(dailyOrders)) {
+    //       dailyOrders.forEach((order) => {
+    //         foodCharges += order.food_charges || 0;
+    //         laundryCharges += order.laundry_charges || 0;
+    //         minibarCharges += order.minibar_charges || 0;
+    //         extraBedCharges += order.extra_bed_charges || 0;
+    //         manualCharges += order.manual_charges || 0;
+    //       });
+    //     }
+    //   });
+    // });
 
     return {
       roomCharges,
@@ -165,6 +167,8 @@ const RevenuePosting = () => {
 
       // Calculate service-wise amounts from the services data
       const servicesCalculated = calculateServicesFromData(bookingDetails);
+      console.log(servicesCalculated);
+      
 
       // Hotel/Room charges - prefer billingSummary, fallback to calculated
       const hotelAmount =
@@ -306,7 +310,7 @@ const RevenuePosting = () => {
             // Extract guest name from various possible paths
             const guestName =
               guests.find((guest) => guest.guest_id === booking?.guest_id)
-                .full_name || "N/A";
+                ?.full_name || "N/A";
 
             advancePayments.push({
               bookingId: booking?.booking_id || booking?.bookingId,
@@ -352,6 +356,7 @@ const RevenuePosting = () => {
       totalTransactions:
         filteredRevenueData.length + advancePaymentStats.advanceCount,
     };
+
 
     // Add checkout transactions
     filteredRevenueData.forEach((item) => {

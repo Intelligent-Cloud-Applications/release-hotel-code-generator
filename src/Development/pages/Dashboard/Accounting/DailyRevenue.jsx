@@ -128,22 +128,22 @@ const DailyRevenue = () => {
       });
     });
 
-    const detailedServices = bookingDetails?.detailedServices || {};
-    Object.keys(detailedServices).forEach((roomNumber) => {
-      const roomDetailedServices = detailedServices[roomNumber] || {};
-      Object.keys(roomDetailedServices).forEach((date) => {
-        const dailyOrders = roomDetailedServices[date] || [];
-        if (Array.isArray(dailyOrders)) {
-          dailyOrders.forEach((order) => {
-            foodCharges += order.food_charges || 0;
-            laundryCharges += order.laundry_charges || 0;
-            minibarCharges += order.minibar_charges || 0;
-            extraBedCharges += order.extra_bed_charges || 0;
-            manualCharges += order.manual_charges || 0;
-          });
-        }
-      });
-    });
+    // const detailedServices = bookingDetails?.detailedServices || {};
+    // Object.keys(detailedServices).forEach((roomNumber) => {
+    //   const roomDetailedServices = detailedServices[roomNumber] || {};
+    //   Object.keys(roomDetailedServices).forEach((date) => {
+    //     const dailyOrders = roomDetailedServices[date] || [];
+    //     if (Array.isArray(dailyOrders)) {
+    //       dailyOrders.forEach((order) => {
+    //         foodCharges += order.food_charges || 0;
+    //         laundryCharges += order.laundry_charges || 0;
+    //         minibarCharges += order.minibar_charges || 0;
+    //         extraBedCharges += order.extra_bed_charges || 0;
+    //         manualCharges += order.manual_charges || 0;
+    //       });
+    //     }
+    //   });
+    // });
 
     return {
       roomCharges,
@@ -184,11 +184,11 @@ const DailyRevenue = () => {
         const servicesCalculated = calculateServicesFromData(bookingDetails);
 
         const hotelAmount =
-          billingSummary?.totalRoomServices ||
+        (billingSummary?.totalRoomServices ||
           billingSummary?.roomChargesTotal ||
           billingSummary?.totalRoomCharges ||
           servicesCalculated.roomCharges ||
-          0;
+          0) - (billingSummary?.partialPayment || 0);
 
         const restaurantAmount = servicesCalculated.foodCharges || 0;
         const barAmount = servicesCalculated.minibarCharges || 0;
@@ -203,8 +203,8 @@ const DailyRevenue = () => {
           billingSummary?.grandTotal ||
           billingSummary?.totalAmount ||
           0;
-        const totalAmount =
-          billingSummary?.balanceDue || grossTotal - partialPayment;
+          
+        const totalAmount = grossTotal - partialPayment;
 
         return {
           bookingId: bookingDetails?.bookingId || bill?.bill_id,
