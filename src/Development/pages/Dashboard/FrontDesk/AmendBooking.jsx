@@ -1055,8 +1055,11 @@ const AmendBooking = () => {
           checkinDate.setHours(0, 0, 0, 0);
 
           // Get the rate plan to determine room charges
+
+          console.log(oldRoom, newRoom);
+          
          
-          const oldRoomCharges = bookingPayloadBase.services?.[oldRoomNumber]?.[checkinDate].room_charges || oldRoom.tariff;
+          const oldRoomCharges = bookingPayloadBase.services?.[oldRoomNumber]?.[checkinDate]?.room_charges || oldRoom.tariff;
           const newRoomCharges = newRoom.tariff || 0;
 
           // Initialize old room entry if it doesn't exist
