@@ -281,8 +281,6 @@ const Bill = () => {
         gst_no: "",
       }));
     }
-
-    console.log(checkoutFormData);
   }, []);
 
   // Process checkout
@@ -462,18 +460,8 @@ const Bill = () => {
             receivedId: Math.random().toString(36).substr(2, 9), // Generate unique ID
           };
 
-          // Debug logging for cash received
-          console.log("Cash received data being sent:", cashReceivedData);
-          console.log("Checkout balance due:", billData?.billingSummary?.balanceDue);
-          console.log(
-            "Bill summary grandTotal:",
-            billData?.summary?.grandTotal
-          );
-
           // Add to cash drawer as received amount
           await addExpense({ received: cashReceivedData });
-
-          console.log("Cash received added to drawer:", cashReceivedData);
         } catch (error) {
           console.error("Error adding cash received to drawer:", error);
           // Don't block checkout if cash drawer update fails
@@ -573,223 +561,6 @@ const Bill = () => {
     const bookingData = bookings.find((b) => b.booking_id === bookingId);
     return bookingData?.detailedServices || {};
   };
-
-  // Function to manually trigger auto-update (for testing)
-  // const triggerAutoUpdate = async () => {
-  //   console.log("Manual trigger of auto-update...");
-  //   try {
-  //     const billData = await calculateTotalBill({
-  //       bookingDetails: {
-  //         booking_id: bookingId,
-  //         guest_id: guestId,
-  //         room_id: roomId ? roomId.split(",").map((id) => id.trim()) : [],
-  //         rate_plan_id: ratePlanId,
-  //         checkin_date: Number(checkInDate),
-  //         checkout_date: checkoutDate,
-  //         gst_type: "IGST",
-  //       },
-  //     });
-  //     console.log("Manual trigger - bill data received:", billData);
-  //     console.log(
-  //       "Manual trigger - serviceChargesByDate:",
-  //       billData?.serviceChargesByDate
-  //     );
-  //     await autoUpdateBookingData(billData);
-  //   } catch (error) {
-  //     console.error("Error in manual trigger:", error);
-  //   }
-  // };
-
-  // Function to automatically update booking data to match bill display
-  // const autoUpdateBookingData = async (billData) => {
-  //   try {
-  //     console.log("=== AUTO UPDATING BOOKING DATA ===");
-  //     console.log(
-  //       "📞 autoUpdateBookingData function called with billData:",
-  //       billData
-  //     );
-
-  //     // Find the current booking data
-  //     const currentBookingData = bookings.find(
-  //       (b) => b.booking_id === bookingId
-  //     );
-  //     if (!currentBookingData) {
-  //       console.log("No booking data found for auto-update");
-  //       return;
-  //     }
-
-  //     // Calculate the correct totals from the bill data
-  //     let totalRoomCharges = 0;
-  //     let totalServiceCharges = 0;
-  //     let services = {};
-
-  //     // Wait for billData to be fully processed before updating
-  //     if (!billData?.serviceChargesByDate) {
-  //       console.log("Bill data not ready for auto-update, skipping...");
-  //       return;
-  //     }
-
-  //     // Use the API response data for extra pax charges instead of static booking data
-  //     console.log("Using API response data for extra pax charges");
-
-  //     console.log("Bill serviceChargesByDate:", billData.serviceChargesByDate);
-
-  //     // Calculate from serviceChargesByDate - this contains all the dates from charges breakdown
-  //     billData.serviceChargesByDate.forEach((dayData) => {
-  //       const date = Object.keys(dayData)[0];
-  //       const roomEntries = dayData[date];
-
-  //       console.log(
-  //         `Processing date ${date} with ${roomEntries.length} room entries`
-  //       );
-
-  //       roomEntries.forEach((roomEntry) => {
-  //         const roomNumber = roomEntry.roomNumber;
-  //         const charges = roomEntry.charges;
-
-  //         // Initialize room services if not exists
-  //         if (!services[roomNumber]) {
-  //           services[roomNumber] = {};
-  //         }
-
-  //         // Add to services with proper date format (YYYY-MM-DD)
-  //         const formattedDate = new Date(date).toISOString().split("T")[0];
-  //         services[roomNumber][formattedDate] = {
-  //           room_charges: charges.roomCharges || 0,
-  //           food_charges: charges.foodCharges || 0,
-  //           laundry_charges: charges.laundryCharges || 0,
-  //           minibar_charges: charges.minibarCharges || 0,
-  //           extra_bed_charges: charges.extraBedCharges || 0,
-  //           manual_charges: charges.manualCharges || 0,
-  //           extra_pax_charges: charges.extraPaxCharges || 0, // Add extra pax charges
-  //         };
-
-  //         console.log(
-  //           `Added services for room ${roomNumber} on ${formattedDate}:`,
-  //           services[roomNumber][formattedDate]
-  //         );
-  //         console.log(`Charges breakdown for room ${roomNumber}:`, {
-  //           roomCharges: charges.roomCharges,
-  //           foodCharges: charges.foodCharges,
-  //           laundryCharges: charges.laundryCharges,
-  //           minibarCharges: charges.minibarCharges,
-  //           extraBedCharges: charges.extraBedCharges,
-  //           manualCharges: charges.manualCharges,
-  //           extraPaxCharges: charges.extraPaxCharges,
-  //         });
-
-  //         // Add to totals
-  //         totalRoomCharges += charges.roomCharges || 0;
-  //         totalServiceCharges +=
-  //           (charges.foodCharges || 0) +
-  //           (charges.laundryCharges || 0) +
-  //           (charges.minibarCharges || 0) +
-  //           (charges.extraBedCharges || 0) +
-  //           (charges.manualCharges || 0) +
-  //           (charges.extraPaxCharges || 0); // Include extra pax charges
-  //       });
-  //     });
-
-  //     // Calculate discount and advance payment from bill data
-  //     const discountAmount =
-  //       billData?.breakdown?.charges?.discount?.discount_amount_calculated ||
-  //       billData?.summary?.discountAmount ||
-  //       billData?.billingSummary?.totalDiscount ||
-  //       0;
-  //     const advanceReceived =
-  //       billData?.breakdown?.charges?.partialPaymentFromBooking ||
-  //       billData?.summary?.partialPayment ||
-  //       billData?.billingSummary?.partialPayment ||
-  //       0;
-
-  //     // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
-  //     const discountedRoomCharges = totalRoomCharges - discountAmount;
-  //     const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-  //     const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-  //     const totalTaxAmount = cgstAmount + sgstAmount;
-
-  //     // Calculate totals
-  //     const subTotal = totalRoomCharges + totalServiceCharges - discountAmount;
-  //     const grandTotal = subTotal + totalTaxAmount - advanceReceived;
-
-  //     console.log("Calculated totals for auto-update:", {
-  //       totalRoomCharges,
-  //       totalServiceCharges,
-  //       discountAmount,
-  //       discountedRoomCharges,
-  //       advanceReceived,
-  //       cgstAmount,
-  //       sgstAmount,
-  //       totalTaxAmount,
-  //       subTotal,
-  //       grandTotal,
-  //     });
-
-  //     console.log("Services data to be updated:", services);
-
-  //     // Log extra pax charges specifically
-  //     let totalExtraPaxInServices = 0;
-  //     Object.keys(services).forEach((roomNumber) => {
-  //       Object.keys(services[roomNumber]).forEach((date) => {
-  //         const extraPax = services[roomNumber][date].extra_pax_charges || 0;
-  //         if (extraPax > 0) {
-  //           console.log(
-  //             `Extra pax charges for room ${roomNumber} on ${date}: ₹${extraPax}`
-  //           );
-  //           totalExtraPaxInServices += extraPax;
-  //         }
-  //       });
-  //     });
-  //     console.log(
-  //       `Total extra pax charges in services: ₹${totalExtraPaxInServices}`
-  //     );
-
-  //     // Create updated booking data
-  //     const updatedBooking = {
-  //       ...currentBookingData,
-  //       services: services,
-  //       discount: discountAmount,
-  //       partial_payment_amount: advanceReceived,
-  //       // Add any other fields that need to be updated
-  //     };
-
-  //     // Create version history for the auto-update
-  //     const versionHistory = {
-  //       changes: {
-  //         oldValues: {
-  //           services: currentBookingData.services || {},
-  //           discount: currentBookingData.discount || 0,
-  //           partial_payment_amount:
-  //             currentBookingData.partial_payment_amount || 0,
-  //         },
-  //         newValues: {
-  //           services: services,
-  //           discount: discountAmount,
-  //           partial_payment_amount: advanceReceived,
-  //         },
-  //       },
-  //       updated_at: Date.now(),
-  //       changed_by: "System Auto-Update",
-  //       reason:
-  //         "Bill data synchronization - ensuring checkout data matches bill display",
-  //     };
-
-  //     console.log("Auto-updating booking with data:", updatedBooking);
-  //     console.log("Version history:", versionHistory);
-
-  //     // Update the booking data
-  //     await updateBooking({
-  //       bookingData: updatedBooking,
-  //       bookingId: bookingId,
-  //       versionHistory: versionHistory,
-  //     });
-
-  //     console.log("✅ Booking data auto-updated successfully");
-  //   } catch (error) {
-  //     console.error("❌ Error auto-updating booking data:", error);
-  //     // Don't show error to user as this is a background operation
-  //   }
-  // };
 
   // Refresh function
   const handleRefresh = async () => {
@@ -1017,7 +788,7 @@ const Bill = () => {
 
       // Find the company details from the companies array
       const rawBookingData = bookings.find((b) => b.booking_id === bookingId);
-      console.log("Raw booking data for company ID:", rawBookingData);
+
       // Try to get company_id from either the processed booking or raw booking data
       const companyIdToUse = booking?.company_id || rawBookingData?.company_id;
       const grcNo = rawBookingData?.grc_no || "N/A";
@@ -1182,22 +953,6 @@ const Bill = () => {
         booking.breakdown.charges.serviceCharges.serviceChargesByRoomAndDate ||
         {};
 
-      console.log("=== API SERVICE CHARGES DEBUG ===");
-      console.log("serviceChargesByRoom:", serviceChargesByRoom);
-      console.log("Room 301 data:", serviceChargesByRoom["301"]);
-      console.log(
-        "Room 301 - 2025-09-22:",
-        serviceChargesByRoom["301"]?.["2025-09-22"]
-      );
-      console.log(
-        "Room 301 - 2025-09-21:",
-        serviceChargesByRoom["301"]?.["2025-09-21"]
-      );
-      console.log(
-        "Room 301 - 2025-09-20:",
-        serviceChargesByRoom["301"]?.["2025-09-20"]
-      );
-
       // Get all dates from room usage and service charges
       const roomUsageByDate =
         booking.breakdown.stayDetails.roomUsageByDate || {};
@@ -1212,24 +967,14 @@ const Bill = () => {
         });
       });
 
+
+      
+
       // Use the actual room usage dates from API response (these already respect grace period)
       const stayDates = new Set(Object.keys(roomUsageByDate));
 
-      console.log("=== GRACE PERIOD DEBUG ===");
-      console.log(
-        "Room usage dates from API (already filtered by grace period):",
-        Array.from(stayDates).sort()
-      );
-      console.log(
-        "Service charges dates:",
-        Array.from(datesFromServiceCharges).sort()
-      );
-
       // If no room usage dates, fall back to service charges dates
       if (stayDates.size === 0) {
-        console.log(
-          "No room usage dates, using service charges dates as fallback"
-        );
         stayDates.clear();
         datesFromServiceCharges.forEach((date) => stayDates.add(date));
       }
@@ -1266,29 +1011,39 @@ const Bill = () => {
         return timeDifferenceHours > 2;
       };
 
-      // Generate all dates from checkin to checkout (inclusive) for bill display
       const allStayDates = [];
       const checkinDateObj = new Date(checkinTimestamp);
-      const checkoutDateObj = new Date(checkoutTimestamp);
+      // Check if checkout date is crossed - if yes, add today's date as well
+      const today = new Date();
+      const checkoutDateOnly = new Date(bookingData?.checkout_date);
+      checkoutDateOnly.setHours(0, 0, 0, 0); // Reset time to midnight
 
-      // Generate dates from checkin to checkout (inclusive)
-      let currentDateObj = new Date(checkinDateObj);
-      while (currentDateObj <= checkoutDateObj) {
-        const dateStr = currentDateObj.toISOString().split("T")[0];
+      while(checkinDateObj <= today) {
+        const dateStr = `${checkinDateObj.getFullYear()}-${String(
+          checkinDateObj.getMonth() + 1
+        ).padStart(2, "0")}-${String(checkinDateObj.getDate()).padStart(2, "0")}`;
         allStayDates.push(dateStr);
-        currentDateObj.setDate(currentDateObj.getDate() + 1);
+        checkinDateObj.setDate(checkinDateObj.getDate() + 1);
+      }
+
+      if (today > checkoutDateOnly) {
+        const todayStr = `${today.getFullYear()}-${String(
+          today.getMonth() + 1
+        ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+        // Only add if not already in the array
+        if (!allStayDates.includes(todayStr)) {
+          allStayDates.push(todayStr);
+        }
       }
 
       // Use all stay dates for bill display (grace period logic will be handled in room charges calculation)
       let allDates = allStayDates.sort();
 
-      console.log("=== FINAL DATE SELECTION ===");
-      console.log("All stay dates (checkin to checkout):", allStayDates);
-      console.log("Room usage dates from API:", Object.keys(roomUsageByDate));
-      console.log("Final dates to display in bill:", allDates);
-      console.log(
-        "Showing all stay dates - grace period handled in room charges"
-      );
+      console.log(allDates);
+      
+      
+      
 
       // For dates not in roomUsageByDate, we still want to show them but with 0 room charges
       // This ensures the bill shows the complete stay period
@@ -1296,13 +1051,11 @@ const Bill = () => {
       // Use the number of nights from API response (already calculated with grace period)
       let numberOfNights = booking.breakdown.stayDetails.numberOfNights;
 
-      console.log("Number of nights from API:", numberOfNights);
-      console.log("This already accounts for grace period logic");
-
       // Handle the new API structure with room usage by date
       const dailyCharges = allDates.map((date) => {
         // Get rooms used on this specific date
         const roomsForDate = roomUsageByDate[date] || [];
+        console.log("Rooms for date:", date, roomsForDate);
 
         let roomEntries = [];
 
@@ -1330,6 +1083,9 @@ const Bill = () => {
                 daily_total: 0,
               };
 
+            console.log(dateServices);
+            
+
             // Calculate daily room charges - prioritize from services object if available
             let dailyRoomCharges = roomUsage.tariff || 0;
 
@@ -1341,13 +1097,6 @@ const Bill = () => {
             if (servicesRoomCharges !== undefined) {
               dailyRoomCharges = servicesRoomCharges;
             }
-
-            // Show room charges for all dates in the bill display
-            // Grace period logic is handled by the API in the final totals
-            console.log(
-              `Bill display: Showing room charges for ${date} (${roomNumber}): ₹${dailyRoomCharges}`
-            );
-            console.log(`Room data: tariff=${roomUsage.tariff}`);
 
             const dailyServiceCharges = dateServices.daily_total;
 
@@ -1364,9 +1113,7 @@ const Bill = () => {
                   roomServices[availableDate]?.extra_pax_charges || 0;
                 if (availableExtraPax > 0) {
                   roomSpecificExtraPax = availableExtraPax;
-                  console.log(
-                    `Using extra pax charges from ${availableDate} (${availableExtraPax}) for ${date}`
-                  );
+
                   break;
                 }
               }
@@ -1387,16 +1134,9 @@ const Bill = () => {
                 );
                 if (roomExtraPax?.extra_pax_amount) {
                   roomSpecificExtraPax = roomExtraPax.extra_pax_amount;
-                  console.log(
-                    `Using extra pax charges from booking data (${roomSpecificExtraPax}) for ${date}`
-                  );
                 }
               }
             }
-
-            console.log(`=== DATE ${date} DEBUG ===`);
-            console.log("dateServices:", dateServices);
-            console.log("roomSpecificExtraPax:", roomSpecificExtraPax);
 
             return {
               roomNumber: roomNumber,
@@ -1459,15 +1199,6 @@ const Bill = () => {
               dailyRoomCharges = servicesRoomCharges;
             }
 
-            // Show room charges for all dates in the bill display
-            // Grace period logic is handled by the API in the final totals
-            console.log(
-              `Bill display: Showing room charges for ${date} (${roomNumber}): ₹${dailyRoomCharges}`
-            );
-            console.log(
-              `Room data: finalRoomTariff=${room.finalRoomTariff}, baseTariff=${room.baseTariff}, averageTariffPerNight=${room.averageTariffPerNight}`
-            );
-
             const dailyServiceCharges = dateServices.daily_total;
 
             // Get extra pax charges from API response data instead of static booking data
@@ -1483,9 +1214,7 @@ const Bill = () => {
                   roomServices[availableDate]?.extra_pax_charges || 0;
                 if (availableExtraPax > 0) {
                   roomSpecificExtraPax = availableExtraPax;
-                  console.log(
-                    `Using extra pax charges from ${availableDate} (${availableExtraPax}) for ${date}`
-                  );
+
                   break;
                 }
               }
@@ -1506,9 +1235,6 @@ const Bill = () => {
                 );
                 if (roomExtraPax?.extra_pax_amount) {
                   roomSpecificExtraPax = roomExtraPax.extra_pax_amount;
-                  console.log(
-                    `Using extra pax charges from booking data (${roomSpecificExtraPax}) for ${date}`
-                  );
                 }
               }
             }
@@ -1535,6 +1261,9 @@ const Bill = () => {
               },
             };
           });
+
+          console.log(roomEntries);
+          
         }
 
         // Always check for additional rooms that have service charges on this date
@@ -1700,8 +1429,6 @@ const Bill = () => {
         const calculatedGrandTotal =
           calculatedSubTotal + totalTaxAmountOnDiscounted;
 
-        console.log(calculatedGrandTotal);
-
         // Calculate balance due: grand total (same as grand total since no advance payment)
         const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
@@ -1739,22 +1466,8 @@ const Bill = () => {
       setEditingRoomCharges(
         formatNumber(billData?.billingSummary?.totalRoomServices || 0)
       );
-
-      // Auto-update booking data automatically without any checks
-      // console.log("🚀 Auto-updating booking data automatically...");
-      // setTimeout(async () => {
-      //   // Use the current billData state for auto-update
-      //   const currentBillData = {
-      //     serviceChargesByDate: billData?.serviceChargesByDate || [],
-      //     breakdown: booking?.breakdown,
-      //     summary: booking?.summary,
-      //     billingSummary: billData?.billingSummary,
-      //   };
-      //   console.log("📞 Calling autoUpdateBookingData with:", currentBillData);
-      //   await autoUpdateBookingData(currentBillData);
-      // }, 1000);
     }
-  }, [booking, guests, companies, forceRefresh]);
+  }, [booking, guests, companies, forceRefresh, bookings]);
 
   useEffect(() => {
     setGuestData();
@@ -1850,7 +1563,7 @@ const Bill = () => {
 
       // Calculate grand total: subtotal + tax on discounted amount - advance payment
       const calculatedGrandTotal =
-        calculatedSubTotal + totalTaxAmountOnDiscounted ;
+        calculatedSubTotal + totalTaxAmountOnDiscounted;
 
       // Calculate balance due: grand total (same as grand total since no advance payment)
       const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
@@ -2395,7 +2108,7 @@ const Bill = () => {
 
     // Calculate grand total: subtotal + tax on discounted amount - advance payment
     const calculatedGrandTotal =
-      calculatedSubTotal + totalTaxAmountOnDiscounted ;
+      calculatedSubTotal + totalTaxAmountOnDiscounted;
 
     // Calculate balance due: grand total (same as grand total since no advance payment)
     const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
@@ -2708,7 +2421,8 @@ const Bill = () => {
                 <div className="flex justify-between text-sm">
                   <span className="font-medium">Amount to Pay:</span>
                   <span className="font-bold text-lg text-green-600">
-                    ₹{billData.billingSummary?.balanceDue?.toLocaleString() || 0}
+                    ₹
+                    {billData.billingSummary?.balanceDue?.toLocaleString() || 0}
                   </span>
                 </div>
               </div>
