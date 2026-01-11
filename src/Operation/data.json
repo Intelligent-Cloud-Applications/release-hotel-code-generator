@@ -1,8 +1,8 @@
 {
-  "institutionId": "HOTEL001",
+  "institutionId": "TEKK7524",
   "product": "dashboard-booking",
   "template": "template2",
-  "s3BucketName": "templatehm.awsaiapp.com",
-  "cloudFrontId": "E2MTGS0B7WKXTR",
-  "domain": "https://templatehm.awsaiapp.com"
+  "s3BucketName": "templateds.awsaiapp.com",
+  "cloudFrontId": "E470TC368F952",
+  "domain": "https://templateds.awsaiapp.com"
 }
