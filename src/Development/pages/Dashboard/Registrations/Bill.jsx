@@ -59,6 +59,7 @@ const Bill = () => {
     calculateTotalBill,
     companies,
     bills,
+    rooms,
     checkoutGuest,
     createCompany,
   } = useAppContext();
@@ -117,7 +118,7 @@ const Bill = () => {
     const q = (companyQuery || "").trim().toLowerCase();
     if (!q) return [];
     return (companies || []).filter((c) =>
-      getCompanyName(c).toLowerCase().includes(q)
+      getCompanyName(c).toLowerCase().includes(q),
     );
   }, [companies, companyQuery]);
 
@@ -446,7 +447,7 @@ const Bill = () => {
         try {
           // Get guest details for the description
           const guest = guests?.find(
-            (g) => g.guest_id === booking.breakdown.booking.guest_id
+            (g) => g.guest_id === booking.breakdown.booking.guest_id,
           );
 
           const cashReceivedData = {
@@ -739,7 +740,7 @@ const Bill = () => {
       // Calculate extra pax charges if present
       let calculatedExtraPaxTotal = 0;
       const extra_pax = bookings?.find(
-        (b) => booking?.breakdown?.booking?.booking_id === b.booking_id
+        (b) => booking?.breakdown?.booking?.booking_id === b.booking_id,
       )?.extra_pax;
       if (extra_pax && Array.isArray(extra_pax)) {
         calculatedExtraPaxTotal = extra_pax.reduce((total, pax) => {
@@ -934,12 +935,12 @@ const Bill = () => {
         // If it's already an ISO string, parse it directly
         if (booking.breakdown.stayDetails.checkout_date.includes("T")) {
           checkoutTimestamp = new Date(
-            booking.breakdown.stayDetails.checkout_date
+            booking.breakdown.stayDetails.checkout_date,
           ).getTime();
         } else {
           // If it's a timestamp string, parse it
           checkoutTimestamp = parseInt(
-            booking.breakdown.stayDetails.checkout_date
+            booking.breakdown.stayDetails.checkout_date,
           );
         }
       } else {
@@ -966,9 +967,6 @@ const Bill = () => {
           datesFromServiceCharges.add(date);
         });
       });
-
-
-      
 
       // Use the actual room usage dates from API response (these already respect grace period)
       const stayDates = new Set(Object.keys(roomUsageByDate));
@@ -1018,17 +1016,20 @@ const Bill = () => {
       const checkoutDateOnly = new Date(bookingData?.checkout_date);
       checkoutDateOnly.setHours(0, 0, 0, 0); // Reset time to midnight
 
-      while(checkinDateObj <= today) {
+      while (checkinDateObj <= today) {
         const dateStr = `${checkinDateObj.getFullYear()}-${String(
-          checkinDateObj.getMonth() + 1
-        ).padStart(2, "0")}-${String(checkinDateObj.getDate()).padStart(2, "0")}`;
+          checkinDateObj.getMonth() + 1,
+        ).padStart(
+          2,
+          "0",
+        )}-${String(checkinDateObj.getDate()).padStart(2, "0")}`;
         allStayDates.push(dateStr);
         checkinDateObj.setDate(checkinDateObj.getDate() + 1);
       }
 
       if (today > checkoutDateOnly) {
         const todayStr = `${today.getFullYear()}-${String(
-          today.getMonth() + 1
+          today.getMonth() + 1,
         ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
         // Only add if not already in the array
@@ -1040,11 +1041,6 @@ const Bill = () => {
       // Use all stay dates for bill display (grace period logic will be handled in room charges calculation)
       let allDates = allStayDates.sort();
 
-      console.log(allDates);
-      
-      
-      
-
       // For dates not in roomUsageByDate, we still want to show them but with 0 room charges
       // This ensures the bill shows the complete stay period
 
@@ -1055,7 +1051,6 @@ const Bill = () => {
       const dailyCharges = allDates.map((date) => {
         // Get rooms used on this specific date
         const roomsForDate = roomUsageByDate[date] || [];
-        console.log("Rooms for date:", date, roomsForDate);
 
         let roomEntries = [];
 
@@ -1082,9 +1077,6 @@ const Bill = () => {
                 extra_pax_charges: 0, // Add extra_pax_charges to default object
                 daily_total: 0,
               };
-
-            console.log(dateServices);
-            
 
             // Calculate daily room charges - prioritize from services object if available
             let dailyRoomCharges = roomUsage.tariff || 0;
@@ -1123,14 +1115,14 @@ const Bill = () => {
             if (roomSpecificExtraPax === 0) {
               // Get extra pax from booking data as fallback
               const bookingExtraPax = bookings?.find(
-                (b) => booking?.breakdown?.booking?.booking_id === b.booking_id
+                (b) => booking?.breakdown?.booking?.booking_id === b.booking_id,
               )?.extra_pax;
 
               if (bookingExtraPax && Array.isArray(bookingExtraPax)) {
                 const roomExtraPax = bookingExtraPax.find(
                   (pax) =>
                     pax.room_id === roomUsage.room_id ||
-                    pax.room_number === roomNumber
+                    pax.room_number === roomNumber,
                 );
                 if (roomExtraPax?.extra_pax_amount) {
                   roomSpecificExtraPax = roomExtraPax.extra_pax_amount;
@@ -1163,7 +1155,13 @@ const Bill = () => {
         } else {
           // If no room usage data for this date, create entries for all rooms
           // This ensures we show all dates in the bill, even if grace period excludes them
-          roomEntries = allRooms.map((room) => {
+          let allRoomsData = [];
+
+          bookingData?.room_id?.map((roomId) => {
+            allRoomsData.push(allRooms.find((r) => r.room_id === roomId));
+          });
+
+          roomEntries = allRoomsData.map((room) => {
             const roomNumber = room.room_number;
             const roomServices = serviceChargesByRoom[roomNumber] || {};
 
@@ -1224,14 +1222,14 @@ const Bill = () => {
             if (roomSpecificExtraPax === 0) {
               // Get extra pax from booking data as fallback
               const bookingExtraPax = bookings?.find(
-                (b) => booking?.breakdown?.booking?.booking_id === b.booking_id
+                (b) => booking?.breakdown?.booking?.booking_id === b.booking_id,
               )?.extra_pax;
 
               if (bookingExtraPax && Array.isArray(bookingExtraPax)) {
                 const roomExtraPax = bookingExtraPax.find(
                   (pax) =>
                     pax.room_id === room.room_id ||
-                    pax.room_number === roomNumber
+                    pax.room_number === roomNumber,
                 );
                 if (roomExtraPax?.extra_pax_amount) {
                   roomSpecificExtraPax = roomExtraPax.extra_pax_amount;
@@ -1261,9 +1259,6 @@ const Bill = () => {
               },
             };
           });
-
-          console.log(roomEntries);
-          
         }
 
         // Always check for additional rooms that have service charges on this date
@@ -1274,9 +1269,9 @@ const Bill = () => {
         const currentDate = new Date().toISOString().split("T")[0];
         if (date <= currentDate) {
           Object.keys(serviceChargesByRoom).forEach((roomNumber) => {
-            // Skip rooms that are already processed in roomEntries
+            // Skip rooms that are already processed in roomEntriesz
             const alreadyProcessed = roomEntries.some(
-              (entry) => entry.roomNumber === roomNumber
+              (entry) => entry.roomNumber === roomNumber,
             );
 
             if (!alreadyProcessed) {
@@ -1286,7 +1281,7 @@ const Bill = () => {
               if (roomServices[formattedDate] || roomServices[date]) {
                 // Find the room details from booking rooms or create a default entry
                 const roomDetails = booking.breakdown.rooms.find(
-                  (r) => r.room_number === roomNumber
+                  (r) => r.room_number === roomNumber,
                 ) || {
                   room_number: roomNumber,
                   room_type: "Standard", // Default room type
@@ -1417,10 +1412,10 @@ const Bill = () => {
         // Calculate tax on the discounted amount (room charges after discount)
         const discountedRoomCharges = totalRoomCharges - discountAmount;
         const cgstAmountOnDiscounted = Math.round(
-          (discountedRoomCharges * 2.5) / 100
+          (discountedRoomCharges * 2.5) / 100,
         );
         const sgstAmountOnDiscounted = Math.round(
-          (discountedRoomCharges * 2.5) / 100
+          (discountedRoomCharges * 2.5) / 100,
         );
         const totalTaxAmountOnDiscounted =
           cgstAmountOnDiscounted + sgstAmountOnDiscounted;
@@ -1458,13 +1453,13 @@ const Bill = () => {
       });
 
       setEditingDiscount(
-        formatNumber(billData?.billingSummary?.totalDiscount || 0)
+        formatNumber(billData?.billingSummary?.totalDiscount || 0),
       );
       setEditingAdvancePayment(
-        formatNumber(billData?.billingSummary?.partialPayment || 0)
+        formatNumber(billData?.billingSummary?.partialPayment || 0),
       );
       setEditingRoomCharges(
-        formatNumber(billData?.billingSummary?.totalRoomServices || 0)
+        formatNumber(billData?.billingSummary?.totalRoomServices || 0),
       );
     }
   }, [booking, guests, companies, forceRefresh, bookings]);
@@ -1553,10 +1548,10 @@ const Bill = () => {
       // Calculate tax on the discounted amount (room charges after discount)
       const discountedRoomCharges = totalRoomCharges - discountAmount;
       const cgstAmountOnDiscounted = Math.round(
-        (discountedRoomCharges * 2.5) / 100
+        (discountedRoomCharges * 2.5) / 100,
       );
       const sgstAmountOnDiscounted = Math.round(
-        (discountedRoomCharges * 2.5) / 100
+        (discountedRoomCharges * 2.5) / 100,
       );
       const totalTaxAmountOnDiscounted =
         cgstAmountOnDiscounted + sgstAmountOnDiscounted;
@@ -1680,10 +1675,10 @@ const Bill = () => {
     setEditingChargeAmounts(chargeAmounts);
     // Initialize discount and advance payment editing values
     setEditingDiscount(
-      formatNumber(billData?.billingSummary?.totalDiscount || 0)
+      formatNumber(billData?.billingSummary?.totalDiscount || 0),
     );
     setEditingAdvancePayment(
-      formatNumber(billData?.billingSummary?.partialPayment || 0)
+      formatNumber(billData?.billingSummary?.partialPayment || 0),
     );
   };
 
@@ -1736,14 +1731,14 @@ const Bill = () => {
         return {
           [date]: updatedRoomEntries,
         };
-      }
+      },
     );
 
     const updatedServices = {};
 
     // Get the actual room numbers from the booking to limit service entries
     const actualRoomNumbers = booking.breakdown.rooms.map(
-      (room) => room.room_number
+      (room) => room.room_number,
     );
 
     // Build updatedServices object with the required format
@@ -1911,10 +1906,10 @@ const Bill = () => {
     setEditingAmounts({});
     setEditingChargeAmounts({});
     setEditingDiscount(
-      formatNumber(billData?.billingSummary?.totalDiscount || 0)
+      formatNumber(billData?.billingSummary?.totalDiscount || 0),
     );
     setEditingAdvancePayment(
-      formatNumber(billData?.billingSummary?.partialPayment || 0)
+      formatNumber(billData?.billingSummary?.partialPayment || 0),
     );
     // Clear version history on cancel
     setVersionHistory(null);
@@ -1975,10 +1970,10 @@ const Bill = () => {
     // Calculate tax on the discounted amount (room charges after discount)
     const discountedRoomCharges = totalRoomCharges - discountAmount;
     const cgstAmountOnDiscounted = Math.round(
-      (discountedRoomCharges * 2.5) / 100
+      (discountedRoomCharges * 2.5) / 100,
     );
     const sgstAmountOnDiscounted = Math.round(
-      (discountedRoomCharges * 2.5) / 100
+      (discountedRoomCharges * 2.5) / 100,
     );
     const totalTaxAmountOnDiscounted =
       cgstAmountOnDiscounted + sgstAmountOnDiscounted;
@@ -2098,10 +2093,10 @@ const Bill = () => {
     // Calculate tax on the discounted amount (room charges after discount)
     const discountedRoomCharges = totalRoomCharges - discountAmount;
     const cgstAmountOnDiscounted = Math.round(
-      (discountedRoomCharges * 2.5) / 100
+      (discountedRoomCharges * 2.5) / 100,
     );
     const sgstAmountOnDiscounted = Math.round(
-      (discountedRoomCharges * 2.5) / 100
+      (discountedRoomCharges * 2.5) / 100,
     );
     const totalTaxAmountOnDiscounted =
       cgstAmountOnDiscounted + sgstAmountOnDiscounted;
