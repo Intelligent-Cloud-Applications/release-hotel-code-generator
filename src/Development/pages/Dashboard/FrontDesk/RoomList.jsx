@@ -287,7 +287,7 @@ const RoomList = () => {
 const RoomCard = ({ room, isLoading, onDoubleClick }) => {
   const getStatusIcon = (status, isLoading = false) => {
     const iconClass =
-      "w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white font-bold relative";
+      "w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center font-bold relative";
 
     // Show skeleton loading if still loading initial data
     if (isLoading) {
@@ -317,17 +317,17 @@ const RoomCard = ({ room, isLoading, onDoubleClick }) => {
   const getStatusBackground = (status) => {
     switch (status) {
       case "Vacant":
-        return "bg-[#065F46]";
+        return "bg-[#065F46] text-[#D1FAE5]";
       case "Reserved":
-        return "bg-[#92400E]";
+        return "bg-[#92400E] text-[#FEF9C3]";
       case "Occupied":
-        return "bg-[#3730A3]";
+        return "bg-[#3730A3] text-[#E0E7FF]";
       case "Dirty":
-        return "bg-[#B91C1C]";
+        return "bg-[#B91C1C] text-[#FEE2E2]";
       case "Under Maintenance":
-        return "bg-[#C2410C]";
+        return "bg-[#C2410C] text-[#FFE4B5]";
       default:
-        return "bg-gray-400";
+        return "bg-gray-400 text-white";
     }
   };
 
@@ -390,20 +390,20 @@ const RoomCard = ({ room, isLoading, onDoubleClick }) => {
       {isLoading ? (
         <div className="h-3 bg-gray-300 rounded animate-pulse w-16 mb-1"></div>
       ) : (
-        <div className="text-xs text-white mb-1 truncate">Room {room.room_number}</div>
+        <div className="text-xs  mb-1 truncate">Room {room.room_number}</div>
       )}
 
       {/* Room Type */}
       {isLoading ? (
         <div className="h-4 bg-gray-300 rounded animate-pulse w-20 mb-1"></div>
       ) : (
-        <div className="font-bold text-white mb-1 text-xs sm:text-sm truncate">
+        <div className="font-bold mb-1 text-xs sm:text-sm truncate">
           {room.room_type}
         </div>
       )}
 
       {/* Status and Floor */}
-      <div className="text-xs text-white flex items-center gap-1 flex-row flex-wrap">
+      <div className="text-xs flex items-center gap-1 flex-row flex-wrap">
         {isLoading ? (
           <div className="h-3 bg-gray-300 rounded animate-pulse w-16"></div>
         ) : (
