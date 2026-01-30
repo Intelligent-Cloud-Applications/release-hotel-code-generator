@@ -1056,7 +1056,7 @@ const AmendBooking = () => {
 
           // Get the rate plan to determine room charges
          
-          const oldRoomCharges = bookingPayloadBase.services?.[oldRoomNumber]?.[checkinDate].room_charges || oldRoom.tariff;
+          const oldRoomCharges = bookingPayloadBase?.services?.[oldRoomNumber]?.[checkinDate]?.room_charges || oldRoom.tariff;
           const newRoomCharges = newRoom.tariff || 0;
 
           // Initialize old room entry if it doesn't exist
@@ -1158,8 +1158,6 @@ const AmendBooking = () => {
       toast.error('Failed to create company. Proceeding without company link.');
       bookingPayloadBase.company_name = companyQuery.trim();
     }
-
-    console.log("😒", bookingPayloadBase.services);
     
     const prevAdvance = parseFloat(editingBooking.partial_payment_amount) || 0;
     const inputAdvance = parseFloat(newAdvanceAmount) || 0;
