@@ -248,16 +248,16 @@ return (
                           </>
                         ) : (
                           <>
-                            <a href={socialMedia?.facebook || "#"} className="hover:text-gray-300 transition-colors">
+                            <a href={socialMedia?.facebook || "#"} className="hover:text-gold transition-colors">
                                 <FaFacebookF size={20} />
                             </a>
-                            <a href={socialMedia?.instagram || "#"} className="hover:text-gray-300 transition-colors">
+                            <a href={socialMedia?.instagram || "#"} className="hover:text-gold transition-colors">
                                 <FaInstagram size={20} />
                             </a>
-                            <a href={socialMedia?.twitter || "#"} className="hover:text-gray-300 transition-colors">
+                            <a href={socialMedia?.twitter || "#"} className="hover:text-gold transition-colors">
                                 <FaTwitter size={20} />
                             </a>
-                            <a href={socialMedia?.linkedin || "#"} className="hover:text-gray-300 transition-colors">
+                            <a href={socialMedia?.linkedin || "#"} className="hover:text-gold transition-colors">
                                 <FaLinkedinIn size={20} />
                             </a>
                           </>
@@ -267,7 +267,7 @@ return (
 
                 {/* Accommodation Section */}
                 <div className="flex flex-col text-center md:text-left">
-                    <div className="flex items-center justify-between mb-4 md:mb-6">
+                    <div className="flex items-center justify-center md:justify-between mb-4 md:mb-6">
                       {isEditMode ? (
                         <input
                           type="text"
@@ -284,7 +284,7 @@ return (
                         />
                       ) : (
                         <h2
-                            className="text-lg md:text-xl font-bold"
+                            className="text-lg md:text-xl font-bold text-center md:text-left"
                             style={{ fontFamily: "Ogg" }}
                         >
                             {footerSection2?.title || "Accommodation"}
@@ -308,7 +308,7 @@ return (
                         {footerSection2?.links?.length > 0 ? (
                           footerSection2.links.map((link, index) => (
                             <li key={index}>
-                              <a href={link.url || "#"} className="hover:text-gray-300 transition-colors">
+                              <a href={link.url || "#"} className="hover:text-gold transition-colors">
                                   {link.name}
                               </a>
                             </li>
@@ -320,22 +320,22 @@ return (
                         ) : (
                           <>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Panoramic Suite
                                 </a>
                             </li>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Balcony Suite
                                 </a>
                             </li>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Presidential Suite
                                 </a>
                             </li>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Penthouse
                                 </a>
                             </li>
@@ -346,7 +346,7 @@ return (
 
                 {/* Amenities Section */}
                 <div className="flex flex-col text-center md:text-left">
-                    <div className="flex items-center justify-between mb-4 md:mb-6">
+                    <div className="flex items-center justify-center md:justify-between mb-4 md:mb-6">
                       {isEditMode ? (
                         <input
                           type="text"
@@ -363,7 +363,7 @@ return (
                         />
                       ) : (
                         <h2
-                            className="text-lg md:text-xl font-bold"
+                            className="text-lg md:text-xl font-bold text-center md:text-left"
                             style={{ fontFamily: "Ogg" }}
                         >
                             {footerSection3?.title || "Amenities"}
@@ -387,7 +387,7 @@ return (
                         {footerSection3?.links?.length > 0 ? (
                           footerSection3.links.map((link, index) => (
                             <li key={index}>
-                              <a href={link.url || "#"} className="hover:text-gray-300 transition-colors">
+                              <a href={link.url || "#"} className="hover:text-gold transition-colors">
                                   {link.name}
                               </a>
                             </li>
@@ -399,22 +399,22 @@ return (
                         ) : (
                           <>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Rooftop Pool
                                 </a>
                             </li>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Fine Dining
                                 </a>
                             </li>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Luxury Spa
                                 </a>
                             </li>
                             <li>
-                                <a href="#" className="hover:text-gray-300 transition-colors">
+                                <a href="#" className="hover:text-gold transition-colors">
                                     Banquet Hall
                                 </a>
                             </li>

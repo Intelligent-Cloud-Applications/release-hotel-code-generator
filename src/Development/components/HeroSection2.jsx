@@ -18,18 +18,9 @@ const HeroSection2 = () => {
 
 
   return (
-    <div className="relative bg-[#FBF6F0] z-50 flex items-center py-8 md:py-16 min-h-[50vh] md:h-[50vh]">
-      {/* Noise texture overlay using actual texture image */}
-      <div
-        className="absolute inset-0 w-full h-full z-10"
-        style={{
-          backgroundImage: `url(${bgTexture})`,
-          backgroundRepeat: "repeat",
-          backgroundSize: "800px 800px",
-          opacity: 0.15,
-          mixBlendMode: "multiply",
-        }}
-      ></div>
+    <div className="relative bg-champagne z-50 flex items-center py-8 md:py-16 min-h-[50vh] md:h-[50vh]">
+      {/* Subtle Gold Tint Overlay */}
+      <div className="absolute inset-0 w-full h-full z-0 bg-gold opacity-5 pointer-events-none"></div>
 
       <div className="relative h-full mx-auto flex flex-col md:flex-row px-4 items-center justify-between z-20 w-full">
         {/* Left side - Text content */}
@@ -62,14 +53,14 @@ const HeroSection2 = () => {
                       },
                     })
                   }
-                  className="bg-transparent border-2 border-gray-400 border-dashed text-black text-center w-full outline-none font-bold"
+                  className="bg-transparent border-2 border-gray-400 border-dashed text-gold text-center w-full outline-none font-bold"
                   style={{
                     fontSize: "clamp(14px, 3vw, 16px)",
                   }}
                   placeholder="Hotel name..."
                 />
               ) : (
-                <p className="text-black font-bold text-sm md:text-base">
+                <p className="text-gold font-bold text-sm md:text-base">
                   {heroSection2?.title || "Hotel Amrapalli Classic"}
                 </p>
               )}
@@ -82,7 +73,7 @@ const HeroSection2 = () => {
                     "0px 8px 16px 0px rgba(0, 0, 0, 0.6), inset 0px 3px 6px rgba(0, 0, 0, 0.3)",
                 }}
               >
-                <FaHotel className="w-5 h-5 md:w-7 md:h-7 text-black" />
+                <FaHotel className="w-5 h-5 md:w-7 md:h-7 text-gold" />
               </button>
               <button
                 className="w-[50px] h-[50px] md:w-[68px] md:h-[68px] bg-white rounded-full flex items-center justify-center transition-shadow z-20"
@@ -91,7 +82,7 @@ const HeroSection2 = () => {
                     "0px 8px 16px 0px rgba(0, 0, 0, 0.6), inset 0px 3px 6px rgba(0, 0, 0, 0.3)",
                 }}
               >
-                <MdOutlineLocalParking className="w-5 h-5 md:w-7 md:h-7 text-black" />
+                <MdOutlineLocalParking className="w-5 h-5 md:w-7 md:h-7 text-gold" />
               </button>
               <button
                 className="w-[50px] h-[50px] md:w-[68px] md:h-[68px] bg-white rounded-full flex items-center justify-center transition-shadow z-10"
@@ -100,7 +91,7 @@ const HeroSection2 = () => {
                     "0px 8px 16px 0px rgba(0, 0, 0, 0.6), inset 0px 3px 6px rgba(0, 0, 0, 0.3)",
                 }}
               >
-                <FaBowlFood className="w-5 h-5 md:w-7 md:h-7 text-black" />
+                <FaBowlFood className="w-5 h-5 md:w-7 md:h-7 text-gold" />
               </button>
             </div>
           </div>
@@ -168,7 +159,7 @@ const HeroSection2 = () => {
                 <span
                   className="font-[400] block md:inline mt-2 md:mt-0"
                   style={{
-                    background: "linear-gradient(to right, #1f2937, transparent)",
+                    background: "linear-gradient(to right, #C5A059, #b8860b)",
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
                     backgroundClip: "text",

@@ -33,18 +33,9 @@ const Rooms = () => {
           title={imageMetaData.title}
         />
       )}
-      <div className="relative bg-[#FBF6F0] z-50 ">
-        {/* Noise texture overlay using actual texture image */}
-        <div
-          className="absolute inset-0 w-full h-full z-0 pointer-events-none"
-          style={{
-            backgroundImage: `url(${bgTexture})`,
-            backgroundRepeat: "repeat",
-            backgroundSize: "800px 800px",
-            opacity: 0.15,
-            mixBlendMode: "multiply",
-          }}
-        ></div>
+      <div className="relative bg-champagne z-50 ">
+        {/* Warm Gold Tint Overlay */}
+        <div className="absolute inset-0 w-full h-full z-0 pointer-events-none bg-gold opacity-5"></div>
         <Navbar />
 
         {/* Room Rates Section */}
@@ -87,7 +78,7 @@ const Rooms = () => {
               />
             ) : (
               <h1
-                className="text-3xl md:text-4xl font-bold text-gray-800 tracking-widest uppercase mb-4"
+                className="text-3xl md:text-4xl font-bold text-gold tracking-widest uppercase mb-4"
                 style={{
                   fontFamily: "Ogg",
                   fontWeight: 400,
@@ -123,7 +114,7 @@ const Rooms = () => {
               />
             ) : (
               <h2
-                className="text-4xl md:text-6xl font-bold text-gray-800 tracking-widest uppercase"
+                className="text-4xl md:text-6xl font-bold text-black tracking-widest uppercase"
                 style={{
                   fontFamily: "Ogg",
                   fontWeight: 400,
@@ -158,9 +149,9 @@ const Rooms = () => {
                     y: -5,
                     transition: { duration: 0.2 }
                   }}
-                  className="relative bg-[#DBD6D0] rounded-2xl p-4 md:p-6 w-full md:w-full h-auto md:h-full "
+                  className="relative bg-[#DBD6D0] rounded-2xl p-4 md:p-6 w-full md:w-full h-auto md:h-full border-2 border-transparent hover:border-gold hover:shadow-gold transition-all duration-300"
                   style={{
-                    boxShadow: "box-shadow: 4px 4px 0px 0px #000000;",
+                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
                   }}
                 >
                   <div className="flex flex-col justify-between h-full gap-3 md:gap-4 relative">
@@ -307,7 +298,7 @@ const Rooms = () => {
                           {room?.description || "Room description"}
                         </p>
                       )}
-                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-8">
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-8 transition-all duration-300 transform hover:-translate-y-1">
                         {isEditMode ? (
                           <input
                             type="text"
@@ -356,7 +347,7 @@ const Rooms = () => {
                           </span>
                         )}
                         <button
-                          className="bg-white text-black px-6 md:px-4 py-2 rounded-full z-50 cursor-pointer w-full md:w-auto"
+                          className="bg-gradient-gold text-white px-6 md:px-4 py-2 rounded-full z-50 cursor-pointer w-full md:w-auto shadow-gold hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
                           style={{
                             boxShadow: "4px 4px 0px 0px #000000",
                             fontFamily: "Montserrat",

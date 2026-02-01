@@ -99,7 +99,7 @@ const OurFacilities = () => {
               type="text"
               value={titleHighlight}
               onChange={(e) => setTitleHighlight(e.target.value)}
-              className="text-4xl md:text-5xl fjalla bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent border-2 border-orange-200 rounded-xl px-3 py-2 text-center bg-white/80 backdrop-blur-sm shadow-lg focus:border-orange-400 focus:ring-4 focus:ring-orange-100 transition-all duration-300"
+              className="text-4xl md:text-5xl fjalla text-gold border-2 border-gold/30 rounded-xl px-3 py-2 text-center bg-white/80 backdrop-blur-sm shadow-lg focus:border-gold focus:ring-4 focus:ring-gold/20 transition-all duration-300"
               style={{ width: `${titleHighlight.length + 2}ch` }}
             />
           </div>
@@ -107,11 +107,11 @@ const OurFacilities = () => {
           <div className="mb-6">
             <h2 className="text-4xl md:text-6xl fjalla leading-tight">
               <span className="text-gray-900 drop-shadow-sm">{title}</span>
-              <span className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 bg-clip-text text-transparent ml-3 drop-shadow-sm">
+              <span className="text-gold ml-3 drop-shadow-sm">
                 {titleHighlight}
               </span>
             </h2>
-            <div className="w-24 h-1 bg-gradient-to-r from-orange-400 to-red-500 mx-auto mt-4 rounded-full"></div>
+            <div className="w-24 h-1 bg-gold mx-auto mt-4 rounded-full"></div>
           </div>
         )}
 
@@ -142,7 +142,7 @@ const OurFacilities = () => {
                   <div className="w-16 h-16 mx-auto mb-6 p-3 bg-gradient-to-br from-orange-100 to-red-100 rounded-2xl group-hover:from-orange-200 group-hover:to-red-200 transition-all duration-500 group-hover:scale-110 group-hover:rotate-6 shadow-lg">
                     {React.createElement(getIconComponent(facility.icon), {
                       className:
-                        "w-full h-full text-gray-700 group-hover:text-orange-600 transition-colors duration-500",
+                        "w-full h-full text-gray-700 group-hover:text-gold transition-colors duration-500",
                     })}
                   </div>
                   <h3 className="text-gray-800 font-semibold text-lg cormorant group-hover:text-gray-900 transition-colors duration-300 leading-relaxed">
@@ -150,7 +150,7 @@ const OurFacilities = () => {
                   </h3>
                 </div>
 
-                <div className="absolute top-0 right-0 w-0 h-0 border-l-[20px] border-l-transparent border-t-[20px] border-t-orange-200/50 group-hover:border-t-orange-300/70 transition-colors duration-300"></div>
+                <div className="absolute top-0 right-0 w-0 h-0 border-l-[20px] border-l-transparent border-t-[20px] border-t-gold/30 group-hover:border-t-gold/50 transition-colors duration-300"></div>
               </div>
             ))
           ) : (

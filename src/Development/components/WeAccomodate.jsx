@@ -21,7 +21,7 @@ const WeAccomodate = () => {
   const [imageMetaData, setImageMetaData] = useState(null);
 
   return (
-    <div className="bg-black py-8 md:py-8 flex flex-col justify-center items-center space-y-8">
+    <div className="bg-gold-rich py-8 md:py-8 flex flex-col justify-center items-center space-y-8">
       {isImageEdit && imageMetaData && (
         <ImageUploadModal
           onClose={() => setIsImageEdit(false)}
@@ -55,7 +55,7 @@ const WeAccomodate = () => {
                 },
               })
             }
-            className="bg-transparent border-2 border-white border-dashed text-white text-center p-2 outline-none uppercase montserrat w-full"
+            className="bg-transparent border-2 border-white border-dashed text-gradient-gold text-center p-2 outline-none uppercase montserrat w-full"
             placeholder="Enter title..."
           />
         ) : (
@@ -63,7 +63,7 @@ const WeAccomodate = () => {
             <span className="montserrat text-white">
               {weAccomodate?.title.split(" ")[0]}
             </span>{" "}
-            <span className="ogg text-white">
+            <span className="ogg text-gradient-gold">
               {weAccomodate?.title.split(" ")[1]}
             </span>
           </>

@@ -26,7 +26,7 @@ const WhyStayHere = () => {
       )}
 
       <div
-        className={`bg-white py-8 sm:py-12 md:py-16 px-4 sm:px-6 md:px-10 lg:px-20 `}
+        className={`bg-champagne py-8 sm:py-12 md:py-16 px-4 sm:px-6 md:px-10 lg:px-20 `}
       >
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-start gap-8 md:gap-12">
           {/* Left Section - Text */}
@@ -62,16 +62,16 @@ const WhyStayHere = () => {
                       },
                     }));
                   }}
-                  className="text-2xl sm:text-3xl font-semibold text-orange-500 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
+                  className="text-2xl sm:text-3xl font-semibold text-gold fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
                   style={{
                     width: `${whyStayHereData?.titleHighlight?.length + 2}ch`,
                   }}
                 />
               </div>
             ) : (
-              <h2 className="text-3xl sm:text-4xl font-semibold text-gray-800 fjalla">
+              <h2 className="text-3xl sm:text-4xl font-semibold text-white fjalla">
                 {whyStayHereData?.title || "Why You Should"}{" "}
-                <span className="text-orange-500 fjalla">
+                <span className="text-gradient-gold fjalla">
                   {whyStayHereData?.titleHighlight || "Stay Here"}
                 </span>
               </h2>
@@ -102,7 +102,7 @@ const WhyStayHere = () => {
               {/* Point 1 */}
               {whyStayHereData?.points?.map((point, index) => (
                 <div key={index} className="flex items-start gap-3 sm:gap-4">
-                  <div className="bg-orange-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0">
+                  <div className="bg-gold text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0">
                     {index + 1}
                   </div>
                   <div>
@@ -554,10 +554,12 @@ const WhyStayHere = () => {
 
         {/* Additional Section - Wellness, Architecture, etc. */}
         
-        {/* <div className="py-12 sm:py-16 mt-12 sm:mt-16">
+        <div className="py-12 px-6 md:px-20 bg-gold-rich relative overflow-hidden">
+        {/* Decorative Gold Overlay Pattern */}
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, #FFD700 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8 md:gap-10">
            
-            <div className="text-gray-300 text-2xl sm:text-3xl space-y-6 sm:space-y-8 text-center md:text-left w-full md:w-auto">
+            <div className="text-white text-2xl sm:text-3xl space-y-6 sm:space-y-8 text-center md:text-left w-full md:w-auto">
               {whyStayHereData?.categories.map((category, index) =>
                 isEditMode ? (
                   <input
@@ -585,8 +587,8 @@ const WhyStayHere = () => {
                   <p
                     onClick={() => setCurrentLoungeImageIndex(index)}
                     key={index}
-                    className={`cursor-pointer hover:text-gray-400 transition-colors ${
-                      currentLoungeImageIndex === index ? "text-gray-500" : ""
+                    className={`cursor-pointer hover:text-gray-200 transition-colors ${
+                      currentLoungeImageIndex === index ? "text-gray-300" : ""
                     }`}
                   >
                     {category?.name || "Category Name"}
@@ -651,7 +653,7 @@ const WhyStayHere = () => {
               )}
             </div>
           </div>
-        </div> */}
+        </div>
 
         {/* Floating Image Cards Section */}
         <div className="relative mt-12 sm:mt-16">
@@ -834,7 +836,7 @@ const WhyStayHere = () => {
               href="https://instagram.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-gradient-to-r from-purple-600 to-pink-500 p-1 sm:p-2 rounded-full flex items-center justify-center"
+              className="bg-gradient-gold p-1 sm:p-2 rounded-full flex items-center justify-center hover:brightness-110 transition-all shadow-gold"
             >
               <img
                 src="https://img.icons8.com/ios-filled/50/ffffff/instagram-new.png"
@@ -846,7 +848,7 @@ const WhyStayHere = () => {
               href="https://twitter.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-blue-400 p-1 sm:p-2 rounded-full flex items-center justify-center"
+              className="bg-gradient-gold p-1 sm:p-2 rounded-full flex items-center justify-center hover:brightness-110 transition-all shadow-gold"
             >
               <img
                 src="https://img.icons8.com/ios-filled/50/ffffff/twitter.png"
@@ -858,7 +860,7 @@ const WhyStayHere = () => {
               href="https://facebook.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-blue-600 p-1 sm:p-2 rounded-full flex items-center justify-center"
+              className="bg-gradient-gold p-1 sm:p-2 rounded-full flex items-center justify-center hover:brightness-110 transition-all shadow-gold"
             >
               <img
                 src="https://img.icons8.com/ios-filled/50/ffffff/facebook-new.png"

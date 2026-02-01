@@ -64,7 +64,7 @@ const Hero = () => {
               onChange={toggleEditMode}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-gold"></div>
             <span className="ml-3 text-sm font-medium text-white">
               {isEditMode ? "Edit On" : "Edit Off"}
             </span>
@@ -77,7 +77,7 @@ const Hero = () => {
         <div className="fixed top-20 right-32 z-50 flex gap-2">
           <button
             onClick={handleSubmit}
-            className="bg-orange-400 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition duration-300 inter font-medium"
+            className="bg-gradient-gold text-white px-4 py-2 rounded-lg hover:brightness-110 transition duration-300 inter font-medium shadow-gold"
           >
             Submit
           </button>
@@ -93,7 +93,7 @@ const Hero = () => {
       {/* Edit Icon */}
       {isEditMode && (
         <button
-          className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-20"
+          className="absolute top-12 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-20 shadow-gold"
           aria-label="Edit Video"
           onClick={() => {
             setIsImageEdit(true);

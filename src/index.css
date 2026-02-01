@@ -1,50 +1,55 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Aeonic&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Cormorant:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Urbanist:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Aeonic&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap");
 
 @import "tailwindcss";
 @import "tw-animate-css";
 
 /* Ogg Font Family */
 @font-face {
-  font-family: 'Ogg';
-  src: url('Development/assets/fonts/Ogg Font Family/Ogg-Regular.otf') format('opentype');
+  font-family: "Ogg";
+  src: url("Development/assets/fonts/Ogg Font Family/Ogg-Regular.otf")
+    format("opentype");
   font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Ogg';
-  src: url('Development/assets/fonts/Ogg Font Family/Ogg-Bold.otf') format('opentype');
+  font-family: "Ogg";
+  src: url("Development/assets/fonts/Ogg Font Family/Ogg-Bold.otf")
+    format("opentype");
   font-weight: 700;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Ogg';
-  src: url('Development/assets/fonts/Ogg Font Family/Ogg-Light.otf') format('opentype');
+  font-family: "Ogg";
+  src: url("Development/assets/fonts/Ogg Font Family/Ogg-Light.otf")
+    format("opentype");
   font-weight: 300;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Ogg';
-  src: url('Development/assets/fonts/Ogg Font Family/Ogg-RegularItalic.otf') format('opentype');
+  font-family: "Ogg";
+  src: url("Development/assets/fonts/Ogg Font Family/Ogg-RegularItalic.otf")
+    format("opentype");
   font-weight: 400;
   font-style: italic;
 }
 
 @font-face {
-  font-family: 'Old English Text MT';
-  src: url('Development/assets/fonts/Old English Text MT/oldenglishtextmt.ttf') format('truetype');
+  font-family: "Old English Text MT";
+  src: url("Development/assets/fonts/Old English Text MT/oldenglishtextmt.ttf")
+    format("truetype");
   font-style: normal;
 }
 
 body {
   margin: 0;
-  font-family: 'Fjalla One', sans-serif;
+  font-family: "Fjalla One", sans-serif;
 }
 
 .cormorant {
@@ -62,7 +67,7 @@ body {
 .roboto {
   font-family: "Roboto", sans-serif;
 }
-.inter{
+.inter {
   font-family: "Inter", sans-serif;
 }
 .poppins {
@@ -90,7 +95,7 @@ body {
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #5D5FEF;
+  --primary: #5d5fef;
   --primary-foreground: oklch(0.985 0 0);
   --secondary: #828cf7;
   --secondary-foreground: oklch(0.205 0 0);
@@ -98,6 +103,7 @@ body {
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
+  --gold: #d4af37;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
@@ -117,7 +123,7 @@ body {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  --font-quicksand: 'Quicksand', sans-serif;
+  --font-quicksand: "Quicksand", sans-serif;
 }
 
 .dark {
@@ -192,7 +198,7 @@ body {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-quicksand: 'Quicksand', sans-serif;
+  --font-quicksand: "Quicksand", sans-serif;
 }
 
 @layer base {
@@ -205,12 +211,85 @@ body {
 }
 
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* refined gold variable - Taj Inspiration */
+:root {
+  --gold: #D4AF37; /* Classic Gold */
+  --gold-light: #F3E5AB; /* Champagne/Vanilla */
+  --gold-dark: #C59D5F; /* Bronze/Dark Gold */
+  --cream: #F9F5EC; /* Off-white base */
+  --black-rich: #1A1A1A; /* Soft rich black */
+}
+
+.text-gold,
+.hover\:text-gold:hover {
+  color: var(--gold);
+}
+
+.bg-gold {
+  background-color: var(--gold);
+}
+
+.border-gold {
+  border-color: var(--gold);
+}
+
+/* Minimalist Gold Effects */
+.text-gradient-gold {
+  /* Subtle, elegant gradient */
+  background: linear-gradient(to right, #D4AF37, #F3E5AB, #D4AF37);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  background-size: 200% auto;
+  animation: shine 8s linear infinite;
+}
+
+.bg-gradient-gold {
+  /* Smooth, less aggressive gradient for buttons */
+  background: linear-gradient(135deg, #D4AF37, #C59D5F);
+  transition: all 0.3s ease;
+}
+
+.bg-gradient-gold:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+}
+
+.shadow-gold {
+  box-shadow: 0 4px 20px rgba(212, 175, 55, 0.15); /* Softer shadow */
+}
+
+.border-yellow-400 {
+    border-color: var(--gold) !important;
+}
+
+/* Premium Backgrounds */
+.bg-champagne {
+  background-color: var(--cream);
+}
+
+.bg-gold-rich {
+  /* Deep, minimal dark background */
+  background-color: var(--black-rich);
+  color: var(--cream);
+}
+
+.bg-gold-subtle {
+    background: linear-gradient(to bottom, #FFFFFF, var(--cream));
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari and Opera */
+  display: none; /* Chrome, Safari and Opera */
 }
 
 @layer base {

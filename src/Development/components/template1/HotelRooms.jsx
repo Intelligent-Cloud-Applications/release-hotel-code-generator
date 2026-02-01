@@ -25,7 +25,7 @@ export default function HotelRooms() {
       )}
       {/* Content Container with Conditional Blur */}
       <div className={isImageEdit ? "filter blur-lg" : ""}>
-        <div className="flex flex-col items-center p-10 bg-white">
+        <div className="flex flex-col items-center p-10 bg-champagne">
           {isEditMode ? (
             <div className="flex justify-center items-center gap-1">
               <input
@@ -57,7 +57,7 @@ export default function HotelRooms() {
                     hotelRooms: { ...prev.hotelRooms, title: newTitle },
                   }));
                 }}
-                className="text-4xl font-medium fjalla text-orange-500 border border-gray-300 rounded px-1 py-0.5 text-center"
+                className="text-4xl font-medium fjalla text-gold border border-gray-300 rounded px-1 py-0.5 text-center"
                 style={{
                   width: `${HotelRoomsData?.title.highlight.length + 2}ch`,
                 }}
@@ -82,7 +82,7 @@ export default function HotelRooms() {
           ) : (
             <h2 className="text-5xl font-medium text-center fjalla">
               {HotelRoomsData?.title.start || "Our"}{" "}
-              <span className="text-orange-500">
+              <span className="text-gold">
                 {HotelRoomsData?.title.highlight || "Best"}
               </span>{" "}
               {HotelRoomsData?.title.end || "Rooms!"}
@@ -113,7 +113,7 @@ export default function HotelRooms() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-8 w-full max-w-6xl">
             {/* Discount Card */}
-            <div className="bg-orange-500 text-white p-7 rounded-2xl flex flex-col items-center justify-center text-center">
+            <div className="bg-gradient-gold text-white p-7 rounded-2xl flex flex-col items-center justify-center text-center shadow-gold">
               {isEditMode ? (
                 <>
                   <input
@@ -170,7 +170,7 @@ export default function HotelRooms() {
                         },
                       }));
                     }}
-                    className="bg-white text-orange-500 cormorant text-2xl font-semibold px-5 py-2 mt-20 rounded-lg shadow-md border border-gray-300"
+                    className="bg-white text-gold cormorant text-2xl font-semibold px-5 py-2 mt-20 rounded-lg shadow-md border border-gray-300"
                   />
                 </>
               ) : (
@@ -182,7 +182,7 @@ export default function HotelRooms() {
                     {HotelRoomsData?.discount.description ||
                       "Discount description goes here."}
                   </p>
-                  {/*<button className="bg-white text-orange-500 cormorant text-2xl font-semibold px-5 py-2 mt-20 rounded-lg shadow-md hover:bg-gray-100 transition">*/}
+                  {/*<button className="bg-white text-gold cormorant text-2xl font-semibold px-5 py-2 mt-20 rounded-lg shadow-md hover:bg-gray-100 transition">*/}
                   {/*  {HotelRoomsData.discount.buttonText}*/}
                   {/*</button>*/}
                 </>
@@ -190,7 +190,7 @@ export default function HotelRooms() {
             </div>
 
             {/* Hotel Room Images */}
-            <div className="grid grid-cols-1 gap-4 sm:col-span-1 md:col-span-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-1 md:col-span-2">
               <div className="grid grid-cols-2 gap-4">
                 {HotelRoomsData?.images.slice(0, 2).map((src, index) => (
                   <div key={index} className="relative">
@@ -221,7 +221,7 @@ export default function HotelRooms() {
                             acceptedTypes: ["image/jpeg", "image/png"],
                           });
                         }}
-                        className="absolute top-2 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                        className="absolute top-2 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                         aria-label={`Edit Image ${index + 1}`}
                       >
                         <svg
@@ -273,7 +273,7 @@ export default function HotelRooms() {
                             acceptedTypes: ["image/jpeg", "image/png"],
                           });
                         }}
-                        className="absolute top-2 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                        className="absolute top-2 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                         aria-label={`Edit Image ${index + 3}`}
                       >
                         <svg

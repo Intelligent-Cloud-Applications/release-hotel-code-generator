@@ -29,18 +29,9 @@ const AboutUs = () => {
           title={imageMetaData.title}
         />
       )}
-      <div className="relative bg-[#FBF6F0] z-50 ">
-        {/* Noise texture overlay using actual texture image */}
-        <div
-          className="absolute inset-0 w-full h-full z-0 pointer-events-none"
-          style={{
-            backgroundImage: `url(${bgTexture})`,
-            backgroundRepeat: "repeat",
-            backgroundSize: "800px 800px",
-            opacity: 0.15,
-            mixBlendMode: "multiply",
-          }}
-        ></div>
+      <div className="relative bg-champagne z-50 ">
+        {/* Warm Gold Tint Overlay */}
+        <div className="absolute inset-0 w-full h-full z-0 pointer-events-none bg-gold opacity-5"></div>
         <Navbar />
 
         {/* About Section */}
@@ -78,7 +69,7 @@ const AboutUs = () => {
               />
             ) : (
               <h1
-                className="text-3xl md:text-4xl font-bold text-gray-800 tracking-widest uppercase mb-4"
+                className="text-3xl md:text-4xl font-bold text-gold tracking-widest uppercase mb-4"
                 style={{
                   fontFamily: "Ogg",
                   fontWeight: 400,

@@ -34,7 +34,8 @@ const LegacySection = () => {
   };
 
   return (
-    <div className="py-16 px-6 bg-white relative">
+    <div className="py-16 px-6 bg-champagne relative">
+      <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-white/20 to-transparent pointer-events-none"></div>
       {isImageEdit && imageMetaData && (
         <ImageUploadModal
           onClose={() => setIsImageEdit(false)}
@@ -69,7 +70,7 @@ const LegacySection = () => {
           <div className="fixed top-20 right-32 z-50 flex gap-2">
             <button
               onClick={handleSubmit}
-              className="bg-orange-400 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition duration-300 inter font-medium"
+              className="bg-gradient-gold text-white px-4 py-2 rounded-lg hover:brightness-110 transition duration-300 inter font-medium shadow-gold"
             >
               Submit
             </button>
@@ -120,7 +121,7 @@ const LegacySection = () => {
                       },
                     }));
                   }}
-                  className="text-3xl font-semibold text-orange-500 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
+                  className="text-3xl font-semibold text-gold fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
                   style={{
                     width: `${lagacyData?.title?.highlight.length + 2}ch`,
                   }}
@@ -129,7 +130,7 @@ const LegacySection = () => {
             ) : (
               <h2 className="text-4xl font-semibold mb-4 fjalla">
                 <span className="text-gray-900">{lagacyData?.title?.start}</span>
-                <span className="text-orange-500">
+                <span className="text-gradient-gold font-bold">
                   {" "}
                   {lagacyData?.title?.highlight || "edit this"}
                 </span>
@@ -169,7 +170,7 @@ const LegacySection = () => {
                         onChange={(e) =>
                           handleStatChange(index, "number", e.target.value)
                         }
-                        className="text-4xl font-semibold text-orange-500 fjalla border border-gray-300 rounded px-2 py-1 w-full mb-2"
+                        className="text-4xl font-semibold text-gold fjalla border border-gray-300 rounded px-2 py-1 w-full mb-2"
                       />
                       <input
                         type="text"
@@ -182,7 +183,7 @@ const LegacySection = () => {
                     </>
                   ) : (
                     <>
-                      <div className="text-4xl font-semibold text-orange-500 fjalla">
+                      <div className="text-4xl font-semibold text-gradient-gold fjalla">
                         {stat.number}
                       </div>
                       <div className="text-md mt-1 cormorant text-black">
@@ -229,7 +230,7 @@ const LegacySection = () => {
                           title: `Top Left Image`,
                         });
                       }}
-                      className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                      className="absolute top-12 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                       aria-label="Edit Top Left Image"
                     >
                       <svg
@@ -281,7 +282,7 @@ const LegacySection = () => {
                           title: `Top Right Image`,
                         });
                       }}
-                      className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                className="absolute top-12 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                       aria-label="Edit Top Right Image"
                     >
                       <svg
@@ -333,7 +334,7 @@ const LegacySection = () => {
                           title: `Bottom Right Image`,
                         });
                       }}
-                      className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                className="absolute top-12 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                       aria-label="Edit Bottom Right Image"
                     >
                       <svg
@@ -385,7 +386,7 @@ const LegacySection = () => {
                           title: `Bottom Image`,
                         });
                       }}
-                      className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                className="absolute top-12 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                       aria-label="Edit Bottom Image"
                     >
                       <svg

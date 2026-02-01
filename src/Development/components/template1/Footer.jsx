@@ -148,7 +148,7 @@ const Footer = () => {
             </button>
             <button
               onClick={saveLinkChanges}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg inter transition duration-300"
+              className="bg-gradient-gold hover:brightness-110 text-white px-4 py-2 rounded-lg inter transition duration-300 shadow-gold"
             >
               Save Changes
             </button>
@@ -183,7 +183,7 @@ const Footer = () => {
                   type="text"
                   value={quickLinksTitle}
                   onChange={(e) => setQuickLinksTitle(e.target.value)}
-                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors sm:text-base"
+                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-gold rounded-lg px-3 py-2 w-full transition-colors sm:text-base"
                 />
                 <ul className="space-y-3 text-gray-400">
                   {quickLinks?.map((link, index) => (
@@ -203,7 +203,7 @@ const Footer = () => {
                       <div className="flex gap-2">
                         <button
                           onClick={() => openLinkModal(link, index, 'quick')}
-                          className=" text-orange-500 px-3 py-1 rounded-lg hover:text-orange-800 transition-colors text-sm roboto"
+                          className=" text-gold px-3 py-1 rounded-lg hover:text-[#b8860b] transition-colors text-sm roboto"
                           aria-label={`Edit Quick Link ${link.text}`}
                         >
                           Edit
@@ -221,7 +221,7 @@ const Footer = () => {
                 </ul>
                 <button
                   onClick={() => addLink(setQuickLinks)}
-                  className="mt-4 bg-orange-200 text-orange-500 px-4 py-2 rounded-lg hover:bg-orange-300 transition-colors roboto text-sm sm:text-base"
+                  className="mt-4 bg-[#FAEBD7] text-gold px-4 py-2 rounded-lg hover:bg-[#F5DEB3] transition-colors roboto text-sm sm:text-base font-medium"
                 >
                   Add Link
                 </button>
@@ -232,7 +232,7 @@ const Footer = () => {
                 <ul className="space-y-3 text-gray-400">
                   {quickLinks?.map((link, index) => (
                     <li key={index}>
-                      <a href={link.url} className="hover:text-white roboto transition-colors">
+                      <a href={link.url} className="hover:text-gold roboto transition-colors">
                         {link.text}
                       </a>
                     </li>
@@ -250,12 +250,12 @@ const Footer = () => {
                   type="text"
                   value={getInTouchTitle}
                   onChange={(e) => setGetInTouchTitle(e.target.value)}
-                  className="text-4xl mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors text-sm sm:text-base"
+                  className="text-4xl mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-gold rounded-lg px-3 py-2 w-full transition-colors text-sm sm:text-base"
                 />
                 <textarea
                   value={getInTouchDescription}
                   onChange={(e) => setGetInTouchDescription(e.target.value)}
-                  className="text-lg text-gray-400 mb-4 leading-relaxed roboto bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors text-sm sm:text-base"
+                  className="text-lg text-gray-400 mb-4 leading-relaxed roboto bg-gray-800 border border-gray-700 focus:border-gold rounded-lg px-3 py-2 w-full transition-colors text-sm sm:text-base"
                   rows="3"
                 />
                 <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-2">
@@ -263,14 +263,14 @@ const Footer = () => {
                     type="text"
                     value={emailPlaceholder}
                     onChange={(e) => setEmailPlaceholder(e.target.value)}
-                    className="bg-gray-800 text-white px-5 py-3 rounded-lg w-full sm:max-w-xs border border-gray-700 focus:border-orange-500 transition-colors text-sm sm:text-base roboto"
+                    className="bg-gray-800 text-white px-5 py-3 rounded-lg w-full sm:max-w-xs border border-gray-700 focus:border-gold transition-colors text-sm sm:text-base roboto"
                     placeholder="Email placeholder"
                   />
                   <input
                     type="text"
                     value={subscribeButtonText}
                     onChange={(e) => setSubscribeButtonText(e.target.value)}
-                    className="bg-orange-500 text-white roboto px-6 py-3 rounded-lg border border-gray-700 hover:bg-orange-600 transition-colors w-full sm:w-auto text-sm sm:text-base"
+                    className="bg-gradient-gold text-white roboto px-6 py-3 rounded-lg border border-gray-700 hover:brightness-110 transition-colors w-full sm:w-auto text-sm sm:text-base shadow-gold"
                   />
                 </div>
               </div>
@@ -288,11 +288,11 @@ const Footer = () => {
                     onChange={e => setFooterEmail(e.target.value)}
                     placeholder={emailPlaceholder}
                     disabled={footerEmailStatus.loading}
-                    className="bg-gray-800 text-white px-5 py-3 rounded-lg w-full sm:max-w-xs outline-none placeholder-gray-400 border border-gray-700 focus:border-orange-500 transition-colors"
+                    className="bg-gray-800 text-white px-5 py-3 rounded-lg w-full sm:max-w-xs outline-none placeholder-gray-400 border border-gray-700 focus:border-gold transition-colors"
                   />
                   <button
                     type="submit"
-                    className="bg-orange-500 text-white roboto px-6 py-3 rounded-lg hover:bg-orange-600 transition w-full sm:w-auto disabled:opacity-60"
+                    className="bg-gradient-gold text-white roboto px-6 py-3 rounded-lg hover:brightness-110 transition w-full sm:w-auto disabled:opacity-60 shadow-gold"
                     disabled={footerEmailStatus.loading}
                   >
                     {footerEmailStatus.loading ? "Subscribing..." : subscribeButtonText}
@@ -316,7 +316,7 @@ const Footer = () => {
                   type="text"
                   value={usefulLinksTitle}
                   onChange={(e) => setUsefulLinksTitle(e.target.value)}
-                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-orange-500 rounded-lg px-3 py-2 w-full transition-colors  sm:text-base"
+                  className="text-2xl font-semibold mb-4 roboto text-white bg-gray-800 border border-gray-700 focus:border-gold rounded-lg px-3 py-2 w-full transition-colors  sm:text-base"
                 />
                 <ul className="space-y-3 text-gray-400">
                   {usefulLinks?.map((link, index) => (
@@ -336,7 +336,7 @@ const Footer = () => {
                       <div className="flex gap-2">
                         <button
                           onClick={() => openLinkModal(link, index, 'useful')}
-                          className=" text-orange-500 px-3 py-1 rounded-lg hover:text-orange-800 transition-colors text-sm roboto"
+                          className=" text-gold px-3 py-1 rounded-lg hover:text-[#b8860b] transition-colors text-sm roboto"
                           aria-label={`Edit Useful Link ${link.text}`}
                         >
                           Edit
@@ -354,7 +354,7 @@ const Footer = () => {
                 </ul>
                 <button
                   onClick={() => addLink(setUsefulLinks)}
-                  className="mt-4 bg-orange-200 text-orange-500 px-4 py-2 rounded-lg hover:bg-orange-300 transition-colors roboto text-sm sm:text-base"
+                  className="mt-4 bg-gold text-black px-4 py-2 rounded-lg hover:brightness-110 transition-colors roboto text-sm sm:text-base"
                 >
                   Add Link
                 </button>

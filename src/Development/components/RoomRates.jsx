@@ -75,18 +75,10 @@ const RoomRates = () => {
           {roomRatesSection?.rooms?.map((room, index) => (
             <div
               key={index}
-              className="relative bg-[#FBF6F0] rounded-2xl p-4 md:p-6 w-full md:w-full h-auto md:h-full"
+              className="relative bg-champagne rounded-2xl p-4 md:p-6 w-full md:w-full h-auto md:h-full"
             >
-              <div
-                className="absolute inset-0 w-full h-full z-10 rounded-2xl"
-                style={{
-                  backgroundImage: `url(${bgTexture})`,
-                  backgroundRepeat: "repeat",
-                  backgroundSize: "800px 800px",
-                  opacity: 0.15,
-                  mixBlendMode: "multiply",
-                }}
-              ></div>
+              {/* Subtle Gold Tint Overlay */}
+              <div className="absolute inset-0 w-full h-full z-0 rounded-2xl bg-gold opacity-5 pointer-events-none"></div>
               <div className="flex flex-col justify-between h-full z-20 gap-3 md:gap-4 relative">
                 <img
                   src={room?.img || defaultRoomImages[index]}
@@ -164,12 +156,13 @@ const RoomRates = () => {
                     <h2
                       className="text-black"
                       style={{
-                        fontFamily: "Poppins",
-                        fontWeight: 700,
+                        fontFamily: "Ogg",
+                        fontWeight: 400,
                         fontStyle: "normal",
                         fontSize: "clamp(18px, 4vw, 24px)",
                         lineHeight: "100%",
                         letterSpacing: "0%",
+                        color: "#000000",
                       }}
                     >
                       {room?.type || `Room ${index + 1}`}
@@ -223,7 +216,7 @@ const RoomRates = () => {
                       {room?.description || "Room description"}
                     </p>
                   )}
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-8">
+                  <div className="flex flex-row justify-between items-center gap-3 w-full overflow-hidden">
                     {isEditMode ? (
                       <input
                         type="text"
@@ -245,26 +238,26 @@ const RoomRates = () => {
                             },
                           });
                         }}
-                        className="bg-transparent border-2 border-gray-400 border-dashed text-black outline-none"
+                        className="bg-transparent border-2 border-gray-400 border-dashed text-black outline-none flex-1 min-w-0"
                         style={{
                           fontFamily: "Montserrat",
                           fontWeight: 700,
                           fontStyle: "normal",
-                          fontSize: "clamp(16px, 3vw, 18px)",
-                          lineHeight: "28px",
+                          fontSize: "clamp(14px, 2.5vw, 16px)",
+                          lineHeight: "24px",
                           letterSpacing: "0%",
                         }}
                         placeholder="Price..."
                       />
                     ) : (
                       <span
-                        className="text-black"
+                        className="text-black flex-1 min-w-0 truncate"
                         style={{
                           fontFamily: "Montserrat",
                           fontWeight: 700,
                           fontStyle: "normal",
-                          fontSize: "clamp(16px, 3vw, 18px)",
-                          lineHeight: "28px",
+                          fontSize: "clamp(14px, 2.5vw, 16px)",
+                          lineHeight: "24px",
                           letterSpacing: "0%",
                         }}
                       >
@@ -272,13 +265,13 @@ const RoomRates = () => {
                       </span>
                     )}
                     <button
-                      className="bg-white text-black px-6 md:px-4 py-2 rounded-full z-50 cursor-pointer w-full md:w-auto"
+                      className="bg-gradient-gold text-white px-4 py-2 rounded-full z-50 cursor-pointer flex-shrink-0 hover:shadow-gold transition-all whitespace-nowrap"
                       style={{
-                        boxShadow: "4px 5px 0px 0px #000000",
+                        boxShadow: "3px 4px 0px 0px var(--gold-dark, #AA8535)",
                         fontFamily: "Montserrat",
                         fontWeight: 800,
                         fontStyle: "normal",
-                        fontSize: "clamp(12px, 2.5vw, 14px)",
+                        fontSize: "clamp(10px, 2vw, 12px)",
                         lineHeight: "100%",
                         letterSpacing: "0%",
                         textAlign: "center",
@@ -292,17 +285,9 @@ const RoomRates = () => {
             </div>
           ))}
         </div>
-        <div className="md:w-[80vw] w-full relative flex flex-col justify-center items-center gap-4 md:gap-6 bg-[#FBF6F0] md:rounded-2xl p-6 md:p-4 py-8 md:py-12">
-          <div
-            className="absolute inset-0 w-full h-full z-10 rounded-2xl"
-            style={{
-              backgroundImage: `url(${bgTexture})`,
-              backgroundRepeat: "repeat",
-              backgroundSize: "800px 800px",
-              opacity: 0.15,
-              mixBlendMode: "multiply",
-            }}
-          ></div>
+        <div className="md:w-[80vw] w-full relative flex flex-col justify-center items-center gap-4 md:gap-6 bg-champagne md:rounded-2xl p-6 md:p-4 py-8 md:py-12">
+          {/* Subtle Gold Tint Overlay */}
+          <div className="absolute inset-0 w-full h-full z-0 rounded-2xl bg-gold opacity-5 pointer-events-none"></div>
           {isEditMode ? (
             <input
               type="text"
@@ -399,9 +384,9 @@ const RoomRates = () => {
             </p>
           )}
           <button
-            className="bg-white text-black px-6 md:px-8 py-3 md:py-4 rounded-full z-50 cursor-pointer relative"
+            className="bg-gradient-gold text-white px-6 md:px-8 py-3 md:py-4 rounded-full z-50 cursor-pointer relative hover:shadow-gold transition-all"
             style={{
-              boxShadow: "4px 5px 0px 0px #000000",
+              boxShadow: "3px 4px 0px 0px var(--gold-dark, #AA8535)",
               fontFamily: "Montserrat",
               fontWeight: 800,
               fontStyle: "normal",

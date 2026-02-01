@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import { useEditContext } from "../../context/EditModeContext.jsx";
 import { useInstitutionContext } from "../../context/InstitutionContext.jsx";
 import { Button } from "../ui/button.js";
@@ -10,12 +10,14 @@ const Navbar = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const isGoldPage = ["/", "/about", "/rooms"].includes(location.pathname) || location.pathname.startsWith("/rooms/");
 
   return (
     <nav className="flex justify-between items-center p-4 w-full h-20 bg-transparent relative">
       {/* Hamburger menu icon - visible on mobile only */}
       <div
-        className="text-2xl cursor-pointer text-gray-700 hover:text-gray-900 transition-colors md:hidden ml-auto"
+        className={`text-2xl cursor-pointer text-gray-700 transition-colors md:hidden ml-auto ${isGoldPage ? "hover:text-gold" : "hover:text-gray-900"}`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <span className="block w-6 h-0.5 bg-gray-700 mb-1.5"></span>
@@ -101,7 +103,7 @@ const Navbar = () => {
         <Link to="/contact">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6 text-gray-700 hover:text-gray-900 cursor-pointer transition-colors"
+            className={`h-6 w-6 text-gray-700 cursor-pointer transition-colors ${isGoldPage ? "hover:text-gold" : "hover:text-gray-900"}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -122,7 +124,7 @@ const Navbar = () => {
 
         {/* About Us Button */}
         <button
-          className="px-4 py-1.5 rounded text-lg font-bold bg-white text-black border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors cormorant"
+          className="px-4 py-1.5 rounded text-lg font-bold bg-champagne text-black border border-gold/30 cursor-pointer hover:bg-gold/10 hover:border-gold transition-colors cormorant"
           onClick={() => navigate("/about")}
         >
           About Us
@@ -132,7 +134,7 @@ const Navbar = () => {
 
       {/* Mobile menu dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 w-full bg-white shadow-md p-4 flex flex-col gap-3 z-20 md:hidden">
+        <div className="absolute top-full left-0 w-full bg-champagne shadow-md p-4 flex flex-col gap-3 z-20 md:hidden">
           {/* Call option with icon */}
           <div className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded transition-colors">
             <Link to="/contact">
@@ -161,7 +163,7 @@ const Navbar = () => {
 
           {/* About Us Button */}
           <button
-            className="w-full px-4 py-2 rounded text-lg font-bold bg-white text-black border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors cormorant"
+            className="w-full px-4 py-2 rounded text-lg font-bold bg-champagne text-black border border-gold/30 cursor-pointer hover:bg-gold/10 transition-colors cormorant"
             onClick={() => navigate("/about")}
           >
             About Us

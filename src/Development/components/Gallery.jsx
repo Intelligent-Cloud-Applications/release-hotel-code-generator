@@ -60,17 +60,9 @@ const Gallery = () => {
       )}
 
       {/* Left Section - Title */}
-      <div className="w-full md:w-1/2 h-[40vh] md:h-[80vh] bg-[#D9D2BF] relative flex items-center justify-center md:block">
-        <div
-          className="absolute inset-0 w-full h-full z-10"
-          style={{
-            backgroundImage: `url(${bgTexture})`,
-            backgroundRepeat: "repeat",
-            backgroundSize: "800px 800px",
-            opacity: 0.15,
-            mixBlendMode: "multiply",
-          }}
-        ></div>
+      <div className="w-full md:w-1/2 h-[40vh] md:h-[80vh] bg-champagne relative flex items-center justify-center md:block">
+        {/* Subtle Gold Tint Overlay */}
+        <div className="absolute inset-0 w-full h-full z-0 bg-gold opacity-5 pointer-events-none"></div>
         {/* Desktop Title */}
         {isEditMode ? (
           <input
@@ -164,17 +156,9 @@ const Gallery = () => {
       </div>
       
       {/* Right Section - Background */}
-      <div className="w-full md:w-1/2 h-[60vh] md:h-[80vh] bg-[#C6C6C6] relative">
-        <div
-          className="absolute inset-0 w-full h-full z-10"
-          style={{
-            backgroundImage: `url(${bgTexture})`,
-            backgroundRepeat: "repeat",
-            backgroundSize: "800px 800px",
-            opacity: 0.15,
-            mixBlendMode: "multiply",
-          }}
-        ></div>
+      <div className="w-full md:w-1/2 h-[60vh] md:h-[80vh] bg-champagne relative">
+        {/* Subtle Gold Tint Overlay */}
+        <div className="absolute inset-0 w-full h-full z-0 bg-gold opacity-5 pointer-events-none"></div>
       </div>
 
       {/* First Image with Arrow */}

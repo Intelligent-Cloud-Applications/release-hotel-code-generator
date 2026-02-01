@@ -90,7 +90,7 @@ const Hero = () => {
           key={`full-${i}`}
           src={star}
           alt="Star"
-          className="w-4 h-3 md:w-6 md:h-4 fill-yellow-400 text-yellow-400"
+          className="w-4 h-3 md:w-6 md:h-4 fill-[#C5A059] text-[#C5A059]"
         />
       );
     }
@@ -102,7 +102,7 @@ const Hero = () => {
           key="half"
           src={halfStar}
           alt="Half Star"
-          className="w-4 h-3 md:w-6 md:h-4 fill-yellow-400 text-yellow-400"
+          className="w-4 h-3 md:w-6 md:h-4 fill-[#C5A059] text-[#C5A059]"
         />
       );
     }
@@ -177,9 +177,9 @@ const Hero = () => {
       </div>
 
       {/* Right side content - Stacked below on mobile, right side on desktop */}
-      <div className="absolute bottom-8 md:bottom-30 left-1/2 md:left-auto md:right-35 transform -translate-x-1/2 md:translate-x-0 z-10 flex flex-col justify-center items-center space-y-4">
+      <div className="absolute bottom-6 md:bottom-30 left-1/2 md:left-auto md:right-35 transform -translate-x-1/2 md:translate-x-0 z-20 flex flex-col justify-center items-center space-y-3 md:space-y-4 px-4 md:px-0">
         <motion.button
-          className="bg-white text-black px-20 md:px-30 py-2 rounded-3xl font-[800] text-[14px] w-full md:w-auto pointer-events-auto"
+          className="bg-gradient-gold text-white px-20 md:px-30 py-2 rounded-3xl font-[800] text-[14px] w-full md:w-auto pointer-events-auto shadow-gold"
           initial={{ x: 100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
@@ -203,7 +203,7 @@ const Hero = () => {
                   },
                 })
               }
-              className="bg-transparent border-2 border-gray-400 border-dashed text-black text-center w-full outline-none font-[800]"
+              className="bg-transparent border-2 border-gray-400 border-dashed text-white text-center w-full outline-none font-[800]"
               style={{
                 fontSize: "14px",
               }}
@@ -212,7 +212,7 @@ const Hero = () => {
           ) : (
             heroSection1?.rightBox?.buttonText || "Book Now"
           )}
-        </motion.button>
+        </motion.button>  
         <motion.p
           className="oldEnglish w-[16rem] md:w-[18rem] font-normal text-lg md:text-xl leading-none tracking-normal text-white text-center pointer-events-auto"
           initial={{ x: 100, opacity: 0 }}
@@ -345,9 +345,9 @@ const Hero = () => {
         </motion.div>
       </div>
 
-      {/* Testimonial section - Positioned at bottom left on mobile, similar to desktop */}
+      {/* Testimonial section - Hidden on mobile to prevent overlap, positioned at bottom left on desktop */}
       <motion.div
-        className="absolute bottom-[23rem] md:bottom-20 left-15  md:left-25 z-10 flex items-center gap-2 md:gap-4 bg-transparent px-3 md:px-6 py-2 md:py-3 rounded-full"
+        className="hidden md:flex absolute bottom-20 left-25 z-10 items-center gap-4 bg-transparent px-6 py-3 rounded-full"
         initial={{ y: 200, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.8, ease: "easeOut", delay: 0.6 }}
@@ -505,7 +505,7 @@ const Hero = () => {
               /5
             </span>
           </div>
-          <p className="text-white mt-1 font-[400] text-xs md:text-base pointer-events-auto">
+          <div className="text-white mt-1 font-[400] text-xs md:text-base pointer-events-auto">
             {isEditMode ? (
               <input
                 type="text"
@@ -534,7 +534,7 @@ const Hero = () => {
             ) : (
               heroSection1?.leftBox?.tagline
             )}
-          </p>
+          </div>
         </div>
       </motion.div>
 
@@ -562,7 +562,7 @@ const Hero = () => {
                   })
                 }
                 placeholder="https://www.facebook.com/yourpage"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gold"
               />
             </div>
 
@@ -581,7 +581,7 @@ const Hero = () => {
                   })
                 }
                 placeholder="https://www.instagram.com/yourpage"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gold"
               />
             </div>
 
@@ -600,7 +600,7 @@ const Hero = () => {
                   })
                 }
                 placeholder="https://www.twitter.com/yourpage"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gold"
               />
             </div>
 
@@ -619,7 +619,7 @@ const Hero = () => {
                   })
                 }
                 placeholder="https://www.youtube.com/yourchannel"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gold"
               />
             </div>
           </div>
@@ -633,7 +633,7 @@ const Hero = () => {
             </button>
             <button
               onClick={handleSocialSave}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-gradient-gold hover:brightness-110 rounded-md transition-colors shadow-gold"
             >
               Save Changes
             </button>

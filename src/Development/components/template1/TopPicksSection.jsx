@@ -13,7 +13,7 @@ const TopPicksSection = () => {
   const [imageMetaData, setImageMetaData] = React.useState(null);
 
   return (
-    <div className="py-16 px-6 md:px-20 bg-gray-50 relative">
+    <div className="py-16 px-6 md:px-20 bg-champagne relative">
       {isImageEdit && imageMetaData && (
         <ImageUploadModal
           onClose={() => setIsImageEdit(false)}
@@ -24,7 +24,7 @@ const TopPicksSection = () => {
         />
       )}
       <div className="max-w-7xl mx-auto text-center">
-        <div className="border-t-2 border-orange-500 my-8"></div>
+        <div className="border-t-2 border-gold my-8"></div>
         {isEditMode ? (
           <div className="flex items-center justify-center gap-1 mb-4">
             <input
@@ -60,14 +60,14 @@ const TopPicksSection = () => {
                   },
                 });
               }}
-              className="text-3xl font-semibold text-orange-500 fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
+              className="text-3xl font-semibold text-gradient-gold fjalla border border-gray-300 rounded px-1 py-0.5 text-center"
               style={{ width: `${topPicksData?.title?.highlight.length + 4}ch` }}
             />
           </div>
         ) : (
-          <h2 className="text-4xl font-semibold text-orange-500 fjalla">
+          <h2 className="text-4xl font-semibold text-gray-900 fjalla">
             <span className="text-gray-900">{topPicksData?.title?.start}</span>
-            <span className="text-orange-500">
+            <span className="text-gradient-gold ml-2">
               {topPicksData?.title?.highlight || "edit this"}
             </span>
           </h2>
@@ -124,8 +124,6 @@ const TopPicksSection = () => {
                     title: `Edit Left Image`,
                   });
                 }}
-                className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
-                aria-label="Edit Left Image"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -174,7 +172,7 @@ const TopPicksSection = () => {
                     title: `Edit Middle Image`,
                   });
                 }}
-                className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                className="absolute top-12 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                 aria-label="Edit Middle Image"
               >
                 <svg
@@ -224,7 +222,7 @@ const TopPicksSection = () => {
                     title: `Edit Right Image`,
                   });
                 }}
-                className="absolute top-12 right-2 bg-orange-500 text-white p-2 rounded-full hover:bg-orange-600 transition-colors z-10"
+                className="absolute top-12 right-2 bg-gradient-gold text-white p-2 rounded-full hover:brightness-110 transition-colors z-10 shadow-gold"
                 aria-label="Edit Right Image"
               >
                 <svg

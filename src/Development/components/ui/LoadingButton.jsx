@@ -13,12 +13,12 @@ const LoadingButton = ({
   const baseClasses = "inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
   
   const variantClasses = {
-    primary: "bg-slate-700 text-white hover:bg-slate-800 focus:ring-slate-500",
-    secondary: "bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500",
-    success: "bg-green-600 text-white hover:bg-green-700 focus:ring-green-500",
-    danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500",
-    warning: "bg-amber-600 text-white hover:bg-amber-700 focus:ring-amber-500",
-    outline: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-500",
+    primary: "bg-gold-rich text-gold hover:opacity-90 focus:ring-gold",
+    secondary: "bg-champagne text-black hover:brightness-95 focus:ring-gray-500",
+    success: "bg-green-700 text-white hover:bg-green-800 focus:ring-green-500", // Keep semantic green but darker
+    danger: "bg-red-700 text-white hover:bg-red-800 focus:ring-red-500", // Keep semantic red but darker
+    warning: "bg-gold text-black hover:brightness-110 focus:ring-gold",
+    outline: "border border-gold bg-transparent text-black hover:bg-champagne focus:ring-gold",
   };
   
   const sizeClasses = {

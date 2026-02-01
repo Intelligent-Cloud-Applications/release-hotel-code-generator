@@ -18,18 +18,9 @@ const HeroSection3 = () => {
 
 
   return (
-    <div className=" md:h-screen bg-[#FBF6F0] relative py-12 md:py-0">
-      {/* Noise texture overlay using actual texture image */}
-      <div
-        className="absolute inset-0 w-full h-full z-10"
-        style={{
-          backgroundImage: `url(${bgTexture})`,
-          backgroundRepeat: "repeat",
-          backgroundSize: "800px 800px",
-          opacity: 0.15,
-          mixBlendMode: "multiply",
-        }}
-      ></div>
+    <div className="md:h-screen bg-champagne relative py-12 md:py-0">
+      {/* Subtle Gold Tint Overlay */}
+      <div className="absolute inset-0 w-full h-full z-0 bg-gold opacity-5 pointer-events-none"></div>
 
       <div className="flex flex-col items-center justify-center h-full relative z-20 px-4 uppercase">
         <motion.div
