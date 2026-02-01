@@ -20,6 +20,31 @@ const RoomRates = () => {
   // Default room images
   const defaultRoomImages = [room1, room2, room3];
 
+  // Default rooms data fallback
+  const defaultRooms = [
+    {
+      type: "Deluxe Room",
+      description: "Spacious room with modern amenities and city view",
+      price: "₹ 2,500 / Night",
+      img: room1,
+    },
+    {
+      type: "Premium Suite",
+      description: "Luxury suite with separate living area and premium facilities",
+      price: "₹ 4,500 / Night",
+      img: room2,
+    },
+    {
+      type: "Standard Room",
+      description: "Comfortable room with essential amenities for a pleasant stay",
+      price: "₹ 1,800 / Night",
+      img: room3,
+    },
+  ];
+
+  // Use rooms from data or fallback to defaults
+  const rooms = roomRatesSection?.rooms?.length > 0 ? roomRatesSection.rooms : defaultRooms;
+
   return (
     <div className="bg-black py-8 md:py-8 flex flex-col justify-center items-center space-y-8 md:px-4">
       {isImageEdit && imageMetaData && (
@@ -72,7 +97,7 @@ const RoomRates = () => {
 
       <div className="flex flex-col justify-center items-center gap-8 md:gap-14 w-full md:max-w-[90vw]">
         <div className="flex flex-col md:flex-row px-10 md:px-0 justify-evenly items-center w-full md:w-[80vw] md:h-[60vh] gap-8 md:gap-12">
-          {roomRatesSection?.rooms?.map((room, index) => (
+          {rooms.map((room, index) => (
             <div
               key={index}
               className="relative bg-champagne rounded-2xl p-4 md:p-6 w-full md:w-full h-auto md:h-full"
