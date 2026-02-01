@@ -267,7 +267,7 @@ return (
 
                 {/* Accommodation Section */}
                 <div className="flex flex-col text-center md:text-left">
-                    <div className="flex items-center justify-between mb-4 md:mb-6">
+                    <div className="flex items-center justify-center md:justify-between mb-4 md:mb-6">
                       {isEditMode ? (
                         <input
                           type="text"
@@ -346,7 +346,7 @@ return (
 
                 {/* Amenities Section */}
                 <div className="flex flex-col text-center md:text-left">
-                    <div className="flex items-center justify-between mb-4 md:mb-6">
+                    <div className="flex items-center justify-center md:justify-between mb-4 md:mb-6">
                       {isEditMode ? (
                         <input
                           type="text"
@@ -505,7 +505,7 @@ return (
                                 placeholder="Email address..."
                               />
                             ) : (
-                              <span>{footerSection4?.email || "info@amrapallihotel.com"}</span>
+                              <span className="break-words overflow-hidden ">{footerSection4?.email || "info@amrapallihotel.com"}</span>
                             )}
                         </li>
                     </ul>

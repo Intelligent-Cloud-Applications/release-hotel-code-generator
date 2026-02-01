@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import Navbar from "../components/Navbar.jsx";
 import FooterSection from "../components/FooterSection.jsx";
@@ -20,19 +19,19 @@ const Contact = () => {
   const contactSection = institutionData?.template2?.contactSection || {};
 
   return (
-      <>
-        {isImageEdit && imageMetaData && (
-          <ImageUploadModal
-            onClose={() => setIsImageEdit(false)}
-            onUploadComplete={imageMetaData.onUploadComplete}
-            folderName={imageMetaData.folderName}
-            acceptedTypes={imageMetaData.acceptedTypes}
-            title={imageMetaData.title}
-          />
-        )}
+    <>
+      {isImageEdit && imageMetaData && (
+        <ImageUploadModal
+          onClose={() => setIsImageEdit(false)}
+          onUploadComplete={imageMetaData.onUploadComplete}
+          folderName={imageMetaData.folderName}
+          acceptedTypes={imageMetaData.acceptedTypes}
+          title={imageMetaData.title}
+        />
+      )}
       <div className="relative bg-[#FBF6F0] z-50 ">
         {/* Noise texture overlay using actual texture image */}
-        <div
+        {/* <div
           className="absolute inset-0 w-full h-full z-0 pointer-events-none"
           style={{
             backgroundImage: `url(${bgTexture})`,
@@ -41,18 +40,18 @@ const Contact = () => {
             opacity: 0.15,
             mixBlendMode: "multiply",
           }}
-        ></div>
+        ></div> */}
         <Navbar />
 
         {/* Contact Section */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           className="min-h-scree px-4 md:px-16 py-32"
         >
           {/* Header */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.2 }}
@@ -84,7 +83,7 @@ const Contact = () => {
               />
             ) : (
               <h1
-                className="text-3xl md:text-4xl font-bold text-gray-800 tracking-widest uppercase mb-4"
+                className="text-3xl md:text-4xl font-bold text-[#D4AF37] tracking-widest uppercase mb-4"
                 style={{
                   fontFamily: "Ogg",
                   fontWeight: 400,
@@ -132,36 +131,37 @@ const Contact = () => {
             )}
           </motion.div>
 
-    
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
             className="max-w-7xl mx-auto"
           >
             {/* Content: Left image and Right form */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10 items-stretch">
               {/* Left: Hotel Image Card */}
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.7, delay: 0.6 }}
                 whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
-                className="relative bg-white/40 rounded-xl md:rounded-2xl overflow-hidden z-10 group"
+                className="relative bg-white/40 rounded-xl md:rounded-2xl overflow-hidden z-10 group h-full"
+                style={{ boxShadow: "0px 6px 0px 0px #000000" }}
               >
-                <div
+                {/* <div
                   className="absolute inset-0 pointer-events-none"
                   style={{
                     boxShadow: "8px 8px 0px 0px #00000033",
                     borderRadius: "1rem",
                   }}
-                />
+                /> */}
                 <img
                   src={contactSection?.img || img}
                   alt="Hotel Amrapalli Classic"
-                  className="w-full h-[360px] md:h-[520px] object-cover rounded-xl md:rounded-2xl relative z-10"
-                  style={{ boxShadow: "6px 6px 0px 0px #000000" }}
+                  className="w-full h-full object-cover rounded-xl md:rounded-2xl relative z-10"
+                  // style={{ boxShadow: "6px 6px 0px 0px #000000" }}
                 />
+
                 {isEditMode && (
                   <button
                     onClick={() => {
@@ -208,7 +208,7 @@ const Contact = () => {
                   Send us a Message
                 </h3>
 
-                <motion.form 
+                <motion.form
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.5, delay: 1.0 }}
@@ -220,7 +220,9 @@ const Contact = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 1.1 }}
                   >
-                    <label className="block text-xs text-gray-700 mb-1">Full Name</label>
+                    <label className="block text-xs text-gray-700 mb-1">
+                      Full Name
+                    </label>
                     <input
                       type="text"
                       className="w-full bg-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-black/40"
@@ -229,14 +231,16 @@ const Contact = () => {
                   </motion.div>
 
                   {/* Email and Phone */}
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 1.2 }}
                     className="grid grid-cols-1 md:grid-cols-2 gap-4"
                   >
                     <div>
-                      <label className="block text-xs text-gray-700 mb-1">Email</label>
+                      <label className="block text-xs text-gray-700 mb-1">
+                        Email
+                      </label>
                       <input
                         type="email"
                         className="w-full bg-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-black/40"
@@ -244,7 +248,9 @@ const Contact = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-700 mb-1">Phone</label>
+                      <label className="block text-xs text-gray-700 mb-1">
+                        Phone
+                      </label>
                       <input
                         type="tel"
                         className="w-full bg-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-black/40"
@@ -259,7 +265,9 @@ const Contact = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 1.3 }}
                   >
-                    <label className="block text-xs text-gray-700 mb-1">Inquiry Type</label>
+                    <label className="block text-xs text-gray-700 mb-1">
+                      Inquiry Type
+                    </label>
                     <div className="relative">
                       <select className="w-full bg-white rounded-md px-3 py-2 appearance-none outline-none focus:ring-2 focus:ring-black/40">
                         <option value="">Select inquiry type</option>
@@ -268,7 +276,9 @@ const Contact = () => {
                         <option>Restaurant</option>
                         <option>Other</option>
                       </select>
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-600">▾</span>
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-600">
+                        ▾
+                      </span>
                     </div>
                   </motion.div>
 
@@ -278,7 +288,9 @@ const Contact = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 1.4 }}
                   >
-                    <label className="block text-xs text-gray-700 mb-1">Message</label>
+                    <label className="block text-xs text-gray-700 mb-1">
+                      Message
+                    </label>
                     <textarea
                       rows={5}
                       className="w-full bg-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-black/40 resize-none"
@@ -293,15 +305,21 @@ const Contact = () => {
                   >
                     <motion.button
                       type="button"
-                      whileHover={{ 
-                        scale: 1.02, 
+                      initial={{
+                        backgroundColor: "#FFFFFF",
+                        color: "#000000",
+                        boxShadow: "4px 4px 0px 0px #000000",
+                      }}
+                      whileHover={{
+                        backgroundColor: "#D4AF37",
+                        color: "#FFFFFF",
+                        scale: 1.02,
                         y: -2,
-                        boxShadow: "6px 6px 0px 0px #000000"
+                        boxShadow: "6px 6px 0px 0px #000000",
                       }}
                       whileTap={{ scale: 0.98 }}
                       transition={{ duration: 0.2 }}
-                      className="w-full bg-white text-black font-semibold rounded-full py-2"
-                      style={{ boxShadow: "4px 4px 0px 0px #000000" }}
+                      className="w-full font-semibold rounded-full py-2"
                     >
                       Send Message
                     </motion.button>
@@ -314,7 +332,7 @@ const Contact = () => {
 
         <FooterSection />
       </div>
-      </>
+    </>
   );
 };
 

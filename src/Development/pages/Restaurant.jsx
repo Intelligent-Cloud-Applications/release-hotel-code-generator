@@ -33,7 +33,7 @@ const Restaurant = () => {
         )}
       <div className="relative bg-[#FBF6F0] z-50 ">
         {/* Noise texture overlay using actual texture image */}
-        <div
+        {/* <div
           className="absolute inset-0 w-full h-full z-0 pointer-events-none"
           style={{
             backgroundImage: `url(${bgTexture})`,
@@ -42,7 +42,7 @@ const Restaurant = () => {
             opacity: 0.15,
             mixBlendMode: "multiply",
           }}
-        ></div>
+        ></div> */}
         <Navbar />
 
         {/* About Section */}
@@ -80,7 +80,7 @@ const Restaurant = () => {
               />
             ) : (
               <h1
-                className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 tracking-widest uppercase mb-4"
+                className="text-2xl sm:text-3xl md:text-4xl font-bold text-[#D4AF37] tracking-widest uppercase mb-4"
                 style={{
                   fontFamily: "Ogg",
                   fontWeight: 400,
