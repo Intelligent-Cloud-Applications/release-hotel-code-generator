@@ -91,6 +91,9 @@ import AccountingLayout from "./layouts/AccountingLayout.jsx";
 import BillPosting from "./pages/Dashboard/Accounting/BillPosting.jsx";
 import RevenuePosting from "./pages/Dashboard/Accounting/RevenuePosting.jsx";
 import DailyRevenue from "./pages/Dashboard/Accounting/DailyRevenue.jsx";
+import Bar from "./pages/Bar.jsx";
+import ConferenceHall from "./pages/ConferenceHall.jsx";
+import GalleryPage from "./pages/GalleryPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -105,6 +108,9 @@ const AppRoutes = () => {
       />
       <Route path="/rooms" element={<RoomsPage />} />
       <Route path="/restaurant" element={<Restaurant />} />
+      <Route path="/bar" element={<Bar />} />
+      <Route path="/conference-hall" element={<ConferenceHall />} />
+      <Route path="/gallery" element={<GalleryPage />} />
       <Route path="/book-now" element={<HomeBooking />} />
       <Route path="/blogs" element={<Blogs />} />
       <Route

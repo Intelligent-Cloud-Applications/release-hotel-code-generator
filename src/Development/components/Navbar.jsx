@@ -20,6 +20,9 @@ const Navbar = () => {
     { label: "About", href: "/about" },
     { label: "Rooms", href: "/rooms" },
     { label: "Restaurant", href: "/restaurant" },
+    { label: "Bar", href: "/bar" },
+    { label: "Conference Hall", href: "/conference-hall" },
+    { label: "Gallery", href: "/gallery" },
     { label: "Contact Us", href: "/contact" },  
   ];
 
