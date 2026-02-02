@@ -505,7 +505,7 @@ return (
                                 placeholder="Email address..."
                               />
                             ) : (
-                              <span>{footerSection4?.email || "info@amrapallihotel.com"}</span>
+                              <span className="break-words overflow-hidden ">{footerSection4?.email || "info@amrapallihotel.com"}</span>
                             )}
                         </li>
                     </ul>
