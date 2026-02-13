@@ -17,7 +17,7 @@ import { useInstitutionContext } from "../context/InstitutionContext.jsx";
 const Gallery = () => {
   const { institutionData, setInstitutionData } = useInstitutionContext();
   const { isEditMode } = useEditContext();
-  const gallerySection = institutionData?.homeSection?.heroSection7;
+  const gallerySection = institutionData?.gallerySection || {};
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isImageEdit, setIsImageEdit] = useState(false);
@@ -71,12 +71,9 @@ const Gallery = () => {
             onChange={(e) =>
               setInstitutionData({
                 ...institutionData,
-                homeSection: {
-                  ...institutionData.homeSection,
-                  heroSection7: {
-                    ...gallerySection,
-                    title: e.target.value,
-                  },
+                gallerySection: {
+                  ...gallerySection,
+                  title: e.target.value,
                 },
               })
             }
@@ -116,12 +113,9 @@ const Gallery = () => {
             onChange={(e) =>
               setInstitutionData({
                 ...institutionData,
-                homeSection: {
-                  ...institutionData.homeSection,
-                  heroSection7: {
-                    ...gallerySection,
-                    title: e.target.value,
-                  },
+                gallerySection: {
+                  ...gallerySection,
+                  title: e.target.value,
                 },
               })
             }
@@ -182,17 +176,14 @@ const Gallery = () => {
                 onClick={() => {
                   setImageMetaData({
                     onUploadComplete: (imageUrl) => {
-                      const updatedImages = [...gallerySection.images];
+                      const updatedImages = [...(gallerySection.images || defaultImages.map((d, i) => ({ img: d.src, title: d.name })))];
                       const actualIndex = currentIndex % updatedImages.length;
                       updatedImages[actualIndex] = { ...updatedImages[actualIndex], img: imageUrl };
                       setInstitutionData({
                         ...institutionData,
-                        homeSection: {
-                          ...institutionData.homeSection,
-                          heroSection7: {
-                            ...gallerySection,
-                            images: updatedImages,
-                          },
+                        gallerySection: {
+                          ...gallerySection,
+                          images: updatedImages,
                         },
                       });
                       setIsImageEdit(false);
@@ -227,19 +218,16 @@ const Gallery = () => {
               {isEditMode ? (
                 <input
                   type="text"
-                  value={gallerySection?.images?.[currentIndex % gallerySection.images.length]?.title || ""}
+                  value={gallerySection?.images?.[(currentIndex % (gallerySection?.images?.length || defaultImages.length))]?.title || ""}
                   onChange={(e) => {
-                    const updatedImages = [...gallerySection.images];
+                    const updatedImages = [...(gallerySection.images || defaultImages.map((d, i) => ({ img: d.src, title: d.name })))];
                     const actualIndex = currentIndex % updatedImages.length;
                     updatedImages[actualIndex] = { ...updatedImages[actualIndex], title: e.target.value };
                     setInstitutionData({
                       ...institutionData,
-                      homeSection: {
-                        ...institutionData.homeSection,
-                        heroSection7: {
-                          ...gallerySection,
-                          images: updatedImages,
-                        },
+                      gallerySection: {
+                        ...gallerySection,
+                        images: updatedImages,
                       },
                     });
                   }}
@@ -300,24 +288,21 @@ const Gallery = () => {
               onClick={() => {
                 setImageMetaData({
                   onUploadComplete: (imageUrl) => {
-                    const updatedImages = [...gallerySection.images];
+                    const updatedImages = [...(gallerySection.images || defaultImages.map((d, i) => ({ img: d.src, title: d.name })))];
                     const actualIndex = (currentIndex + 1) % updatedImages.length;
                     updatedImages[actualIndex] = { ...updatedImages[actualIndex], img: imageUrl };
                     setInstitutionData({
                       ...institutionData,
-                      homeSection: {
-                        ...institutionData.homeSection,
-                        heroSection7: {
-                          ...gallerySection,
-                          images: updatedImages,
-                        },
+                      gallerySection: {
+                        ...gallerySection,
+                        images: updatedImages,
                       },
                     });
                     setIsImageEdit(false);
                   },
                   folderName: "gallery",
                   acceptedTypes: ["image/jpeg", "image/jpg", "image/png"],
-                  title: `Upload Gallery Image ${((currentIndex + 1) % gallerySection.images.length) + 1}`,
+                  title: `Upload Gallery Image ${((currentIndex + 1) % (gallerySection?.images?.length || defaultImages.length)) + 1}`,
                 });
                 setIsImageEdit(true);
               }}
