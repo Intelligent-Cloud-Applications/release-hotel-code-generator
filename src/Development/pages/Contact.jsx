@@ -16,7 +16,7 @@ const Contact = () => {
   const [imageMetaData, setImageMetaData] = useState({});
 
   // Get contact data with fallbacks
-  const contactSection = institutionData?.template2?.contactSection || {};
+  const contactSection = institutionData?.contactSection || {};
 
   return (
     <>
@@ -64,12 +64,9 @@ const Contact = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      contactSection: {
-                        ...contactSection,
-                        tagline1: e.target.value,
-                      },
+                    contactSection: {
+                      ...contactSection,
+                      tagline1: e.target.value,
                     },
                   });
                 }}
@@ -100,12 +97,9 @@ const Contact = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      contactSection: {
-                        ...contactSection,
-                        tagline2: e.target.value,
-                      },
+                    contactSection: {
+                      ...contactSection,
+                      tagline2: e.target.value,
                     },
                   });
                 }}
@@ -169,12 +163,9 @@ const Contact = () => {
                         onUploadComplete: (imageUrl) => {
                           setInstitutionData({
                             ...institutionData,
-                            template2: {
-                              ...institutionData.template2,
-                              contactSection: {
-                                ...contactSection,
-                                img: imageUrl,
-                              },
+                            contactSection: {
+                              ...contactSection,
+                              img: imageUrl,
                             },
                           });
                           setIsImageEdit(false);

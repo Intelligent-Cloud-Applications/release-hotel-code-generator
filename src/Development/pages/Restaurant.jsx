@@ -18,7 +18,7 @@ const Restaurant = () => {
   const [imageMetaData, setImageMetaData] = useState({});
 
   // Get restaurant data with fallbacks
-  const restaurantSection = institutionData?.template2?.restaurantSection || {};
+  const restaurantSection = institutionData?.restaurantSection || {};
 
   return (
       <>
@@ -61,12 +61,9 @@ const Restaurant = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      restaurantSection: {
-                        ...restaurantSection,
-                        tagline1: e.target.value,
-                      },
+                    restaurantSection: {
+                      ...restaurantSection,
+                      tagline1: e.target.value,
                     },
                   });
                 }}
@@ -97,12 +94,9 @@ const Restaurant = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      restaurantSection: {
-                        ...restaurantSection,
-                        tagline2: e.target.value,
-                      },
+                    restaurantSection: {
+                      ...restaurantSection,
+                      tagline2: e.target.value,
                     },
                   });
                 }}
@@ -149,12 +143,9 @@ const Restaurant = () => {
                       onUploadComplete: (imageUrl) => {
                         setInstitutionData({
                           ...institutionData,
-                          template2: {
-                            ...institutionData.template2,
-                            restaurantSection: {
-                              ...restaurantSection,
-                              img: imageUrl,
-                            },
+                          restaurantSection: {
+                            ...restaurantSection,
+                            img: imageUrl,
                           },
                         });
                         setIsImageEdit(false);
@@ -185,12 +176,9 @@ const Restaurant = () => {
                   onChange={(e) => {
                     setInstitutionData({
                       ...institutionData,
-                      template2: {
-                        ...institutionData.template2,
-                        restaurantSection: {
-                          ...restaurantSection,
-                          description: e.target.value,
-                        },
+                      restaurantSection: {
+                        ...restaurantSection,
+                        description: e.target.value,
                       },
                     });
                   }}

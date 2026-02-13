@@ -16,7 +16,7 @@ const Bar = () => {
   const [imageMetaData, setImageMetaData] = useState({});
 
   // Get bar data with fallbacks (using unique key 'barSection')
-  const barSection = institutionData?.template2?.barSection || {};
+  const barSection = institutionData?.barSection || {};
 
   return (
     <>
@@ -50,12 +50,9 @@ const Bar = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      barSection: {
-                        ...barSection,
-                        tagline1: e.target.value,
-                      },
+                    barSection: {
+                      ...barSection,
+                      tagline1: e.target.value,
                     },
                   });
                 }}
@@ -86,12 +83,9 @@ const Bar = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      barSection: {
-                        ...barSection,
-                        tagline2: e.target.value,
-                      },
+                    barSection: {
+                      ...barSection,
+                      tagline2: e.target.value,
                     },
                   });
                 }}
@@ -139,12 +133,9 @@ const Bar = () => {
                       onUploadComplete: (imageUrl) => {
                         setInstitutionData({
                           ...institutionData,
-                          template2: {
-                            ...institutionData.template2,
-                            barSection: {
-                              ...barSection,
-                              img: imageUrl,
-                            },
+                          barSection: {
+                            ...barSection,
+                            img: imageUrl,
                           },
                         });
                         setIsImageEdit(false);
@@ -175,12 +166,9 @@ const Bar = () => {
                   onChange={(e) => {
                     setInstitutionData({
                       ...institutionData,
-                      template2: {
-                        ...institutionData.template2,
-                        barSection: {
-                          ...barSection,
-                          description: e.target.value,
-                        },
+                      barSection: {
+                        ...barSection,
+                        description: e.target.value,
                       },
                     });
                   }}

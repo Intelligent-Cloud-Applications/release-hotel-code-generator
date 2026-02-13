@@ -11,7 +11,7 @@ const GalleryPage = () => {
   const { isEditMode } = useEditContext();
   
   // Use a new section key for the page header to avoid conflict with the inner gallery component
-  const galleryPageSection = institutionData?.template2?.galleryPageSection || {};
+  const galleryPageSection = institutionData?.galleryPageSection || {};
 
   return (
     <div className="relative bg-champagne z-50">
@@ -35,12 +35,9 @@ const GalleryPage = () => {
                onChange={(e) => {
                  setInstitutionData({
                    ...institutionData,
-                   template2: {
-                     ...institutionData.template2,
-                     galleryPageSection: {
-                       ...galleryPageSection,
-                       tagline1: e.target.value,
-                     },
+                   galleryPageSection: {
+                     ...galleryPageSection,
+                     tagline1: e.target.value,
                    },
                  });
                }}
@@ -71,12 +68,9 @@ const GalleryPage = () => {
                onChange={(e) => {
                  setInstitutionData({
                    ...institutionData,
-                   template2: {
-                     ...institutionData.template2,
-                     galleryPageSection: {
-                       ...galleryPageSection,
-                       tagline2: e.target.value,
-                     },
+                   galleryPageSection: {
+                     ...galleryPageSection,
+                     tagline2: e.target.value,
                    },
                  });
                }}

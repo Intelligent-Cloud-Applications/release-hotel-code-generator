@@ -16,7 +16,7 @@ const AboutUs = () => {
   const [imageMetaData, setImageMetaData] = useState({});
 
   // Get aboutus data with fallbacks
-  const aboutusSection = institutionData?.template2?.aboutusSection || {};
+  const aboutusSection = institutionData?.aboutusSection || {};
 
   return (
     <>
@@ -50,12 +50,9 @@ const AboutUs = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      aboutusSection: {
-                        ...aboutusSection,
-                        tagline1: e.target.value,
-                      },
+                    aboutusSection: {
+                      ...aboutusSection,
+                      tagline1: e.target.value,
                     },
                   });
                 }}
@@ -86,12 +83,9 @@ const AboutUs = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      aboutusSection: {
-                        ...aboutusSection,
-                        tagline2: e.target.value,
-                      },
+                    aboutusSection: {
+                      ...aboutusSection,
+                      tagline2: e.target.value,
                     },
                   });
                 }}
@@ -138,12 +132,9 @@ const AboutUs = () => {
                       onUploadComplete: (imageUrl) => {
                         setInstitutionData({
                           ...institutionData,
-                          template2: {
-                            ...institutionData.template2,
-                            aboutusSection: {
-                              ...aboutusSection,
-                              img: imageUrl,
-                            },
+                          aboutusSection: {
+                            ...aboutusSection,
+                            img: imageUrl,
                           },
                         });
                         setIsImageEdit(false);
@@ -174,12 +165,9 @@ const AboutUs = () => {
                   onChange={(e) => {
                     setInstitutionData({
                       ...institutionData,
-                      template2: {
-                        ...institutionData.template2,
-                        aboutusSection: {
-                          ...aboutusSection,
-                          description: e.target.value,
-                        },
+                      aboutusSection: {
+                        ...aboutusSection,
+                        description: e.target.value,
                       },
                     });
                   }}

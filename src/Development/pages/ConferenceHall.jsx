@@ -16,7 +16,7 @@ const ConferenceHall = () => {
   const [imageMetaData, setImageMetaData] = useState({});
 
   // Get conference hall data with fallbacks (using unique key 'conferenceHallSection')
-  const conferenceHallSection = institutionData?.template2?.conferenceHallSection || {};
+  const conferenceHallSection = institutionData?.conferenceHallSection || {};
 
   return (
     <>
@@ -50,12 +50,9 @@ const ConferenceHall = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      conferenceHallSection: {
-                        ...conferenceHallSection,
-                        tagline1: e.target.value,
-                      },
+                    conferenceHallSection: {
+                      ...conferenceHallSection,
+                      tagline1: e.target.value,
                     },
                   });
                 }}
@@ -86,12 +83,9 @@ const ConferenceHall = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      conferenceHallSection: {
-                        ...conferenceHallSection,
-                        tagline2: e.target.value,
-                      },
+                    conferenceHallSection: {
+                      ...conferenceHallSection,
+                      tagline2: e.target.value,
                     },
                   });
                 }}
@@ -139,12 +133,9 @@ const ConferenceHall = () => {
                       onUploadComplete: (imageUrl) => {
                         setInstitutionData({
                           ...institutionData,
-                          template2: {
-                            ...institutionData.template2,
-                            conferenceHallSection: {
-                              ...conferenceHallSection,
-                              img: imageUrl,
-                            },
+                          conferenceHallSection: {
+                            ...conferenceHallSection,
+                            img: imageUrl,
                           },
                         });
                         setIsImageEdit(false);
@@ -175,12 +166,9 @@ const ConferenceHall = () => {
                   onChange={(e) => {
                     setInstitutionData({
                       ...institutionData,
-                      template2: {
-                        ...institutionData.template2,
-                        conferenceHallSection: {
-                          ...conferenceHallSection,
-                          description: e.target.value,
-                        },
+                      conferenceHallSection: {
+                        ...conferenceHallSection,
+                        description: e.target.value,
                       },
                     });
                   }}

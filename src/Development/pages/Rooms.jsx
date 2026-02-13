@@ -19,7 +19,7 @@ const Rooms = () => {
 
   const roomRatesSection = institutionData.homeSection.homeSection5;
   // Page header content for Rooms page
-  const roomsSection = institutionData?.template2?.roomsSection || {};
+  const roomsSection = institutionData?.roomsSection || {};
 
   const defaultRoomImages = [room1, room2, room3];
   return (
@@ -59,12 +59,9 @@ const Rooms = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      roomsSection: {
-                        ...roomsSection,
-                        tagline1: e.target.value,
-                      },
+                    roomsSection: {
+                      ...roomsSection,
+                      tagline1: e.target.value,
                     },
                   });
                 }}
@@ -95,12 +92,9 @@ const Rooms = () => {
                 onChange={(e) => {
                   setInstitutionData({
                     ...institutionData,
-                    template2: {
-                      ...institutionData.template2,
-                      roomsSection: {
-                        ...roomsSection,
-                        tagline2: e.target.value,
-                      },
+                    roomsSection: {
+                      ...roomsSection,
+                      tagline2: e.target.value,
                     },
                   });
                 }}
