@@ -128,22 +128,22 @@ const DailyRevenue = () => {
       });
     });
 
-    const detailedServices = bookingDetails?.detailedServices || {};
-    Object.keys(detailedServices).forEach((roomNumber) => {
-      const roomDetailedServices = detailedServices[roomNumber] || {};
-      Object.keys(roomDetailedServices).forEach((date) => {
-        const dailyOrders = roomDetailedServices[date] || [];
-        if (Array.isArray(dailyOrders)) {
-          dailyOrders.forEach((order) => {
-            foodCharges += order.food_charges || 0;
-            laundryCharges += order.laundry_charges || 0;
-            minibarCharges += order.minibar_charges || 0;
-            extraBedCharges += order.extra_bed_charges || 0;
-            manualCharges += order.manual_charges || 0;
-          });
-        }
-      });
-    });
+    // const detailedServices = bookingDetails?.detailedServices || {};
+    // Object.keys(detailedServices).forEach((roomNumber) => {
+    //   const roomDetailedServices = detailedServices[roomNumber] || {};
+    //   Object.keys(roomDetailedServices).forEach((date) => {
+    //     const dailyOrders = roomDetailedServices[date] || [];
+    //     if (Array.isArray(dailyOrders)) {
+    //       dailyOrders.forEach((order) => {
+    //         foodCharges += order.food_charges || 0;
+    //         laundryCharges += order.laundry_charges || 0;
+    //         minibarCharges += order.minibar_charges || 0;
+    //         extraBedCharges += order.extra_bed_charges || 0;
+    //         manualCharges += order.manual_charges || 0;
+    //       });
+    //     }
+    //   });
+    // });
 
     return {
       roomCharges,
@@ -184,11 +184,11 @@ const DailyRevenue = () => {
         const servicesCalculated = calculateServicesFromData(bookingDetails);
 
         const hotelAmount =
-          billingSummary?.totalRoomServices ||
+        (billingSummary?.totalRoomServices ||
           billingSummary?.roomChargesTotal ||
           billingSummary?.totalRoomCharges ||
           servicesCalculated.roomCharges ||
-          0;
+          0) - (billingSummary?.partialPayment || 0);
 
         const restaurantAmount = servicesCalculated.foodCharges || 0;
         const barAmount = servicesCalculated.minibarCharges || 0;
@@ -203,8 +203,8 @@ const DailyRevenue = () => {
           billingSummary?.grandTotal ||
           billingSummary?.totalAmount ||
           0;
-        const totalAmount =
-          billingSummary?.balanceDue || grossTotal - partialPayment;
+          
+        const totalAmount = grossTotal - partialPayment;
 
         return {
           bookingId: bookingDetails?.bookingId || bill?.bill_id,
@@ -239,59 +239,89 @@ const DailyRevenue = () => {
     nextDayObj.setDate(nextDayObj.getDate() + 1);
     nextDayObj.setHours(0, 0, 0, 0);
 
-    return bookings
-      .filter((booking) => {
-        const partialPayment =
-          booking?.partial_payment_amount ||
-          booking?.advance_payment ||
-          booking?.partialPayment ||
-          0;
-        if (partialPayment <= 0) return false;
+    const advancePayments = [];
 
+    bookings.forEach((booking) => {
+      // Check if booking has partial payment (advance)
+      const partialPayment =
+        booking?.partial_payment_amount ||
+        booking?.advance_payment ||
+        booking?.partialPayment ||
+        0;
+
+      if (partialPayment > 0) {
+        // Check if booking date (when advance was paid) falls on the selected date
         const bookingDate =
-          booking?.booking_date || booking?.created_at || booking?.checkin_date;
-        if (!bookingDate) return false;
+          booking?.booking_date ||
+          booking?.created_at ||
+          booking?.check_in ||
+          booking?.checkIn ||
+          booking?.checkin_date;
 
-        const bookingDateObj = new Date(bookingDate);
-        return bookingDateObj >= selectedDateObj && bookingDateObj < nextDayObj;
-      })
-      .map((booking) => {
-        const partialPayment =
-          booking?.partial_payment_amount ||
-          booking?.advance_payment ||
-          booking?.partialPayment ||
-          0;
-        const advancePaymentMode =
-          booking?.advance_payment_mode || booking?.payment_mode || "Cash";
+        if (bookingDate) {
+          const bookingDateObj = new Date(bookingDate);
+          bookingDateObj.setHours(0, 0, 0, 0);
 
-        // Extract guest name from various possible paths
-        const guestName =
-          guests.find((guest) => guest.guest_id === booking?.guest_id)
-            ?.full_name || "N/A";
+          // Only include if advance was paid on the selected date
+          if (
+            bookingDateObj >= selectedDateObj &&
+            bookingDateObj < nextDayObj
+          ) {
+            const advancePaymentMode =
+              booking?.advance_payment_mode || booking?.payment_mode || "Cash";
+            const collectionType = getCollectionType(advancePaymentMode);
 
-        return {
-          bookingId: booking?.booking_id || booking?.bookingId,
-          guestName: guestName,
-          roomNumber: booking.room_id
-            .map((rid) => {
-              return (
-                rooms.find((room) => room.room_id === rid)?.room_number || "N/A"
-              );
-            })
-            .join(", "),
+            // Get guest details
+            const guestId = booking?.guest_id || booking?.guestId;
+            const guest = guests?.find((g) => g?.guest_id === guestId);
+            const guestName =
+              guest?.full_name ||
+              guest?.name ||
+              booking?.guest_name ||
+              booking?.guestName ||
+              "N/A";
 
-          date: booking?.booking_date || booking?.created_at,
-          paymentMode: advancePaymentMode,
-          collectionType: getCollectionType(advancePaymentMode),
-          totalAmount: partialPayment,
-          hotelAmount: 0,
-          restaurantAmount: 0,
-          barAmount: 0,
-          otherServicesAmount: 0,
-          transactionType: "Advance",
-        };
-      });
-  }, [bookings, selectedDate]);
+            // Get room number - handle both array and single value
+            let roomNumber = "N/A";
+            if (booking?.room_id) {
+              if (Array.isArray(booking.room_id)) {
+                roomNumber = booking.room_id
+                  .map((rid) => {
+                    return (
+                      rooms.find((room) => room.room_id === rid)?.room_number ||
+                      "N/A"
+                    );
+                  })
+                  .join(", ");
+              } else {
+                const room = rooms.find((r) => r.room_id === booking.room_id);
+                roomNumber = room?.room_number || booking.room_id;
+              }
+            } else if (booking?.room_number || booking?.roomNumber) {
+              roomNumber = booking.room_number || booking.roomNumber;
+            }
+
+            advancePayments.push({
+              bookingId: booking?.booking_id || booking?.bookingId,
+              guestName,
+              roomNumber,
+              transactionType: "Advance",
+              paymentMode: advancePaymentMode,
+              collectionType,
+              totalAmount: partialPayment,
+              hotelAmount: 0,
+              restaurantAmount: 0,
+              barAmount: 0,
+              otherServicesAmount: 0,
+              taxAmount: 0,
+            });
+          }
+        }
+      }
+    });
+
+    return advancePayments;
+  }, [bookings, selectedDate, guests, rooms]);
 
   // Combine all transactions
   const allTransactions = useMemo(() => {

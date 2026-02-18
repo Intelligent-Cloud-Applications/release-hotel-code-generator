@@ -220,8 +220,8 @@ const BillPosting = () => {
 
     if (
       !sanctionForm.paymentDate ||
-      !sanctionForm.referenceNo ||
-      !sanctionForm.paymentAmount
+      !sanctionForm.paymentAmount ||
+      (sanctionForm.paymentMode !== "cash" && !sanctionForm.referenceNo)
     ) {
       alert("Please fill all required fields");
       return;
@@ -271,15 +271,16 @@ const BillPosting = () => {
   return (
     <div className="h-[calc(100vh-70px)] bg-[#f7f7f7] p-6 overflow-y-auto">
       <div className="max-w-7xl mx-auto space-y-4">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-semibold text-gray-900">Bill Posting</h1>
-          <Button onClick={fetchData} variant="default">
-            Refresh
-          </Button>
-        </div>
+        
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-semibold text-gray-900">Bill Posting</h1>
+            <Button onClick={fetchData} variant="default" disabled={loading}>
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Refresh
+            </Button>
+          </div>
 
-        {/* Search Bar */}
+          {/* Search Bar */}
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
           <Input
@@ -499,24 +500,26 @@ const BillPosting = () => {
                 </Select>
               </div>
 
-              {/* Reference Number */}
-              <div className="space-y-2">
-                <Label htmlFor="referenceNo">
-                  Reference No. (Cheque No./UTR) *
-                </Label>
-                <Input
-                  id="referenceNo"
-                  type="text"
-                  value={sanctionForm.referenceNo}
-                  onChange={(e) =>
-                    setSanctionForm({
-                      ...sanctionForm,
-                      referenceNo: e.target.value,
-                    })
-                  }
-                  placeholder="Enter cheque number or UTR..."
-                />
-              </div>
+              {/* Reference Number - Hidden for Cash */}
+              {sanctionForm.paymentMode !== "cash" && (
+                <div className="space-y-2">
+                  <Label htmlFor="referenceNo">
+                    Reference No. (Cheque No./UTR) *
+                  </Label>
+                  <Input
+                    id="referenceNo"
+                    type="text"
+                    value={sanctionForm.referenceNo}
+                    onChange={(e) =>
+                      setSanctionForm({
+                        ...sanctionForm,
+                        referenceNo: e.target.value,
+                      })
+                    }
+                    placeholder="Enter cheque number or UTR..."
+                  />
+                </div>
+              )}
 
               {/* Payment Amount */}
               <div className="space-y-2">
@@ -725,7 +728,7 @@ const SanctionedBillsTable = ({ bills }) => (
                   {bill.paymentMode.charAt(0).toUpperCase() + bill.paymentMode.slice(1)}
                 </Badge>
               </TableCell>
-              <TableCell>{bill.referenceNo}</TableCell>
+              <TableCell>{bill.referenceNo ? bill.referenceNo : "-"}</TableCell>
               <TableCell>₹{bill.paymentAmount}</TableCell>
               <TableCell>
                 <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
