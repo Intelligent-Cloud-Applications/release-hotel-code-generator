@@ -104,6 +104,9 @@ const Bill = () => {
   // New state for split bill functionality
   const [showSplitBill, setShowSplitBill] = useState(false);
 
+  // Ref to prevent the big useEffect from overwriting bill data during/after a save
+  const isSaving = React.useRef(false);
+
   // Removed autoUpdateRun state - auto-update will run every time bill is opened
 
   const [companyQuery, setCompanyQuery] = useState("");
@@ -736,6 +739,9 @@ const Bill = () => {
   }, []);
 
   useEffect(() => {
+    // Skip rebuild if a save is in progress to prevent overwriting edited values
+    if (isSaving.current) return;
+
     if (booking && guests && guests.length > 0) {
       // Calculate extra pax charges if present
       let calculatedExtraPaxTotal = 0;
@@ -860,10 +866,11 @@ const Bill = () => {
             extraPaxCharges: calculatedExtraPaxTotal,
             discountAmount: booking.breakdown?.booking?.discount || 0,
             totalDiscount:
-              booking.breakdown?.charges?.discount
+              rawBookingData?.discount ??
+              (booking.breakdown?.charges?.discount
                 ?.discount_amount_calculated ||
               booking.summary?.discountAmount ||
-              0,
+              0),
             roomTaxRate: booking.breakdown?.charges?.tax?.roomTaxRate || 0,
             roomTaxAmount:
               booking.breakdown?.charges?.tax?.roomTaxAmount ||
@@ -880,9 +887,10 @@ const Bill = () => {
               booking.summary?.totalTaxAmount ||
               0,
             partialPayment:
-              booking.breakdown?.charges?.partialPaymentFromBooking ||
+              rawBookingData?.partial_payment_amount ??
+              (booking.breakdown?.charges?.partialPaymentFromBooking ||
               booking.summary?.partialPayment ||
-              0,
+              0),
             // Use the subtotal from the breakdown, which is calculated correctly by the API
             subTotal:
               booking.breakdown?.charges?.subtotal ||
@@ -1402,8 +1410,9 @@ const Bill = () => {
         }
 
         // Calculate the correct totals based on our calculations
-        const discountAmount = prev.billingSummary?.totalDiscount || 0;
-        const advanceReceived = prev.billingSummary?.partialPayment || 0;
+        // Prefer rawBookingData (updated by saves) over old billingSummary values
+        const discountAmount = rawBookingData?.discount ?? (prev.billingSummary?.totalDiscount || 0);
+        const advanceReceived = rawBookingData?.partial_payment_amount ?? (prev.billingSummary?.partialPayment || 0);
 
         // Calculate subtotal: room charges + service charges - discount
         const calculatedSubTotal =
@@ -1778,6 +1787,9 @@ const Bill = () => {
       excluded: excludedCharges, // Add excluded charges here
     };
 
+    // Block the big useEffect from overwriting these changes while we save
+    isSaving.current = true;
+
     // Update the bill data with new service charges
     setBillData((prev) => ({
       ...prev,
@@ -1790,7 +1802,7 @@ const Bill = () => {
     }));
 
     // Recalculate billing summary with updated amounts
-    recalculateBillingSummary(updatedServiceChargesByDate);
+    recalculateBillingSummary(updatedServiceChargesByDate, formatNumber(editingDiscount), formatNumber(editingAdvancePayment));
 
     // Create version history to track changes (now includes excluded charges)
     const newVersionHistory = {
@@ -1892,6 +1904,12 @@ const Bill = () => {
       setVersionHistory(null);
     } catch (error) {
       // Keep version history for debugging in case of error
+    } finally {
+      // Release the save lock after a short delay to let any pending
+      // context updates (from updateBooking) settle without triggering a rebuild
+      setTimeout(() => {
+        isSaving.current = false;
+      }, 500);
     }
 
     setIsAmountEditing(false);
@@ -1916,7 +1934,7 @@ const Bill = () => {
   };
 
   // Function to recalculate billing summary after amount changes
-  const recalculateBillingSummary = (serviceChargesByDate) => {
+  const recalculateBillingSummary = (serviceChargesByDate, discountOverride, advancePaymentOverride) => {
     let totalRoomCharges = 0;
     let totalServiceCharges = 0;
 
@@ -1934,34 +1952,32 @@ const Bill = () => {
       });
     });
 
-    // Calculate totals from breakdown data
+    // Calculate totals from breakdown data using the passed serviceChargesByDate
     let totalRatePlanFromBreakdown = 0;
     let totalRoomFromBreakdown = 0;
     let totalServiceFromBreakdown = 0;
     let totalExtraPaxFromBreakdown = 0;
 
-    if (billData?.serviceChargesByDate) {
-      billData.serviceChargesByDate.forEach((dayData) => {
-        const date = Object.keys(dayData)[0];
-        const roomEntries = dayData[date];
-        roomEntries.forEach((roomEntry) => {
-          const charges = roomEntry.charges;
-          totalRatePlanFromBreakdown += charges.ratePlanCharges || 0;
-          totalRoomFromBreakdown += charges.roomCharges || 0;
-          totalServiceFromBreakdown +=
-            (charges.foodCharges || 0) +
-            (charges.laundryCharges || 0) +
-            (charges.minibarCharges || 0) +
-            (charges.extraBedCharges || 0) +
-            (charges.manualCharges || 0);
-          totalExtraPaxFromBreakdown += charges.extraPaxCharges || 0;
-        });
+    serviceChargesByDate.forEach((dayData) => {
+      const date = Object.keys(dayData)[0];
+      const roomEntries = dayData[date];
+      roomEntries.forEach((roomEntry) => {
+        const charges = roomEntry.charges;
+        totalRatePlanFromBreakdown += charges.ratePlanCharges || 0;
+        totalRoomFromBreakdown += charges.roomCharges || 0;
+        totalServiceFromBreakdown +=
+          (charges.foodCharges || 0) +
+          (charges.laundryCharges || 0) +
+          (charges.minibarCharges || 0) +
+          (charges.extraBedCharges || 0) +
+          (charges.manualCharges || 0);
+        totalExtraPaxFromBreakdown += charges.extraPaxCharges || 0;
       });
-    }
+    });
 
-    // Calculate the correct totals based on our calculations
-    const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-    const advanceReceived = billData?.billingSummary?.partialPayment || 0;
+    // Use override values when provided (from saveAmountChanges), otherwise fall back to billData
+    const discountAmount = discountOverride !== undefined ? discountOverride : (billData?.billingSummary?.totalDiscount || 0);
+    const advanceReceived = advancePaymentOverride !== undefined ? advancePaymentOverride : (billData?.billingSummary?.partialPayment || 0);
 
     // Calculate subtotal: room charges + service charges - discount
     const calculatedSubTotal =
@@ -1989,6 +2005,8 @@ const Bill = () => {
       ...prev,
       billingSummary: {
         ...prev.billingSummary,
+        totalDiscount: discountAmount,
+        partialPayment: advanceReceived,
         totalRoomServices: totalRoomCharges,
         totalServiceCharges: totalServiceCharges,
         // Use calculated values for consistency

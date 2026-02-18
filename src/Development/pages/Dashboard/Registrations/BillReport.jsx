@@ -7,6 +7,9 @@ import { useAuthContext } from "../../../context/AuthContext.jsx";
 import BillHeader from "./components/BillHeader.jsx";
 import GuestDetails from "./components/GuestDetails.jsx";
 import LegalSignature from "./components/LegalSignature.jsx";
+import ChargesBreakdown from "./components/ChargesBreakdown.jsx";
+import BillingSummary from "./components/BillingSummary.jsx";
+import BillFooter from "./components/BillFooter.jsx";
 
 const handlePrint = () => {
   window.print();
@@ -159,11 +162,69 @@ const BillReport = ({ billData: rawBillData }) => {
             guestSignature: "Guest Signature",
             cashierSignature: "Cashier Signature & Seal",
           };
+    // Compute billingSummary values for BillingSummary component
+    let totalRoomCharges = 0;
+    let totalServiceCharges = 0;
+    let totalExtraPaxCharges = 0;
+    let totalRatePlanCharges = 0;
+
+    if (rawBillData?.serviceChargesByDate) {
+      rawBillData.serviceChargesByDate.forEach((dayData) => {
+        const date = Object.keys(dayData)[0];
+        const roomEntries = dayData[date];
+        roomEntries.forEach((roomEntry) => {
+          const charges = roomEntry.charges;
+          totalRatePlanCharges += charges.ratePlanCharges || 0;
+          totalRoomCharges += charges.roomCharges || 0;
+          totalServiceCharges +=
+            (charges.foodCharges || 0) +
+            (charges.laundryCharges || 0) +
+            (charges.minibarCharges || 0) +
+            (charges.extraBedCharges || 0) +
+            (charges.manualCharges || 0);
+          totalExtraPaxCharges += charges.extraPaxCharges || 0;
+        });
+      });
+    }
+
+    const discountAmount = rawBillData?.billingSummary?.totalDiscount || 0;
+    const partialPayment = rawBillData?.billingSummary?.partialPayment || 0;
+    const subTotal = totalRoomCharges + totalServiceCharges + totalRatePlanCharges + totalExtraPaxCharges - discountAmount;
+    const discountedRoomCharges = totalRoomCharges - discountAmount;
+    const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
+    const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
+    const totalTaxAmount = cgstAmount + sgstAmount;
+    const grandTotal = subTotal + totalTaxAmount;
+    const balanceDue = grandTotal - partialPayment;
+
+    const billingSummary = {
+      ...(rawBillData?.billingSummary || {}),
+      totalRoomServices: totalRoomCharges,
+      totalServiceCharges: totalServiceCharges,
+      extraPaxCharges: totalExtraPaxCharges,
+      totalDiscount: discountAmount,
+      partialPayment: partialPayment,
+      subTotal: subTotal,
+      cgstAmount: cgstAmount,
+      sgstAmount: sgstAmount,
+      totalTaxAmount: totalTaxAmount,
+      grandTotal: grandTotal,
+      balanceDue: balanceDue,
+    };
+
+    const finalSummary = {
+      ...(rawBillData?.finalSummary || {}),
+      amountInWords: numberToWords(Math.floor(grandTotal)),
+      totalAmount: grandTotal,
+    };
+
     return {
       ...rawBillData,
       billHeader,
       bookingDetails,
-      legalSignature
+      legalSignature,
+      billingSummary,
+      finalSummary,
     };
   }, [rawBillData, institutionData, bookings, companies]);
  
@@ -171,69 +232,6 @@ const BillReport = ({ billData: rawBillData }) => {
   if (!billData) {
     return <div>No bill data available</div>;
   }
-
-  // Create a map of room_id to extra pax charges for specific room allocation
-  const extraPaxByRoomId = {};
-  const extra_pax = billData?.bookingDetails?.extra_pax;
-  if (extra_pax && Array.isArray(extra_pax)) {
-    extra_pax.forEach((pax) => {
-      if (pax.room_id && pax.extra_pax_amount) {
-        extraPaxByRoomId[pax.room_id] = (extraPaxByRoomId[pax.room_id] || 0) + pax.extra_pax_amount;
-      }
-    });
-  }
-
-  // Calculate the final amount dynamically
-  const calculateFinalAmount = () => {
-    let totalRatePlanFromBreakdown = 0;
-    let totalRoomFromBreakdown = 0;
-    let totalServiceFromBreakdown = 0;
-    let totalExtraPaxFromBreakdown = 0;
-   
-    if (billData?.serviceChargesByDate) {
-      billData.serviceChargesByDate.forEach((dayData) => {
-        const date = Object.keys(dayData)[0];
-        const roomEntries = dayData[date];
-        roomEntries.forEach((roomEntry) => {
-          const charges = roomEntry.charges;
-          const roomNumber = roomEntry.roomNumber;
-         
-          // Check if room charges exist in services object
-          const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-          const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-         
-          totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
-          totalRoomFromBreakdown += roomChargesToUse || 0;
-          totalServiceFromBreakdown +=
-            (charges.foodCharges || 0) +
-            (charges.laundryCharges || 0) +
-            (charges.minibarCharges || 0) +
-            (charges.extraBedCharges || 0) +
-            (charges.manualCharges || 0);
-         
-          // Get room-specific extra pax charges
-          const roomDetails = rooms?.find(r => r.room_number === roomNumber);
-          const roomIdForExtraPax = roomDetails?.room_id;
-          const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-          totalExtraPaxFromBreakdown += roomSpecificExtraPax;
-        });
-      });
-    }
-   
-    const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-    const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
-   
-    // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
-    const discountedRoomCharges = totalRoomFromBreakdown - discountAmount;
-    const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-    const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-    const totalTaxAmount = cgstAmount + sgstAmount;
-    const grandTotal = subTotal + totalTaxAmount;
-    return grandTotal;
-  };
-
-  const finalAmount = calculateFinalAmount();
-  const amountInWords = numberToWords(Math.floor(finalAmount));
 
   // Prepare guest data for GuestDetails component
   const guestData = {
@@ -402,703 +400,32 @@ const BillReport = ({ billData: rawBillData }) => {
               setGuestData={() => {}}
             />
 
-            {/* Charges Breakdown (Day-wise) - Keep original structure */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2 mt-2">
-                <h3 className="font-bold text-black text-base">
-                  Charges Breakdown (Day-wise)
-                </h3>
-              </div>
-              <div className="mt-1">
-                <table className="w-full text-xs breakdown-table">
-                  <thead>
-                    <tr className="border-b-1 border-black">
-                      <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
-                        S.No
-                      </th>
-                      <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
-                        Date
-                      </th>
-                      <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
-                        HSN/SAC
-                      </th>
-                      <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
-                        Room No.
-                      </th>
-                      <th className="border-r-1 border-black px-2 py-2 text-left font-bold bg-gray-100">
-                        Particulars
-                      </th>
-                      <th className="px-2 py-2 text-right font-bold bg-gray-100">
-                        Amount
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {billData.serviceChargesByDate &&
-                    billData.serviceChargesByDate.length > 0 ? (
-                      (() => {
-                        let serialNumber = 1; // Global counter for serial numbers
-                        return billData.serviceChargesByDate.map(
-                          (dayData, dayIndex) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            return roomEntries.map((roomEntry, roomIndex) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                              const roomType = roomEntry.roomType;
-                              // Check if room charges exist in services object for this room and date
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              // Get room-specific extra pax charges
-                              const roomDetails = rooms?.find(r => r.room_number === roomNumber);
-                              const roomIdForExtraPax = roomDetails?.room_id;
-                              const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-                             
-                              const particulars = [
-                                {
-                                  description: `Rate Plan Base Tariff`,
-                                  amount:
-                                    billData?.bookingDetails
-                                      ?.ratePlanBaseTariff || 0,
-                                  type: "ratePlanBaseTariff",
-                                },
-                                {
-                                  description: `Room Charges`,
-                                  amount: roomChargesToUse,
-                                  type: "roomCharges",
-                                },
-                                ...(roomSpecificExtraPax > 0
-                                  ? [
-                                      {
-                                        description: `Extra Pax Charges`,
-                                        amount: roomSpecificExtraPax,
-                                        type: "extraPaxCharges",
-                                      },
-                                    ]
-                                  : []),
-                                ...(charges.foodCharges > 0
-                                  ? [
-                                      {
-                                        description: `Food Charges`,
-                                        amount: charges.foodCharges,
-                                        type: "foodCharges",
-                                      },
-                                    ]
-                                  : []),
-                                ...(charges.laundryCharges > 0
-                                  ? [
-                                      {
-                                        description: `Laundry Charges`,
-                                        amount: charges.laundryCharges,
-                                        type: "laundryCharges",
-                                      },
-                                    ]
-                                  : []),
-                                ...(charges.minibarCharges > 0
-                                  ? [
-                                      {
-                                        description: `Bar Charges`,
-                                        amount: charges.minibarCharges,
-                                        type: "minibarCharges",
-                                      },
-                                    ]
-                                  : []),
-                                ...(charges.extraBedCharges > 0
-                                  ? [
-                                      {
-                                        description: `Extra Bed Charges`,
-                                        amount: charges.extraBedCharges,
-                                        type: "extraBedCharges",
-                                      },
-                                    ]
-                                  : []),
-                                ...(charges.manualCharges > 0
-                                  ? [
-                                      {
-                                        description: `Miscellaneous Charges`,
-                                        amount: charges.manualCharges,
-                                        type: "manualCharges",
-                                      },
-                                    ]
-                                  : []),
-                              ].filter(
-                                (particular) =>
-                                  !isChargeExcluded(particular.type)
-                              );
-                              // Get filtered charges for display - update with correct room charges and room-specific extra pax
-                              const updatedCharges = {
-                                ...charges,
-                                roomCharges: roomChargesToUse,
-                                extraPaxCharges: roomSpecificExtraPax,
-                                dailyTotal: roomChargesToUse +
-                                  (charges.foodCharges || 0) +
-                                  (charges.laundryCharges || 0) +
-                                  (charges.minibarCharges || 0) +
-                                  (charges.extraBedCharges || 0) +
-                                  (charges.manualCharges || 0) +
-                                  roomSpecificExtraPax +
-                                  (billData?.bookingDetails?.ratePlanBaseTariff || 0)
-                              };
-                              const filteredCharges = getFilteredCharges(updatedCharges);
-                              // Rowspan for this room (only particulars, not including total row)
-                              const rowspan = particulars.length;
-                              const currentSerialNumber = serialNumber;
-                              serialNumber++; // Increment for next room entry
-                              return (
-                                <React.Fragment
-                                  key={`${dayIndex}-${roomIndex}`}
-                                >
-                                  {particulars.map((particular, pIndex) => (
-                                    <tr
-                                      key={`${dayIndex}-${roomIndex}-${pIndex}`}
-                                      className="border-b border-black"
-                                    >
-                                      {pIndex === 0 && (
-                                        <>
-                                          <td
-                                            className="border-r-1 border-black px-2 py-1 text-center align-top"
-                                            rowSpan={rowspan}
-                                          >
-                                            {currentSerialNumber}
-                                          </td>
-                                          <td
-                                            className="border-r-1 border-black px-2 py-1 text-center align-top"
-                                            rowSpan={rowspan}
-                                          >
-                                            {new Date(date).toLocaleDateString(
-                                              "en-IN",
-                                              {
-                                                day: "2-digit",
-                                                month: "2-digit",
-                                                year: "numeric",
-                                              }
-                                            )}
-                                          </td>
-                                          <td
-                                            className="border-r-1 border-black px-2 py-1 text-center align-top"
-                                            rowSpan={rowspan}
-                                          >
-                                            996311
-                                          </td>
-                                          <td
-                                            className="border-r-1 border-black px-2 py-1 text-center align-top"
-                                            rowSpan={rowspan}
-                                          >
-                                            {roomNumber}
-                                          </td>
-                                        </>
-                                      )}
-                                      {particular.amount > 0 && (
-                                        <>
-                                          <td className="border-r-1 border-black px-2 py-1">
-                                            {particular.description}
-                                          </td>
-                                          <td className="px-2 py-1 text-right">
-                                            {isChargeExcluded(
-                                              particular.type
-                                            ) ? (
-                                              <span className="line-through text-gray-400">
-                                                ₹{particular.amount.toFixed(2)}
-                                              </span>
-                                            ) : (
-                                              `₹${particular.amount.toFixed(2)}`
-                                            )}
-                                          </td>
-                                        </>
-                                      )}
-                                    </tr>
-                                  ))}
-                                  <tr className="border-b-1 border-black bg-gray-100">
-                                    <td className="border-r-1 border-black px-2 py-1"></td>
-                                    <td className="border-r-1 border-black px-2 py-1"></td>
-                                    <td className="border-r-1 border-black px-2 py-1"></td>
-                                    <td className="border-r-1 border-black px-2 py-1"></td>
-                                    <td className="border-r-1 border-black px-2 py-1 font-bold">
-                                      ROOM {roomNumber} TOTAL:
-                                    </td>
-                                    <td className="px-2 py-1 font-bold text-right">
-                                      ₹
-                                      {(
-                                        filteredCharges.dailyTotal || 0
-                                      ).toFixed(2)}
-                                    </td>
-                                  </tr>
-                                </React.Fragment>
-                              );
-                            });
-                          }
-                        );
-                      })()
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan="6"
-                          className="text-center py-4 text-gray-500"
-                        >
-                          No charges breakdown data available
-                           <br />
-                          <small>
-                            Debug: serviceChargesByDate ={" "}
-                            {JSON.stringify(billData?.serviceChargesByDate)}
-                          </small>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {/* Charges Breakdown - Using shared ChargesBreakdown component (read-only) */}
+            <ChargesBreakdown
+              billData={billData}
+              isAmountEditing={false}
+              editingChargeAmounts={{}}
+              setEditingChargeAmounts={() => {}}
+              isChargeExcluded={() => false}
+              getFilteredCharges={getFilteredCharges}
+            />
 
-            {/* Billing Summary */}
-            <div className="grid grid-cols-2 gap-8 mb-6 section-gap">
-              <div>
-                <h3 className="font-bold text-black mb-3 text-base">
-                  Billing Summary
-                </h3>
-                <div className="text-sm space-y-1">
-                  {billData?.bookingDetails?.ratePlanBaseTariff > 0 && (
-                    <div className="flex justify-between">
-                      <span>RATE PLAN CHARGES:</span>
-                      <span>
-                        +₹
-                        {(() => {
-                          // Calculate total rate plan charges from breakdown
-                          let totalRatePlanFromBreakdown = 0;
-                          if (billData?.serviceChargesByDate) {
-                            billData.serviceChargesByDate.forEach((dayData) => {
-                              const date = Object.keys(dayData)[0];
-                              const roomEntries = dayData[date];
-                              roomEntries.forEach((roomEntry) => {
-                                const charges = roomEntry.charges;
-                                if (charges.ratePlanCharges) {
-                                  totalRatePlanFromBreakdown +=
-                                    charges.ratePlanCharges;
-                                }
-                              });
-                            });
-                          }
-                          return totalRatePlanFromBreakdown.toFixed(2);
-                        })()}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span>TOTAL ROOM SERVICES:</span>
-                    <span>
-                      +₹
-                      {(() => {
-                        // Calculate total room charges from breakdown - prioritize services data
-                        let totalRoomFromBreakdown = 0;
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                             
-                              // Check if room charges exist in services object
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              if (roomChargesToUse) {
-                                totalRoomFromBreakdown += roomChargesToUse;
-                              }
-                            });
-                          });
-                        }
-                        return totalRoomFromBreakdown.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>TOTAL SERVICE COST:</span>
-                    <span>
-                      +₹
-                      {(() => {
-                        // Calculate total service charges from breakdown
-                        let totalServiceFromBreakdown = 0;
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              totalServiceFromBreakdown +=
-                                (charges.foodCharges || 0) +
-                                (charges.laundryCharges || 0) +
-                                (charges.minibarCharges || 0) +
-                                (charges.extraBedCharges || 0) +
-                                (charges.manualCharges || 0);
-                            });
-                          });
-                        }
-                        return totalServiceFromBreakdown.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                  {billData?.billingSummary?.extraPaxCharges > 0 && (
-                    <div className="flex justify-between">
-                      <span>EXTRA PAX CHARGES:</span>
-                      <span>
-                        + ₹
-                        {(() => {
-                          // Calculate total extra pax charges from breakdown - use room-specific amounts
-                          let totalExtraPaxFromBreakdown = 0;
-                          if (billData?.serviceChargesByDate) {
-                            billData.serviceChargesByDate.forEach((dayData) => {
-                              const date = Object.keys(dayData)[0];
-                              const roomEntries = dayData[date];
-                              roomEntries.forEach((roomEntry) => {
-                                const charges = roomEntry.charges;
-                                const roomNumber = roomEntry.roomNumber;
-                               
-                                // Get room-specific extra pax charges
-                                const roomDetails = rooms?.find(r => r.room_number === roomNumber);
-                                const roomIdForExtraPax = roomDetails?.room_id;
-                                const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-                               
-                                if (roomSpecificExtraPax) {
-                                  totalExtraPaxFromBreakdown += roomSpecificExtraPax;
-                                }
-                              });
-                            });
-                          }
-                          return totalExtraPaxFromBreakdown.toFixed(2);
-                        })()}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span>TOTAL DISCOUNT:</span>
-                    <span>
-                      {(() => {
-                        const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-                        const totalRoomCharges = (() => {
-                          let totalRoomFromBreakdown = 0;
-                          if (billData?.serviceChargesByDate) {
-                            billData.serviceChargesByDate.forEach((dayData) => {
-                              const date = Object.keys(dayData)[0];
-                              const roomEntries = dayData[date];
-                              roomEntries.forEach((roomEntry) => {
-                                const charges = roomEntry.charges;
-                                const roomNumber = roomEntry.roomNumber;
-                               
-                                // Check if room charges exist in services object
-                                const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                                const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                               
-                                if (roomChargesToUse) {
-                                  totalRoomFromBreakdown += roomChargesToUse;
-                                }
-                              });
-                            });
-                          }
-                          return totalRoomFromBreakdown;
-                        })();
-                       
-                        if (discountAmount > 0 && totalRoomCharges > 0) {
-                          const discountPercentage = ((discountAmount / totalRoomCharges) * 100).toFixed(1);
-                          return `${discountPercentage}%`;
-                        } else {
-                          return `0%`;
-                        }
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>
-                      CGST @ 2.5%:
-                    </span>
-                    <span>
-                      + ₹
-                      {(() => {
-                        // Calculate total room charges from breakdown for tax calculation
-                        let totalRoomChargesForTax = 0;
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                             
-                              // Check if room charges exist in services object
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              if (roomChargesToUse) {
-                                totalRoomChargesForTax += roomChargesToUse;
-                              }
-                            });
-                          });
-                        }
-                        const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-                        const discountedRoomCharges = totalRoomChargesForTax - discountAmount;
-                        const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        return cgstAmount.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>
-                      SGST @ 2.5%:
-                    </span>
-                    <span>
-                      + ₹
-                      {(() => {
-                        // Calculate total room charges from breakdown for tax calculation
-                        let totalRoomChargesForTax = 0;
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                             
-                              // Check if room charges exist in services object
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              if (roomChargesToUse) {
-                                totalRoomChargesForTax += roomChargesToUse;
-                              }
-                            });
-                          });
-                        }
-                        const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-                        const discountedRoomCharges = totalRoomChargesForTax - discountAmount;
-                        const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        return sgstAmount.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>TOTAL TAX AMOUNT:</span>
-                    <span>
-                      ₹
-                      {(() => {
-                        // Calculate total room charges from breakdown for tax calculation
-                        let totalRoomChargesForTax = 0;
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                             
-                              // Check if room charges exist in services object
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              if (roomChargesToUse) {
-                                totalRoomChargesForTax += roomChargesToUse;
-                              }
-                            });
-                          });
-                        }
-                        const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-                        const discountedRoomCharges = totalRoomChargesForTax - discountAmount;
-                        const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        const totalTaxAmount = cgstAmount + sgstAmount;
-                        return totalTaxAmount.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>ADVANCE PAYMENT:</span>
-                    <span>
-                      - ₹
-                      {(billData?.billingSummary?.partialPayment || 0).toFixed(
-                        2
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>SUB TOTAL:</span>
-                    <span>
-                      ₹{(() => {
-                        // Calculate subtotal from breakdown data
-                        let totalRatePlanFromBreakdown = 0;
-                        let totalRoomFromBreakdown = 0;
-                        let totalServiceFromBreakdown = 0;
-                        let totalExtraPaxFromBreakdown = 0;
-                       
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                             
-                              // Check if room charges exist in services object
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
-                              totalRoomFromBreakdown += roomChargesToUse || 0;
-                              totalServiceFromBreakdown +=
-                                (charges.foodCharges || 0) +
-                                (charges.laundryCharges || 0) +
-                                (charges.minibarCharges || 0) +
-                                (charges.extraBedCharges || 0) +
-                                (charges.manualCharges || 0);
-                             
-                              // Get room-specific extra pax charges
-                              const roomDetails = rooms?.find(r => r.room_number === roomNumber);
-                              const roomIdForExtraPax = roomDetails?.room_id;
-                              const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-                              totalExtraPaxFromBreakdown += roomSpecificExtraPax;
-                            });
-                          });
-                        }
-                       
-                        const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-                        const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
-                        return subTotal.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>GRAND TOTAL:</span>
-                    <span>
-                      ₹{(() => {
-                        // Calculate grand total with proper tax calculation
-                        let totalRatePlanFromBreakdown = 0;
-                        let totalRoomFromBreakdown = 0;
-                        let totalServiceFromBreakdown = 0;
-                        let totalExtraPaxFromBreakdown = 0;
-                       
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                             
-                              // Check if room charges exist in services object
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
-                              totalRoomFromBreakdown += roomChargesToUse || 0;
-                              totalServiceFromBreakdown +=
-                                (charges.foodCharges || 0) +
-                                (charges.laundryCharges || 0) +
-                                (charges.minibarCharges || 0) +
-                                (charges.extraBedCharges || 0) +
-                                (charges.manualCharges || 0);
-                             
-                              // Get room-specific extra pax charges
-                              const roomDetails = rooms?.find(r => r.room_number === roomNumber);
-                              const roomIdForExtraPax = roomDetails?.room_id;
-                              const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-                              totalExtraPaxFromBreakdown += roomSpecificExtraPax;
-                            });
-                          });
-                        }
-                       
-                        const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-                        const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
-                       
-                        // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
-                        const discountedRoomCharges = totalRoomFromBreakdown - discountAmount;
-                        const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        const totalTaxAmount = cgstAmount + sgstAmount;
-                        const grandTotal = subTotal + totalTaxAmount;
-                        return grandTotal.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between border-t pt-1 font-bold">
-                    <span>BALANCE DUE:</span>
-                    <span>
-                      ₹{(() => {
-                        // Calculate balance due with proper tax calculation
-                        let totalRatePlanFromBreakdown = 0;
-                        let totalRoomFromBreakdown = 0;
-                        let totalServiceFromBreakdown = 0;
-                        let totalExtraPaxFromBreakdown = 0;
-                       
-                        if (billData?.serviceChargesByDate) {
-                          billData.serviceChargesByDate.forEach((dayData) => {
-                            const date = Object.keys(dayData)[0];
-                            const roomEntries = dayData[date];
-                            roomEntries.forEach((roomEntry) => {
-                              const charges = roomEntry.charges;
-                              const roomNumber = roomEntry.roomNumber;
-                             
-                              // Check if room charges exist in services object
-                              const servicesRoomCharges = billData?.bookingDetails?.services?.[roomNumber]?.[date]?.room_charges;
-                              const roomChargesToUse = servicesRoomCharges !== undefined ? servicesRoomCharges : charges.roomCharges;
-                             
-                              totalRatePlanFromBreakdown += billData?.bookingDetails?.ratePlanBaseTariff || 0;
-                              totalRoomFromBreakdown += roomChargesToUse || 0;
-                              totalServiceFromBreakdown +=
-                                (charges.foodCharges || 0) +
-                                (charges.laundryCharges || 0) +
-                                (charges.minibarCharges || 0) +
-                                (charges.extraBedCharges || 0) +
-                                (charges.manualCharges || 0);
-                             
-                              // Get room-specific extra pax charges
-                              const roomDetails = rooms?.find(r => r.room_number === roomNumber);
-                              const roomIdForExtraPax = roomDetails?.room_id;
-                              const roomSpecificExtraPax = extraPaxByRoomId[roomIdForExtraPax] || 0;
-                              totalExtraPaxFromBreakdown += roomSpecificExtraPax;
-                            });
-                          });
-                        }
-                       
-                        const discountAmount = billData?.billingSummary?.totalDiscount || 0;
-                        const subTotal = totalRatePlanFromBreakdown + totalRoomFromBreakdown + totalServiceFromBreakdown + totalExtraPaxFromBreakdown - discountAmount;
-                       
-                        // Calculate tax on discounted room charges (2.5% CGST + 2.5% SGST = 5% total)
-                        const discountedRoomCharges = totalRoomFromBreakdown - discountAmount;
-                        const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
-                        const totalTaxAmount = cgstAmount + sgstAmount;
-                        const grandTotal = subTotal + totalTaxAmount;
-                        const balanceDue = grandTotal - (billData?.billingSummary?.partialPayment || 0);
-                        return balanceDue.toFixed(2);
-                      })()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <h3 className="font-bold text-black mb-3 text-base">
-                  Final Summary
-                </h3>
-                <div className="text-sm">
-                  <div className="font-bold mb-2">AMOUNT IN WORDS:</div>
-                  <div className="text-xs italic border-1 p-2">
-                    {amountInWords}
-                  </div>
-                  <div className="mt-4 text-center">
-                    <div className="font-bold text-lg"></div>
-                    TOTAL: ₹{finalAmount.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* Billing Summary - Using shared BillingSummary component (read-only) */}
+            <BillingSummary
+              billData={billData}
+              isAmountEditing={false}
+              editingDiscount={0}
+              setEditingDiscount={() => {}}
+              editingAdvancePayment={0}
+              setEditingAdvancePayment={() => {}}
+              editingChargeAmounts={{}}
+            />
 
             {/* Use the new LegalSignature component */}
             <LegalSignature billData={billData} userData={userData} />
 
-            {/* Footer */}
-            <div className="border-t-2 border-dashed text-center border-black section-gap">
-              <div className="text-xl font-bold mt-2">
-                {billData.footer.thankYou}, {billData.footer.tagline}
-              </div>
-            </div>
+            {/* Footer - Using shared BillFooter component */}
+            <BillFooter billData={billData} />
           </div>
         </div>
       </div>
