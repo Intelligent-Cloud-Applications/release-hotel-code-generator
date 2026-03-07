@@ -32,6 +32,7 @@ const CheckIn = () => {
     companies,
     createCompany,
     fetchCompanies,
+    listTotalBill,
   } = useAppContext();
   
   const navigate = useNavigate();
@@ -54,7 +55,6 @@ const CheckIn = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [roomAutoSelected, setRoomAutoSelected] = useState(false);
 
-  // Helper function to format timestamp to local datetime-local string
   const formatToLocalDateTime = (timestamp) => {
     if (!timestamp) return "";
     const date = new Date(timestamp);
@@ -63,7 +63,6 @@ const CheckIn = () => {
     return localDate.toISOString().slice(0, 16);
   };
 
-  // Helper function to convert local datetime-local string to timestamp
   const parseLocalDateTime = (dateTimeString) => {
     if (!dateTimeString) return null;
     return new Date(dateTimeString).getTime();
@@ -150,11 +149,15 @@ const CheckIn = () => {
     const fetchData = async () => {
       // Only fetch if data is not already loaded
       if (rooms.length === 0 || staffs.length === 0) {
-        console.log("Fetching initial data (rooms, staffs)...");
+        console.log("Fetching initial data (rooms, staffs, bills)...");
         setPageLoading(true);
         try {
           await fetchRooms();
           await fetchStaffs();
+          // Fetch bills for guest auto-suggestion
+          if (!bills || bills.length === 0) {
+            await listTotalBill();
+          }
         } catch (error) {
           console.error("Error fetching initial data:", error);
           toast.error("Failed to load initial data");
@@ -163,6 +166,10 @@ const CheckIn = () => {
         }
       } else {
         console.log("Data already loaded, skipping fetch");
+        // Still fetch bills if not loaded
+        if (!bills || bills.length === 0) {
+          listTotalBill().catch(err => console.error("Error fetching bills:", err));
+        }
         setPageLoading(false);
       }
     };
@@ -1048,6 +1055,7 @@ const CheckIn = () => {
                 nextGrcNumber={nextGrcNumber}
                 nextCheckInNumber={nextCheckInNumber}
                 nextBillNumber={nextBillNumber}
+                bills={bills}
               />
 
               {(checkInData.rate_plan_id || (checkInData.room_id && checkInData.room_id.length > 0)) && (

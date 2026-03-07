@@ -9,6 +9,14 @@ import { InstitutionProvider } from "./Development/context/InstitutionContext.js
 import { BrowserRouter } from "react-router";
 import { Toaster } from "sonner";
 
+// Global fix: Prevent scroll wheel from changing values in number inputs
+// by blurring any input/textarea element on wheel scroll.
+document.addEventListener("wheel", function () {
+  if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) {
+    document.activeElement.blur();
+  }
+}, { passive: true });
+
 createRoot(document.getElementById("root")).render(
   <LoadingProvider>
     <InstitutionProvider>

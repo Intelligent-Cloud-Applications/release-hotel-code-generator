@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "../../../../../components/ui/input.js";
 import { Label } from "../../../../../components/ui/label.js";
 import { Button } from "../../../../../components/ui/button.js";
@@ -31,6 +31,7 @@ import {
   Bed,
   PlusCircle,
   Plus,
+  Search,
 } from "lucide-react";
 import { useAppContext } from "../../../../../context/AppContext.jsx";
 
@@ -48,6 +49,7 @@ const CheckInForm = ({
   nextGrcNumber,
   nextCheckInNumber,
   nextBillNumber,
+  bills = [],
 }) => {
   const { companies = [], createCompany } = useAppContext?.() || {
     companies: [],
@@ -65,6 +67,106 @@ const CheckInForm = ({
   });
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
   const [createCompanyError, setCreateCompanyError] = useState("");
+
+  // ── Guest auto-suggestion from bills ──
+  const [guestQuery, setGuestQuery] = useState("");
+  const [showGuestSuggestions, setShowGuestSuggestions] = useState(false);
+  const guestSuggestionRef = useRef(null);
+
+  // Extract unique guests from bills data for auto-suggestion
+  const billGuests = useMemo(() => {
+    if (!Array.isArray(bills) || bills.length === 0) return [];
+    const guestMap = new Map();
+    bills.forEach((billWrapper) => {
+      const bill = billWrapper?.bill || billWrapper;
+      const gd = bill?.guestDetails || {};
+      const name = gd.guestName || gd.full_name || gd.guest_name || "";
+      const mobile = gd.mobile || gd.phone || "";
+      if (!name.trim()) return;
+      // Use name+mobile as unique key to de-duplicate
+      const key = `${name.trim().toLowerCase()}_${mobile.trim()}`;
+      if (!guestMap.has(key)) {
+        guestMap.set(key, {
+          full_name: name.trim(),
+          mobile: mobile.trim(),
+          email: gd.email || "",
+          gender: gd.gender || "",
+          id_proof_type: gd.idProofType || gd.id_proof_type || "",
+          id_proof_number: gd.idProofNumber || gd.id_proof_number || "",
+          nationality: gd.nationality || "Indian",
+          address: gd.address || "",
+          city: gd.city || "",
+          state: gd.state || "",
+          country: gd.country || "India",
+          pincode: gd.pinCode || gd.pincode || "",
+          guest_category: gd.guest_category || gd.guestCategory || "Regular",
+        });
+      }
+    });
+    return Array.from(guestMap.values());
+  }, [bills]);
+
+  // Filter guest suggestions based on query
+  const filteredGuestSuggestions = useMemo(() => {
+    const q = guestQuery.trim().toLowerCase();
+    if (!q || q.length < 2) return [];
+    return billGuests
+      .filter(
+        (g) =>
+          g.full_name.toLowerCase().includes(q) ||
+          g.mobile.includes(q)
+      )
+      .slice(0, 8);
+  }, [billGuests, guestQuery]);
+
+  // Handle selecting a guest suggestion – auto-fill all details
+  const handleGuestSuggestionSelect = useCallback((guest) => {
+    setGuestQuery(guest.full_name);
+    setShowGuestSuggestions(false);
+
+    // Auto-fill all guest fields
+    handleInputChange("full_name", guest.full_name);
+    handleInputChange("mobile", guest.mobile);
+    if (guest.email) handleInputChange("email", guest.email);
+    if (guest.gender) handleInputChange("gender", guest.gender);
+    if (guest.id_proof_type) handleInputChange("id_proof_type", guest.id_proof_type);
+    if (guest.id_proof_number) handleInputChange("id_proof_number", guest.id_proof_number);
+    if (guest.nationality) handleInputChange("nationality", guest.nationality);
+    if (guest.address) handleInputChange("address", guest.address);
+    if (guest.city) handleInputChange("city", guest.city);
+    if (guest.state) handleInputChange("state", guest.state);
+    if (guest.country) handleInputChange("country", guest.country);
+    if (guest.pincode) handleInputChange("pincode", guest.pincode);
+    if (guest.guest_category) handleInputChange("guest_category", guest.guest_category);
+  }, [handleInputChange]);
+
+  // Handle name input change for guest suggestion
+  const handleNameInputChange = useCallback((value) => {
+    setGuestQuery(value);
+    handleInputChange("full_name", value);
+    setShowGuestSuggestions(value.trim().length >= 2);
+  }, [handleInputChange]);
+
+  // Close guest suggestions on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (
+        guestSuggestionRef.current &&
+        !guestSuggestionRef.current.contains(e.target)
+      ) {
+        setShowGuestSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Keep guestQuery in sync if full_name changes externally (e.g. booking selection)
+  useEffect(() => {
+    if (checkInData?.full_name !== undefined) {
+      setGuestQuery(checkInData.full_name || "");
+    }
+  }, [checkInData?.full_name]);
 
   const ErrorMessage = ({ error }) => {
     if (!error) return null;
@@ -421,6 +523,7 @@ const CheckInForm = ({
   };
 
   return (
+    <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
     <div className="space-y-8">
       {/* Guest Details Section */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -441,21 +544,65 @@ const CheckInForm = ({
         </div>
         <div className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-1">
+            <div className="space-y-1 relative" ref={guestSuggestionRef}>
               <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
                 <User className="h-3 w-3 text-gray-500" />
                 Full Name <span className="text-red-500">*</span>
               </Label>
-              <Input
-                placeholder="Enter full name"
-                value={checkInData.full_name || ""}
-                onChange={(e) => handleInputChange("full_name", e.target.value)}
-                className={`h-8 text-sm ${validationErrors.full_name
-                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
-                    : "focus:border-blue-500 focus:ring-blue-500"
-                  } transition-colors duration-200`}
-                required
-              />
+              <div className="relative">
+                  <Input
+                    name="guest_fullname_nop"
+                    placeholder="Enter full name"
+                    value={guestQuery}
+                    onChange={(e) => handleNameInputChange(e.target.value)}
+                    onFocus={() => {
+                      if (guestQuery.trim().length >= 2) {
+                        setShowGuestSuggestions(true);
+                      }
+                    }}
+                    className={`h-8 text-sm pr-8 ${validationErrors.full_name
+                        ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                        : "focus:border-blue-500 focus:ring-blue-500"
+                      } transition-colors duration-200`}
+                    required
+                    autoComplete="new-password"
+                  />
+                {billGuests.length > 0 && (
+                  <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                )}
+              </div>
+              {/* Guest Auto-Suggestion Dropdown */}
+              {showGuestSuggestions && filteredGuestSuggestions.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 bg-gray-50/60">
+                    Past Guests
+                  </div>
+                  {filteredGuestSuggestions.map((guest, index) => (
+                    <button
+                      key={`${guest.full_name}_${guest.mobile}_${index}`}
+                      type="button"
+                      className="w-full px-3 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none transition-colors duration-150 border-b border-gray-50 last:border-b-0 flex items-center gap-3"
+                      onClick={() => handleGuestSuggestionSelect(guest)}
+                    >
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
+                        <User className="h-3.5 w-3.5 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {guest.full_name}
+                        </p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Phone className="h-2.5 w-2.5" />
+                          {guest.mobile || "No phone"}
+                          {guest.city && (
+                            <span className="text-gray-300"> • {guest.city}</span>
+                          )}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
               <ErrorMessage error={validationErrors.full_name} />
             </div>
 
@@ -465,6 +612,7 @@ const CheckInForm = ({
                 Mobile Number <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_mobile_nop"
                 placeholder="Enter mobile number"
                 value={checkInData.mobile || ""}
                 onChange={(e) => handleInputChange("mobile", e.target.value)}
@@ -473,6 +621,7 @@ const CheckInForm = ({
                     : "focus:border-blue-500 focus:ring-blue-500"
                   } transition-colors duration-200`}
                 required
+                autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.mobile} />
             </div>
@@ -540,6 +689,7 @@ const CheckInForm = ({
                 ID Proof Number <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_idproof_nop"
                 placeholder="Enter ID number"
                 value={checkInData.id_proof_number || ""}
                 onChange={(e) =>
@@ -549,6 +699,7 @@ const CheckInForm = ({
                     ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                     : "focus:border-blue-500 focus:ring-blue-500"
                   } transition-colors duration-200`}
+                autoComplete="new-password"
                 required
               />
               <ErrorMessage error={validationErrors.id_proof_number} />
@@ -572,10 +723,12 @@ const CheckInForm = ({
                 Nationality <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_nation_nop"
                 placeholder="Nationality"
                 value={checkInData.nationality || ""}
                 onChange={(e) => handleInputChange("nationality", e.target.value)}
                 className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.nationality} />
             </div>
@@ -585,10 +738,12 @@ const CheckInForm = ({
                 Address <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_address_nop"
                 placeholder="Enter full address"
                 value={checkInData.address || ""}
                 onChange={(e) => handleInputChange("address", e.target.value)}
                 className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.address} />
             </div>
@@ -598,10 +753,12 @@ const CheckInForm = ({
                 City <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_city_nop"
                 placeholder="Enter city"
                 value={checkInData.city || ""}
                 onChange={(e) => handleInputChange("city", e.target.value)}
                 className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.city} />
             </div>
@@ -611,10 +768,12 @@ const CheckInForm = ({
                 State <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_state_nop"
                 placeholder="Enter state"
                 value={checkInData.state || ""}
                 onChange={(e) => handleInputChange("state", e.target.value)}
                 className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.state} />
             </div>
@@ -624,10 +783,12 @@ const CheckInForm = ({
                 Country <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_country_nop"
                 placeholder="Enter country"
                 value={checkInData.country || ""}
                 onChange={(e) => handleInputChange("country", e.target.value)}
                 className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.country} />
             </div>
@@ -637,6 +798,7 @@ const CheckInForm = ({
                 Pincode <span className="text-red-500">*</span>
               </Label>
               <Input
+                name="guest_pincode_nop"
                 placeholder="Enter pincode"
                 value={checkInData.pincode || ""}
                 onChange={(e) => handleInputChange("pincode", e.target.value)}
@@ -644,6 +806,7 @@ const CheckInForm = ({
                     ? "border-red-500 focus:border-red-500 focus:ring-red-500"
                     : "focus:border-blue-500 focus:ring-blue-500"
                   } transition-colors duration-200`}
+                autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.pincode} />
             </div>
@@ -1537,6 +1700,7 @@ const CheckInForm = ({
         </DialogContent>
       </Dialog>
     </div>
+    </form>
   );
 };
 
