@@ -31,6 +31,7 @@ const AdminLayout = () => {
     { id: "room_list", label: "Room List" },
     { id: "guest_list", label: "Guest List" },
     { id: "staff_list", label: "Staff List" },
+    { id: "rate_plans", label: "Rate Plans" },
     { id: "revenue", label: "Revenue" },
     { id: "reports", label: "Reports" },
   ];

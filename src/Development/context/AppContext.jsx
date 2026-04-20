@@ -295,6 +295,84 @@ export const AppContextProvider = ({ children }) => {
     }
   }
 
+  async function createRatePlan(ratePlanData) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { body } = await post({
+        apiName: "common",
+        path: "/rate-plans",
+        options: {
+          queryParams: { institutionId: institutionId },
+          body: {
+            ...ratePlanData,
+            base_tariff: Number(ratePlanData.base_tariff) || 0,
+            tariff_variation: Number(ratePlanData.tariff_variation) || 0,
+          },
+        },
+      }).response;
+      const data = await body.json();
+      setRatePlans([...ratePlans, data.ratePlan]);
+    } catch (error) {
+      console.error("Error creating rate plan:", error);
+      setError("Failed to create rate plan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateRatePlan(ratePlanData) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { plan_id, ...updateData } = ratePlanData;
+      const { body } = await put({
+        apiName: "common",
+        path: "/rate-plans/" + plan_id,
+        options: {
+          queryParams: { institutionId: institutionId },
+          body: {
+            ...updateData,
+            ...(updateData.base_tariff !== undefined && { base_tariff: Number(updateData.base_tariff) }),
+            ...(updateData.tariff_variation !== undefined && { tariff_variation: Number(updateData.tariff_variation) }),
+          },
+        },
+      }).response;
+      const data = await body.json();
+      setRatePlans(
+        ratePlans.map((plan) =>
+          plan.plan_id === plan_id ? { ...plan, ...data.ratePlan } : plan
+        )
+      );
+    } catch (error) {
+      console.error("Error updating rate plan:", error);
+      setError("Failed to update rate plan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteRatePlan(ratePlanId) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { body } = await del({
+        apiName: "common",
+        path: `/rate-plans/${ratePlanId}`,
+        options: {
+          queryParams: { institutionId: institutionId },
+        },
+      }).response;
+      await body.json();
+      setRatePlans(ratePlans.filter((plan) => plan.plan_id !== ratePlanId));
+    } catch (error) {
+      console.error("Error deleting rate plan:", error);
+      setError("Failed to delete rate plan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function checkInGuest({ checkInData }) {
     setLoading(true);
     setError(null);
@@ -1349,6 +1427,10 @@ export const AppContextProvider = ({ children }) => {
         error,
         setError,
         ratePlans,
+        fetchRatePlans,
+        createRatePlan,
+        updateRatePlan,
+        deleteRatePlan,
         rooms,
         fetchRooms,
         getRoom,
