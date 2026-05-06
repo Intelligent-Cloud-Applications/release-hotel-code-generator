@@ -1375,6 +1375,7 @@ const Bill = () => {
           totalServiceCharges += entry.charges.minibarCharges || 0;
           totalServiceCharges += entry.charges.extraBedCharges || 0;
           totalServiceCharges += entry.charges.manualCharges || 0;
+          totalServiceCharges += entry.charges.extraPaxCharges || 0;
         });
       });
 
