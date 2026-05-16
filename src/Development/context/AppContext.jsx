@@ -907,6 +907,49 @@ export const AppContextProvider = ({ children }) => {
     }
   }
 
+  async function getArchivedBills() {
+    try {
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Check local storage for cached archived bills and fetch date
+      const cachedData = localStorage.getItem(`archived_bills_${institutionId}`);
+      const cachedFetchDate = localStorage.getItem(`archived_bills_fetch_date_${institutionId}`);
+      
+      // If cached data exists and fetch date matches today, return cached data
+      if (cachedData && cachedFetchDate === today) {
+        console.log("Using cached archived bills from:", cachedFetchDate);
+        return JSON.parse(cachedData);
+      }
+      
+      // Fetch archived bills from API
+      console.log("Fetching archived bills from API");
+      const { body } = await get({
+        apiName: "common",
+        path: `/total-bill`,
+        options: {
+          queryParams: { 
+            institutionId: institutionId,
+            yearMonth: "archived"
+          },
+        },
+      }).response;
+      const data = await body.json();
+      const archivedBills = data.bills || [];
+      
+      // Store bills and fetch date in local storage
+      localStorage.setItem(`archived_bills_${institutionId}`, JSON.stringify(archivedBills));
+      localStorage.setItem(`archived_bills_fetch_date_${institutionId}`, today);
+      
+      console.log("Archived bills cached for:", today);
+      return archivedBills;
+    } catch (error) {
+      console.error("Error fetching archived bills:", error);
+      // Return empty array on error to prevent breaking the flow
+      return [];
+    }
+  }
+
   async function listTotalBill() {
     setLoading(true);
     setError(null);
@@ -919,9 +962,16 @@ export const AppContextProvider = ({ children }) => {
         },
       }).response;
       const data = await body.json();
-      setBills(data.bills);
+      
+      // Fetch archived bills (with caching)
+      const archivedBills = await getArchivedBills();
+      
+      // Combine current bills with archived bills
+      const combinedBills = [...(data.bills || []), ...archivedBills];
+      
+      setBills(combinedBills);
       setOrders(data.orders);
-      return data.bills;
+      return combinedBills;
     } catch (error) {
       console.error("Error fetching total bill:", error);
       setError("Failed to fetch total bills");
@@ -1413,6 +1463,8 @@ export const AppContextProvider = ({ children }) => {
       fetchAllReports();
     }
     listTotalBill();
+    // Fetch archived bills during initial load
+    getArchivedBills();
   }, [userData]);
 
   return (
@@ -1459,6 +1511,7 @@ export const AppContextProvider = ({ children }) => {
         checkInGuest,
         fetchTotalBill,
         listTotalBill,
+        getArchivedBills,
         calculateTotalBill,
         updateBill,
         checkoutGuest,
