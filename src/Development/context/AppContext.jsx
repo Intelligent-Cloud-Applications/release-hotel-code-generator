@@ -295,6 +295,84 @@ export const AppContextProvider = ({ children }) => {
     }
   }
 
+  async function createRatePlan(ratePlanData) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { body } = await post({
+        apiName: "common",
+        path: "/rate-plans",
+        options: {
+          queryParams: { institutionId: institutionId },
+          body: {
+            ...ratePlanData,
+            base_tariff: Number(ratePlanData.base_tariff) || 0,
+            tariff_variation: Number(ratePlanData.tariff_variation) || 0,
+          },
+        },
+      }).response;
+      const data = await body.json();
+      setRatePlans([...ratePlans, data.ratePlan]);
+    } catch (error) {
+      console.error("Error creating rate plan:", error);
+      setError("Failed to create rate plan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateRatePlan(ratePlanData) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { plan_id, ...updateData } = ratePlanData;
+      const { body } = await put({
+        apiName: "common",
+        path: "/rate-plans/" + plan_id,
+        options: {
+          queryParams: { institutionId: institutionId },
+          body: {
+            ...updateData,
+            ...(updateData.base_tariff !== undefined && { base_tariff: Number(updateData.base_tariff) }),
+            ...(updateData.tariff_variation !== undefined && { tariff_variation: Number(updateData.tariff_variation) }),
+          },
+        },
+      }).response;
+      const data = await body.json();
+      setRatePlans(
+        ratePlans.map((plan) =>
+          plan.plan_id === plan_id ? { ...plan, ...data.ratePlan } : plan
+        )
+      );
+    } catch (error) {
+      console.error("Error updating rate plan:", error);
+      setError("Failed to update rate plan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteRatePlan(ratePlanId) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { body } = await del({
+        apiName: "common",
+        path: `/rate-plans/${ratePlanId}`,
+        options: {
+          queryParams: { institutionId: institutionId },
+        },
+      }).response;
+      await body.json();
+      setRatePlans(ratePlans.filter((plan) => plan.plan_id !== ratePlanId));
+    } catch (error) {
+      console.error("Error deleting rate plan:", error);
+      setError("Failed to delete rate plan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function checkInGuest({ checkInData }) {
     setLoading(true);
     setError(null);
@@ -829,6 +907,49 @@ export const AppContextProvider = ({ children }) => {
     }
   }
 
+  async function getArchivedBills() {
+    try {
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Check local storage for cached archived bills and fetch date
+      const cachedData = localStorage.getItem(`archived_bills_${institutionId}`);
+      const cachedFetchDate = localStorage.getItem(`archived_bills_fetch_date_${institutionId}`);
+      
+      // If cached data exists and fetch date matches today, return cached data
+      if (cachedData && cachedFetchDate === today) {
+        console.log("Using cached archived bills from:", cachedFetchDate);
+        return JSON.parse(cachedData);
+      }
+      
+      // Fetch archived bills from API
+      console.log("Fetching archived bills from API");
+      const { body } = await get({
+        apiName: "common",
+        path: `/total-bill`,
+        options: {
+          queryParams: { 
+            institutionId: institutionId,
+            yearMonth: "archived"
+          },
+        },
+      }).response;
+      const data = await body.json();
+      const archivedBills = data.bills || [];
+      
+      // Store bills and fetch date in local storage
+      localStorage.setItem(`archived_bills_${institutionId}`, JSON.stringify(archivedBills));
+      localStorage.setItem(`archived_bills_fetch_date_${institutionId}`, today);
+      
+      console.log("Archived bills cached for:", today);
+      return archivedBills;
+    } catch (error) {
+      console.error("Error fetching archived bills:", error);
+      // Return empty array on error to prevent breaking the flow
+      return [];
+    }
+  }
+
   async function listTotalBill() {
     setLoading(true);
     setError(null);
@@ -841,9 +962,16 @@ export const AppContextProvider = ({ children }) => {
         },
       }).response;
       const data = await body.json();
-      setBills(data.bills);
+      
+      // Fetch archived bills (with caching)
+      const archivedBills = await getArchivedBills();
+      
+      // Combine current bills with archived bills
+      const combinedBills = [...(data.bills || []), ...archivedBills];
+      
+      setBills(combinedBills);
       setOrders(data.orders);
-      return data.bills;
+      return combinedBills;
     } catch (error) {
       console.error("Error fetching total bill:", error);
       setError("Failed to fetch total bills");
@@ -1335,6 +1463,8 @@ export const AppContextProvider = ({ children }) => {
       fetchAllReports();
     }
     listTotalBill();
+    // Fetch archived bills during initial load
+    getArchivedBills();
   }, [userData]);
 
   return (
@@ -1349,6 +1479,10 @@ export const AppContextProvider = ({ children }) => {
         error,
         setError,
         ratePlans,
+        fetchRatePlans,
+        createRatePlan,
+        updateRatePlan,
+        deleteRatePlan,
         rooms,
         fetchRooms,
         getRoom,
@@ -1377,6 +1511,7 @@ export const AppContextProvider = ({ children }) => {
         checkInGuest,
         fetchTotalBill,
         listTotalBill,
+        getArchivedBills,
         calculateTotalBill,
         updateBill,
         checkoutGuest,

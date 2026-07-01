@@ -58,6 +58,7 @@ import AdminLayout from "@/Development/layouts/AdminLayout.jsx";
 import Guests from "@/Development/pages/Dashboard/Admin/Guests.jsx";
 import Rooms from "@/Development/pages/Dashboard/Admin/Rooms/index.jsx";
 import Staffs from "@/Development/pages/Dashboard/Admin/Staffs.jsx";
+import RatePlans from "@/Development/pages/Dashboard/Admin/RatePlans/index.jsx";
 import Revenue from "@/Development/pages/Dashboard/Admin/Revenue.jsx";
 import Profile from "./pages/Dashboard/Profile.jsx";
 import Settings from "./pages/Dashboard/Settings.jsx";
@@ -390,6 +391,7 @@ const AppRoutes = () => {
           <Route path="/dashboard/admin/guest_list" element={<Guests />} />
           <Route path="/dashboard/admin/room_list" element={<Rooms />} />
           <Route path="/dashboard/admin/staff_list" element={<Staffs />} />
+          <Route path="/dashboard/admin/rate_plans" element={<RatePlans />} />
           <Route path="/dashboard/admin/revenue" element={<AdminReports />} />
           <Route
             path="/dashboard/admin/reports"
