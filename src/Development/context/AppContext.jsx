@@ -958,20 +958,22 @@ export const AppContextProvider = ({ children }) => {
         apiName: "common",
         path: `/total-bill`,
         options: {
-          queryParams: { institutionId: institutionId },
+          queryParams: { institutionId: institutionId, yearMonth: 'all' },
         },
       }).response;
       const data = await body.json();
       
       // Fetch archived bills (with caching)
-      const archivedBills = await getArchivedBills();
+      // const archivedBills = await getArchivedBills();
       
       // Combine current bills with archived bills
-      const combinedBills = [...(data.bills || []), ...archivedBills];
+      // const combinedBills = [...(data.bills || []), ...archivedBills];
       
-      setBills(combinedBills);
+      // setBills(combinedBills);
+      setBills(data.bills)
       setOrders(data.orders);
-      return combinedBills;
+      // return combinedBills;
+      return data.bills;
     } catch (error) {
       console.error("Error fetching total bill:", error);
       setError("Failed to fetch total bills");
