@@ -1515,7 +1515,6 @@ const Bill = () => {
           totalServiceCharges += filteredCharges.minibarCharges || 0;
           totalServiceCharges += filteredCharges.extraBedCharges || 0;
           totalServiceCharges += filteredCharges.manualCharges || 0;
-          totalServiceCharges += filteredCharges.extraPaxCharges || 0;
         });
       });
 
@@ -1951,7 +1950,6 @@ const Bill = () => {
         totalServiceCharges += entry.charges.minibarCharges || 0;
         totalServiceCharges += entry.charges.extraBedCharges || 0;
         totalServiceCharges += entry.charges.manualCharges || 0;
-        totalServiceCharges += entry.charges.extraPaxCharges || 0;
       });
     });
 
@@ -2051,7 +2049,6 @@ const Bill = () => {
           totalServiceCharges += editingData.minibarCharges || 0;
           totalServiceCharges += editingData.extraBedCharges || 0;
           totalServiceCharges += editingData.manualCharges || 0;
-          totalServiceCharges += editingData.extraPaxCharges || 0;
         } else {
           totalRoomCharges += entry.charges.roomCharges || 0;
           totalServiceCharges += entry.charges.foodCharges || 0;
@@ -2059,7 +2056,6 @@ const Bill = () => {
           totalServiceCharges += entry.charges.minibarCharges || 0;
           totalServiceCharges += entry.charges.extraBedCharges || 0;
           totalServiceCharges += entry.charges.manualCharges || 0;
-          totalServiceCharges += entry.charges.extraPaxCharges || 0;
         }
       });
     });
