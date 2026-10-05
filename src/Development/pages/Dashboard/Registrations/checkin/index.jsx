@@ -334,9 +334,9 @@ const CheckIn = () => {
         booking_date: selectedBooking.booking_date,
         checkin_date: currentDateTime,
         checkout_date: checkoutDate,
-        room_type: selectedBooking.room_type,
+        room_type: selectedBooking.room_category || selectedBooking.room_type || "",
         room_id: selectedBooking.room_id || [],
-        no_of_adults: selectedBooking.no_of_adults || 1,
+        no_of_adults: selectedBooking.no_of_persons || selectedBooking.no_of_adults || 1,
         no_of_children: selectedBooking.no_of_children || 0,
         company_id: selectedBooking.company_id || "",
         company_name: selectedBooking.company_name || "",
@@ -387,6 +387,23 @@ const CheckIn = () => {
     setIsModalOpen(false);
     setValidationErrors({});
     setHasAttemptedSubmit(false);
+  };
+
+  const handleBookingUpdated = (updatedBooking, updatedGuest) => {
+    setSelectedBooking(updatedBooking);
+    if (updatedGuest) {
+      setSelectedGuest(updatedGuest);
+    }
+    setCheckInData((prev) => ({
+      ...prev,
+      full_name: updatedGuest?.full_name || updatedBooking?.full_name || prev.full_name,
+      mobile: updatedGuest?.mobile || updatedBooking?.mobile || prev.mobile,
+      email: updatedGuest?.email || updatedBooking?.email || prev.email,
+      room_type: updatedBooking?.room_category || updatedBooking?.room_type || prev.room_type,
+      no_of_adults: updatedBooking?.no_of_persons || updatedBooking?.no_of_adults || prev.no_of_adults,
+      checkin_date: updatedBooking?.checkin_date || prev.checkin_date,
+      checkout_date: updatedBooking?.checkout_date || prev.checkout_date,
+    }));
   };
 
   const handleDialogOpen = async (open) => {
@@ -474,13 +491,6 @@ const CheckIn = () => {
       errors.mobile = "Mobile number is required";
     } else if (normalizedMobile.length !== 10) {
       errors.mobile = "Mobile number must be 10 digits";
-    }
-
-    // Email (optional, but validate format if entered)
-    const emailStr = String(data.email || "").trim();
-    const isPlaceholderEmail = ["n/a", "na", "-", "--", "none", "nil"].includes(emailStr.toLowerCase());
-    if (emailStr && !isPlaceholderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
-      errors.email = "Please enter a valid email address";
     }
 
     // 3. Gender *
@@ -947,6 +957,10 @@ const CheckIn = () => {
         ...checkInData,
         mobile: normalizedMobile || checkInData.mobile,
         status: "Checked-in",
+        room_type: checkInData.room_type || selectedBooking?.room_category || selectedBooking?.room_type || "",
+        room_category: checkInData.room_type || selectedBooking?.room_category || selectedBooking?.room_type || "",
+        no_of_rooms: Array.isArray(checkInData.room_id) && checkInData.room_id.length > 0 ? checkInData.room_id.length : (selectedBooking?.no_of_rooms || 1),
+        no_of_persons: checkInData.no_of_adults || selectedBooking?.no_of_persons || 1,
         company_id: companyId || checkInData.company_id || "",
         company_name: checkInData.company_name || "N/A",
         gst_no: checkInData.gst_no || "N/A",
@@ -1116,6 +1130,7 @@ const CheckIn = () => {
                   selectedBooking={selectedBooking}
                   selectedGuest={selectedGuest}
                   formatDate={formatDate}
+                  onBookingUpdated={handleBookingUpdated}
                 />
               )}
 
@@ -1135,6 +1150,7 @@ const CheckIn = () => {
                 nextBillNumber={nextBillNumber}
                 bills={bills}
                 guests={guests}
+                selectedBooking={selectedBooking}
               />
 
               {(checkInData.rate_plan_id || (checkInData.room_id && checkInData.room_id.length > 0)) && (
