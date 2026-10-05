@@ -35,7 +35,7 @@ import { OrderDetailsDialog } from "@/Development/pages/Dashboard/Guest History/
 import BillReport from "../Registrations/BillReport.jsx";
 
 const GuestHistory = () => {
-  const { bookings, guests, bills, orders, fetchBookings, fetchGuests, updatePaymentMethod  } =
+  const { bookings, guests, bills, orders, rooms, fetchBookings, fetchGuests, updatePaymentMethod  } =
     useAppContext();
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("");
@@ -79,25 +79,57 @@ const GuestHistory = () => {
   };
 
   const guestHistoryData = bills.map((bill) => {
-    console.log("bill", bill);
-
     const guestDetails = bill?.bill?.guestDetails || {};
     const bookingDetails = bill?.bill?.bookingDetails || {};
     const billData = bill?.bill || {};
 
+    const resolvedRoomNumber = (() => {
+      const rn = bookingDetails?.roomNumber || bookingDetails?.room_number;
+      if (rn && rn !== "---" && rn !== "N/A" && String(rn).trim() !== "") return rn;
+      const rids = bill?.room_ids || bookingDetails?.room_id || bookingDetails?.room_ids;
+      if (rids) {
+        const arr = Array.isArray(rids) ? rids : [rids];
+        const matched = arr.map((rid) => {
+          const found = rooms?.find((r) => r.room_id === rid || String(r.room_number) === String(rid));
+          return found ? found.room_number : rid;
+        });
+        if (matched.length > 0) return matched.join(", ");
+      }
+      return "N/A";
+    })();
+
+    const resolvedRoomType = (() => {
+      const rt = bookingDetails?.roomType || bookingDetails?.room_type;
+      if (rt && rt !== "---" && rt !== "N/A" && String(rt).trim() !== "") return rt;
+      const rids = bill?.room_ids || bookingDetails?.room_id || bookingDetails?.room_ids;
+      if (rids) {
+        const arr = Array.isArray(rids) ? rids : [rids];
+        const matched = arr.map((rid) => {
+          const found = rooms?.find((r) => r.room_id === rid || String(r.room_number) === String(rid));
+          return found ? found.room_type : "Standard";
+        });
+        if (matched.length > 0) return matched.join(", ");
+      }
+      return "N/A";
+    })();
+
     return {
-      guestName: guestDetails?.guestName,
+      guestName: guestDetails?.guestName || guestDetails?.name || guestDetails?.full_name || "N/A",
       bill_id: bill?.bill_id,
       bookingId: bookingDetails?.bookingId,
-      checkinDate: bookingDetails?.checkIn,
-      checkoutDate: bookingDetails?.checkOut,
-      roomNumber: bookingDetails?.roomNumber,
-      roomType: bookingDetails?.roomType,
+      checkinDate: bookingDetails?.checkIn || bookingDetails?.checkinDate || bookingDetails?.checkin_date,
+      checkoutDate: bookingDetails?.checkOut || bookingDetails?.checkoutDate || bookingDetails?.checkout_date,
+      roomNumber: resolvedRoomNumber,
+      roomType: resolvedRoomType,
       duration: bookingDetails?.numberOfNights,
       no_of_adults: bookingDetails?.no_of_adults || 1,
       no_of_children: bookingDetails?.no_of_children || 0,
       payment_mode: bill?.payment_mode || "N/A",
-      bill: billData,
+      bill: {
+        ...billData,
+        room_ids: bill?.room_ids,
+        bill_id: bill?.bill_id,
+      },
       versionHistory: bill.version_history || [],
       detailedServices: bookingDetails?.detailedServices,
     };
@@ -134,7 +166,10 @@ const GuestHistory = () => {
       (guest.roomType && guest.roomType.toLowerCase().includes(roomTypeFilter.toLowerCase()));
 
     // Advance payment filter
-    const advancePayment = guest.bill?.billingSummary?.partialPayment || 0;
+    const advancePayment =
+      guest.bill?.billingSummary?.partialPayment ||
+      guest.bill?.billingSummary?.advanceReceived ||
+      0;
     const matchesAdvancePayment = advancePaymentFilter === "all" ||
       (advancePaymentFilter === "with" && advancePayment > 0) ||
       (advancePaymentFilter === "without" && advancePayment === 0);
@@ -558,12 +593,12 @@ const GuestHistory = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredGuestHistory?.map((guest) => {
+              {filteredGuestHistory?.map((guest, index) => {
                 console.log("guest 😭😭😭😭😭", guest );
 
                 return (
                   <tr
-                    key={guest.bookingId}
+                    key={guest.bill_id || `${guest.bookingId}_${index}`}
                     className="border-t border-gray-100 hover:bg-gray-50"
                   >
                     <td className="px-2 py-2 whitespace-nowrap max-w-[12rem] truncate">
@@ -597,9 +632,9 @@ const GuestHistory = () => {
                         }`}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
-                      {guest.bill?.billingSummary?.partialPayment > 0 ? (
+                      {(guest.bill?.billingSummary?.partialPayment || guest.bill?.billingSummary?.advanceReceived || 0) > 0 ? (
                         <Badge variant="secondary" className="bg-green-100 text-green-800">
-                          ₹{guest.bill.billingSummary.partialPayment.toFixed(2)}
+                          ₹{(guest.bill?.billingSummary?.partialPayment || guest.bill?.billingSummary?.advanceReceived || 0).toFixed(2)}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-gray-500">

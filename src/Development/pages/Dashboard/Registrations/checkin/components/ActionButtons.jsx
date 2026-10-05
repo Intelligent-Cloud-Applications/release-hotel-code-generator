@@ -28,16 +28,10 @@ const ActionButtons = ({
           e.stopPropagation();
           handleCheckIn(e);
         }}
-        className={`${
-          hasValidationErrors || !isFormValid
-            ? "bg-gray-400 hover:bg-gray-500"
-            : "bg-green-600 hover:bg-green-700"
-        } transition-colors`}
+        className="bg-green-600 hover:bg-green-700 text-white cursor-pointer transition-colors"
         disabled={
           loading ||
-          isSubmitting ||
-          hasValidationErrors ||
-          !isFormValid
+          isSubmitting
         }
         type="button"
       >
