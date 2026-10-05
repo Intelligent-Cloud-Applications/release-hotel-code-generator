@@ -169,6 +169,7 @@ const AppRoutes = () => {
           />
           <Route path="/dashboard/frontdesk/check_in" element={<CheckIn />} />
           <Route path="/dashboard/frontdesk/check_out" element={<CheckOut />} />
+          <Route path="/dashboard/frontdesk/bill" element={<Bill />} />
         </Route>
 
         {/* Registrations */}

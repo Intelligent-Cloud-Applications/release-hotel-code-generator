@@ -50,10 +50,12 @@ const CheckInForm = ({
   nextCheckInNumber,
   nextBillNumber,
   bills = [],
+  guests: propGuests = [],
 }) => {
-  const { companies = [], createCompany } = useAppContext?.() || {
+  const { companies = [], createCompany, guests: contextGuests = [] } = useAppContext?.() || {
     companies: [],
-    createCompany: null
+    createCompany: null,
+    guests: [],
   };
 
   // Auto-create company control
@@ -68,43 +70,110 @@ const CheckInForm = ({
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
   const [createCompanyError, setCreateCompanyError] = useState("");
 
-  // ── Guest auto-suggestion from bills ──
+  // Helpers to sanitize guest data from history/bills
+  const cleanMobileNumber = useCallback((val) => {
+    if (!val) return "";
+    const d = String(val).replace(/\D/g, "");
+    if (d.length === 12 && d.startsWith("91")) return d.slice(2);
+    if (d.length === 11 && d.startsWith("0")) return d.slice(1);
+    if (d.length > 10) return d.slice(-10);
+    return d;
+  }, []);
+
+  const cleanEmail = useCallback((val) => {
+    if (!val) return "";
+    const str = String(val).trim();
+    if (["n/a", "na", "-", "--", "none", "nil", "null", "undefined"].includes(str.toLowerCase())) {
+      return "";
+    }
+    return str;
+  }, []);
+
+  const cleanPincode = useCallback((val) => {
+    if (!val) return "";
+    const str = String(val).trim();
+    if (["n/a", "na", "-", "--", "none", "nil", "null", "undefined"].includes(str.toLowerCase())) {
+      return "";
+    }
+    const match = str.match(/\b\d{6}\b/);
+    if (match) return match[0];
+    const d = str.replace(/\D/g, "");
+    if (d.length === 6) return d;
+    return str;
+  }, []);
+
+  // ── Guest auto-suggestion from bills and existing guest records ──
   const [guestQuery, setGuestQuery] = useState("");
   const [showGuestSuggestions, setShowGuestSuggestions] = useState(false);
   const guestSuggestionRef = useRef(null);
 
-  // Extract unique guests from bills data for auto-suggestion
+  // Extract unique guests from both database guests and bills data for auto-suggestion
   const billGuests = useMemo(() => {
-    if (!Array.isArray(bills) || bills.length === 0) return [];
     const guestMap = new Map();
-    bills.forEach((billWrapper) => {
-      const bill = billWrapper?.bill || billWrapper;
-      const gd = bill?.guestDetails || {};
-      const name = gd.guestName || gd.full_name || gd.guest_name || "";
-      const mobile = gd.mobile || gd.phone || "";
-      if (!name.trim()) return;
-      // Use name+mobile as unique key to de-duplicate
-      const key = `${name.trim().toLowerCase()}_${mobile.trim()}`;
-      if (!guestMap.has(key)) {
-        guestMap.set(key, {
-          full_name: name.trim(),
-          mobile: mobile.trim(),
-          email: gd.email || "",
-          gender: gd.gender || "",
-          id_proof_type: gd.idProofType || gd.id_proof_type || "",
-          id_proof_number: gd.idProofNumber || gd.id_proof_number || "",
-          nationality: gd.nationality || "Indian",
-          address: gd.address || "",
-          city: gd.city || "",
-          state: gd.state || "",
-          country: gd.country || "India",
-          pincode: gd.pinCode || gd.pincode || "",
-          guest_category: gd.guest_category || gd.guestCategory || "Regular",
-        });
-      }
-    });
+
+    const dbGuests = (propGuests && propGuests.length > 0) ? propGuests : (contextGuests || []);
+    if (Array.isArray(dbGuests)) {
+      dbGuests.forEach((g) => {
+        const name = g.full_name || g.guest_name || "";
+        const mobile = g.mobile || g.phone || "";
+        if (!name.trim()) return;
+        const cleanPhone = cleanMobileNumber(mobile);
+        const key = `${name.trim().toLowerCase()}_${cleanPhone}`;
+        if (!guestMap.has(key)) {
+          guestMap.set(key, {
+            guest_id: g.guest_id || g.id || "",
+            full_name: name.trim(),
+            mobile: cleanPhone || (mobile ? String(mobile).trim() : ""),
+            email: cleanEmail(g.email),
+            gender: g.gender || "",
+            id_proof_type: g.id_proof_type || g.idProofType || "",
+            id_proof_number: g.id_proof_number || g.idProofNumber || "",
+            nationality: g.nationality || "Indian",
+            address: g.address || "",
+            city: g.city || "",
+            state: g.state || "",
+            country: g.country || "India",
+            pincode: cleanPincode(g.pincode || g.pinCode),
+            guest_category: g.guest_category || g.guestCategory || "Regular",
+            marital_status: g.marital_status || g.maritalStatus || "Unmarried",
+          });
+        }
+      });
+    }
+
+    if (Array.isArray(bills)) {
+      bills.forEach((billWrapper) => {
+        const bill = billWrapper?.bill || billWrapper;
+        const gd = bill?.guestDetails || {};
+        const name = gd.guestName || gd.full_name || gd.guest_name || "";
+        const mobile = gd.mobile || gd.phone || "";
+        if (!name.trim()) return;
+        const cleanPhone = cleanMobileNumber(mobile);
+        const key = `${name.trim().toLowerCase()}_${cleanPhone}`;
+        if (!guestMap.has(key)) {
+          guestMap.set(key, {
+            guest_id: gd.guest_id || gd.guestId || "",
+            full_name: name.trim(),
+            mobile: cleanPhone || (mobile ? String(mobile).trim() : ""),
+            email: cleanEmail(gd.email),
+            gender: gd.gender || "",
+            id_proof_type: gd.idProofType || gd.id_proof_type || "",
+            id_proof_number: gd.idProofNumber || gd.id_proof_number || "",
+            nationality: gd.nationality || "Indian",
+            address: gd.address || "",
+            city: gd.city || "",
+            state: gd.state || "",
+            country: gd.country || "India",
+            pincode: cleanPincode(gd.pinCode || gd.pincode),
+            guest_category: gd.guest_category || gd.guestCategory || "Regular",
+            marital_status: gd.marital_status || gd.maritalStatus || "Unmarried",
+          });
+        }
+      });
+    }
+
     return Array.from(guestMap.values());
-  }, [bills]);
+  }, [bills, propGuests, contextGuests, cleanMobileNumber, cleanEmail, cleanPincode]);
 
   // Filter guest suggestions based on query
   const filteredGuestSuggestions = useMemo(() => {
@@ -124,21 +193,29 @@ const CheckInForm = ({
     setGuestQuery(guest.full_name);
     setShowGuestSuggestions(false);
 
-    // Auto-fill all guest fields
-    handleInputChange("full_name", guest.full_name);
-    handleInputChange("mobile", guest.mobile);
-    if (guest.email) handleInputChange("email", guest.email);
-    if (guest.gender) handleInputChange("gender", guest.gender);
-    if (guest.id_proof_type) handleInputChange("id_proof_type", guest.id_proof_type);
-    if (guest.id_proof_number) handleInputChange("id_proof_number", guest.id_proof_number);
-    if (guest.nationality) handleInputChange("nationality", guest.nationality);
-    if (guest.address) handleInputChange("address", guest.address);
-    if (guest.city) handleInputChange("city", guest.city);
-    if (guest.state) handleInputChange("state", guest.state);
-    if (guest.country) handleInputChange("country", guest.country);
-    if (guest.pincode) handleInputChange("pincode", guest.pincode);
-    if (guest.guest_category) handleInputChange("guest_category", guest.guest_category);
-  }, [handleInputChange]);
+    const cleanedMobile = cleanMobileNumber(guest.mobile) || guest.mobile || "";
+    const cleanedEmail = cleanEmail(guest.email) || guest.email || "";
+    const cleanedPincode = cleanPincode(guest.pincode) || guest.pincode || "";
+
+    // Auto-fill all guest fields in one batch update
+    handleInputChange({
+      full_name: guest.full_name || "",
+      mobile: cleanedMobile,
+      email: cleanedEmail || "",
+      gender: guest.gender || "Male",
+      id_proof_type: guest.id_proof_type || "",
+      id_proof_number: guest.id_proof_number || "",
+      nationality: guest.nationality || "Indian",
+      address: guest.address || "",
+      city: guest.city || "",
+      state: guest.state || "",
+      country: guest.country || "India",
+      pincode: cleanedPincode || "",
+      guest_category: guest.guest_category || "Regular",
+      marital_status: guest.marital_status || "Unmarried",
+      ...(guest.guest_id ? { guest_id: guest.guest_id } : {}),
+    });
+  }, [handleInputChange, cleanMobileNumber, cleanEmail, cleanPincode]);
 
   // Handle name input change for guest suggestion
   const handleNameInputChange = useCallback((value) => {
@@ -727,7 +804,11 @@ const CheckInForm = ({
                 placeholder="Nationality"
                 value={checkInData.nationality || ""}
                 onChange={(e) => handleInputChange("nationality", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.nationality
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.nationality} />
@@ -742,7 +823,11 @@ const CheckInForm = ({
                 placeholder="Enter full address"
                 value={checkInData.address || ""}
                 onChange={(e) => handleInputChange("address", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.address
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.address} />
@@ -757,7 +842,11 @@ const CheckInForm = ({
                 placeholder="Enter city"
                 value={checkInData.city || ""}
                 onChange={(e) => handleInputChange("city", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.city
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.city} />
@@ -772,7 +861,11 @@ const CheckInForm = ({
                 placeholder="Enter state"
                 value={checkInData.state || ""}
                 onChange={(e) => handleInputChange("state", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.state
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.state} />
@@ -787,7 +880,11 @@ const CheckInForm = ({
                 placeholder="Enter country"
                 value={checkInData.country || ""}
                 onChange={(e) => handleInputChange("country", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.country
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.country} />
@@ -979,7 +1076,11 @@ const CheckInForm = ({
                 onChange={(e) =>
                   handleInputChange("no_of_adults", parseInt(e.target.value) || 0)
                 }
-                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.no_of_adults
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-green-500 focus:ring-green-500"
+                } transition-colors duration-200`}
               />
               <ErrorMessage error={validationErrors.no_of_adults} />
             </div>
@@ -1164,7 +1265,11 @@ const CheckInForm = ({
                   handleInputChange("checkout_date", timestamp);
                 }}
                 min={new Date().toISOString().slice(0, 16)}
-                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.checkout_date
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-green-500 focus:ring-green-500"
+                } transition-colors duration-200`}
               />
               <ErrorMessage error={validationErrors.checkout_date} />
               {numberOfNights > 0 && (
@@ -1185,7 +1290,13 @@ const CheckInForm = ({
 
                   <div className="relative">
                     <Select onValueChange={handleRoomSelection}>
-                      <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                      <SelectTrigger
+                        className={`h-8 text-sm ${
+                          validationErrors.room_id
+                            ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                            : "focus:border-green-500 focus:ring-green-500"
+                        } transition-colors duration-200`}
+                      >
                         <div className="flex items-center justify-between w-full">
                           <span
                             className={

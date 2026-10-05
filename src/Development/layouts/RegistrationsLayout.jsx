@@ -8,17 +8,18 @@ const RegistrationsLayout = () => {
   const navigate = useNavigate();
 
   const topTabs = [
-    { id: "new_booking", label: "New Booking" },
-    { id: "check_in", label: "Check In" },
-    { id: "check_out", label: "Check Out" },
+    { id: "room_list", label: "Room List", path: "/dashboard/frontdesk/room_list" },
+    { id: "new_booking", label: "New Booking", path: "/dashboard/frontdesk/new_booking" },
+    { id: "cancel_booking", label: "Cancel Booking", path: "/dashboard/frontdesk/cancel_booking" },
+    { id: "check_in", label: "Check In", path: "/dashboard/frontdesk/check_in" },
+    { id: "amend_booking", label: "Amend Checkin", path: "/dashboard/frontdesk/amend_booking" },
+    { id: "check_out", label: "Check Out", path: "/dashboard/frontdesk/check_out" },
   ];
 
   useEffect(() => {
     // Set active tab based on current path
-    const path = location.pathname.split("/").pop();
-
-    // Check if the path matches any of the topTabs ids
-    const matchingTab = topTabs.find((tab) => tab.id === path);
+    const path = location.pathname;
+    const matchingTab = topTabs.find((tab) => path.includes(tab.id));
 
     if (matchingTab) {
       setActiveTab(matchingTab.id);
@@ -44,7 +45,7 @@ const RegistrationsLayout = () => {
                 } px-3 sm:px-4 py-2 rounded-md text-sm sm:text-base font-semibold cursor-pointer flex-shrink-0`}
                 onClick={() => {
                   setActiveTab(tab.id);
-                  navigate(tab.id);
+                  navigate(tab.path);
                 }}
               >
                 {tab.label}

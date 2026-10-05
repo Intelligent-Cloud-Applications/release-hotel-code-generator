@@ -9,6 +9,8 @@ import {
   CheckCircle,
   LogOut,
   Building,
+  Calendar,
+  Hotel,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAppContext } from "../../../context/AppContext.jsx";
@@ -51,6 +53,8 @@ const Bill = () => {
     fetchTotalBill,
     guests,
     fetchGuests,
+    fetchBookings,
+    fetchRooms,
     updateBill,
     bookings,
     updateGuest,
@@ -62,6 +66,7 @@ const Bill = () => {
     rooms,
     checkoutGuest,
     createCompany,
+    listTotalBill,
   } = useAppContext();
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
@@ -103,6 +108,9 @@ const Bill = () => {
 
   // New state for split bill functionality
   const [showSplitBill, setShowSplitBill] = useState(false);
+
+  // Partial billing state (multi-room selection)
+  const [selectedTargetRooms, setSelectedTargetRooms] = useState([]);
 
   // Ref to prevent the big useEffect from overwriting bill data during/after a save
   const isSaving = React.useRef(false);
@@ -241,6 +249,29 @@ const Bill = () => {
       grandTotal: billData.finalSummary?.totalAmount || 0,
       balanceDue: billData.billingSummary?.balanceDue || 0,
     };
+  };
+
+  // Handle room toggle for multi-room partial billing
+  const handleToggleTargetRoom = (targetRoomId) => {
+    setSelectedTargetRooms((prev) => {
+      const allRoomIds = (booking?.breakdown?.rooms || []).map((r) => r.room_id);
+      const currentSelection = prev.length > 0 ? prev : allRoomIds;
+      if (currentSelection.includes(targetRoomId)) {
+        if (currentSelection.length <= 1) {
+          toast.warning("At least one room must be selected for the bill");
+          return currentSelection;
+        }
+        return currentSelection.filter((id) => id !== targetRoomId);
+      } else {
+        return [...currentSelection, targetRoomId];
+      }
+    });
+  };
+
+  const handleSelectAllTargetRooms = () => {
+    if (booking?.breakdown?.rooms) {
+      setSelectedTargetRooms(booking.breakdown.rooms.map((r) => r.room_id));
+    }
   };
 
   // Handle checkout button click
@@ -411,10 +442,20 @@ const Bill = () => {
       services: services,
     };
 
+    const activeCheckoutRooms =
+      selectedTargetRooms && selectedTargetRooms.length > 0
+        ? selectedTargetRooms
+        : (booking?.breakdown?.rooms || []).map((r) => r.room_id);
+
+    const isPartial =
+      booking?.breakdown?.rooms &&
+      activeCheckoutRooms.length < booking.breakdown.rooms.length;
+
     const checkoutData = {
       booking_id: booking.breakdown.booking.booking_id,
       guest_id: booking.breakdown.booking.guest_id,
-      room_id: booking.breakdown.rooms.map((r) => r.room_id),
+      room_id: activeCheckoutRooms,
+      target_rooms: activeCheckoutRooms,
       payment_mode: checkoutFormData.payment_mode,
       upi_platform:
         checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
@@ -472,16 +513,46 @@ const Bill = () => {
         }
       }
 
-      toast.success("Guest checked out successfully!");
-      setIsCheckoutModalOpen(false);
-      setCheckoutFormData({
-        payment_mode: "",
-        upi_platform: "",
-        custom_upi_platform: "",
-        received_by_staff_id: userData.cognitoId || "",
-        notes: "",
-      });
-      navigate("/dashboard/frontdesk/check_out");
+      if (isPartial) {
+        const remainingRooms = booking.breakdown.rooms.filter(
+          (r) => !activeCheckoutRooms.includes(r.room_id)
+        );
+        const checkedOutRoomNumbers = booking.breakdown.rooms
+          .filter((r) => activeCheckoutRooms.includes(r.room_id))
+          .map((r) => r.room_number)
+          .join(", ");
+
+        toast.success(
+          `Room ${checkedOutRoomNumbers} checked out & bill settled successfully! Remaining rooms stay checked-in.`
+        );
+        if (typeof fetchBookings === "function") await fetchBookings();
+        if (typeof fetchRooms === "function") await fetchRooms();
+        if (typeof listTotalBill === "function") await listTotalBill();
+        setIsCheckoutModalOpen(false);
+        setCheckoutFormData({
+          payment_mode: "",
+          upi_platform: "",
+          custom_upi_platform: "",
+          received_by_staff_id: userData.cognitoId || "",
+          notes: "",
+        });
+        setSelectedTargetRooms(remainingRooms.map((r) => r.room_id));
+        setForceRefresh((prev) => prev + 1);
+      } else {
+        toast.success("Guest checked out successfully!");
+        if (typeof fetchBookings === "function") await fetchBookings();
+        if (typeof fetchRooms === "function") await fetchRooms();
+        if (typeof listTotalBill === "function") await listTotalBill();
+        setIsCheckoutModalOpen(false);
+        setCheckoutFormData({
+          payment_mode: "",
+          upi_platform: "",
+          custom_upi_platform: "",
+          received_by_staff_id: userData.cognitoId || "",
+          notes: "",
+        });
+        navigate("/dashboard/frontdesk/check_out");
+      }
     } catch (error) {
       console.error("Checkout error:", error);
       toast.error("Failed to checkout guest");
@@ -738,20 +809,49 @@ const Bill = () => {
     fetchBillData();
   }, []);
 
+  // Initialize target rooms from booking rooms
+  useEffect(() => {
+    if (booking?.breakdown?.rooms && booking.breakdown.rooms.length > 0) {
+      setSelectedTargetRooms((prev) => {
+        if (prev.length === 0) {
+          return booking.breakdown.rooms.map((r) => r.room_id);
+        }
+        return prev;
+      });
+    }
+  }, [booking]);
+
   useEffect(() => {
     // Skip rebuild if a save is in progress to prevent overwriting edited values
     if (isSaving.current) return;
 
     if (booking && guests && guests.length > 0) {
+      const allBookingRooms = booking?.breakdown?.rooms || [];
+      const activeRooms =
+        selectedTargetRooms && selectedTargetRooms.length > 0
+          ? allBookingRooms.filter((r) => selectedTargetRooms.includes(r.room_id))
+          : allBookingRooms;
+      const activeRoomIds = new Set(activeRooms.map((r) => String(r.room_id)));
+      const activeRoomNumbers = new Set(
+        activeRooms.map((r) => String(r.room_number))
+      );
+
       // Calculate extra pax charges if present
       let calculatedExtraPaxTotal = 0;
       const extra_pax = bookings?.find(
         (b) => booking?.breakdown?.booking?.booking_id === b.booking_id,
       )?.extra_pax;
       if (extra_pax && Array.isArray(extra_pax)) {
-        calculatedExtraPaxTotal = extra_pax.reduce((total, pax) => {
-          return total + (pax.extra_pax_amount || 0);
-        }, 0);
+        calculatedExtraPaxTotal = extra_pax
+          .filter(
+            (pax) =>
+              !pax.room_id ||
+              activeRoomIds.has(String(pax.room_id)) ||
+              activeRoomNumbers.has(String(pax.room_number))
+          )
+          .reduce((total, pax) => {
+            return total + (pax.extra_pax_amount || 0);
+          }, 0);
       }
       setExtraPaxTotal(calculatedExtraPaxTotal);
 
@@ -834,12 +934,10 @@ const Bill = () => {
             bookingId: booking.breakdown.booking.booking_id,
             bookingType: booking.breakdown.booking.booking_type,
             bookingSource: booking.breakdown.booking.booking_source,
-            roomNumber: booking.breakdown.rooms
+            roomNumber: activeRooms
               .map((room) => room.room_number)
               .join(", "),
-            roomType: booking.breakdown.rooms
-              .map((room) => room.room_type)
-              .join(", "),
+            roomType: [...new Set(activeRooms.map((room) => room.room_type))].join(", "),
             ratePlanId: booking.breakdown.ratePlan.plan_id,
             ratePlanName: booking.breakdown.ratePlan.name,
             ratePlanBaseTariff: booking.breakdown.ratePlan.base_tariff,
@@ -1064,10 +1162,15 @@ const Bill = () => {
 
         // Get all rooms from the booking to ensure we show all rooms for all dates
         const allRooms = booking.breakdown.rooms || [];
+        const targetRoomsForDate = roomsForDate.filter(
+          (r) =>
+            activeRoomIds.has(String(r.room_id)) ||
+            activeRoomNumbers.has(String(r.room_number)),
+        );
 
-        if (roomsForDate.length > 0) {
+        if (targetRoomsForDate.length > 0) {
           // If we have specific room usage data for this date, use it
-          roomEntries = roomsForDate.map((roomUsage) => {
+          roomEntries = targetRoomsForDate.map((roomUsage) => {
             const roomNumber = roomUsage.room_number;
             const roomServices = serviceChargesByRoom[roomNumber] || {};
 
@@ -1161,13 +1264,9 @@ const Bill = () => {
             };
           });
         } else {
-          // If no room usage data for this date, create entries for all rooms
+          // If no room usage data for this date, create entries only for active rooms
           // This ensures we show all dates in the bill, even if grace period excludes them
-          let allRoomsData = [];
-
-          bookingData?.room_id?.map((roomId) => {
-            allRoomsData.push(allRooms.find((r) => r.room_id === roomId));
-          });
+          let allRoomsData = activeRooms;
 
           roomEntries = allRoomsData.map((room) => {
             const roomNumber = room.room_number;
@@ -1277,7 +1376,12 @@ const Bill = () => {
         const currentDate = new Date().toISOString().split("T")[0];
         if (date <= currentDate) {
           Object.keys(serviceChargesByRoom).forEach((roomNumber) => {
-            // Skip rooms that are already processed in roomEntriesz
+            // Skip rooms that are not in active selected rooms
+            if (!activeRoomNumbers.has(String(roomNumber))) {
+              return;
+            }
+
+            // Skip rooms that are already processed in roomEntries
             const alreadyProcessed = roomEntries.some(
               (entry) => entry.roomNumber === roomNumber,
             );
@@ -1410,10 +1514,22 @@ const Bill = () => {
           });
         }
 
+        const isSubset =
+          activeRooms.length < allBookingRooms.length && allBookingRooms.length > 0;
+        const roomRatio = isSubset
+          ? activeRooms.length / allBookingRooms.length
+          : 1;
+
         // Calculate the correct totals based on our calculations
         // Prefer rawBookingData (updated by saves) over old billingSummary values
-        const discountAmount = rawBookingData?.discount ?? (prev.billingSummary?.totalDiscount || 0);
-        const advanceReceived = rawBookingData?.partial_payment_amount ?? (prev.billingSummary?.partialPayment || 0);
+        const rawDiscount =
+          rawBookingData?.discount ?? (prev.billingSummary?.totalDiscount || 0);
+        const rawAdvance =
+          rawBookingData?.partial_payment_amount ??
+          (prev.billingSummary?.partialPayment || 0);
+
+        const discountAmount = Math.round(rawDiscount * roomRatio);
+        const advanceReceived = Math.round(rawAdvance * roomRatio);
 
         // Calculate subtotal: room charges + service charges - discount
         const calculatedSubTotal =
@@ -1434,7 +1550,7 @@ const Bill = () => {
         const calculatedGrandTotal =
           calculatedSubTotal + totalTaxAmountOnDiscounted;
 
-        // Calculate balance due: grand total (same as grand total since no advance payment)
+        // Calculate balance due: grand total - advance payment
         const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
         return {
@@ -1445,6 +1561,8 @@ const Bill = () => {
             totalRoomServices: totalRoomCharges,
             totalServiceCharges: totalServiceCharges,
             extraPaxCharges: calculatedExtraPaxTotal,
+            totalDiscount: discountAmount,
+            partialPayment: advanceReceived,
             // Use calculated values for consistency
             subTotal: calculatedSubTotal,
             cgstAmount: cgstAmountOnDiscounted, // Use CGST amount calculated on discounted room charges
@@ -1472,7 +1590,7 @@ const Bill = () => {
         formatNumber(billData?.billingSummary?.totalRoomServices || 0),
       );
     }
-  }, [booking, guests, companies, forceRefresh, bookings]);
+  }, [booking, guests, companies, forceRefresh, bookings, selectedTargetRooms]);
 
   useEffect(() => {
     setGuestData();
@@ -2765,6 +2883,79 @@ const Bill = () => {
 
       {/* Bill Content - This section will be printed */}
       <div className=" max-w-5xl mx-auto p-6 print:p-0 print:max-w-none print:m-0">
+        {/* Multi-Room Billing Controls (Screen Only) */}
+        {booking?.breakdown?.rooms && booking.breakdown.rooms.length > 1 && (
+          <div className="print:hidden mb-4 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3 mb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Hotel className="h-5 w-5 text-blue-600" />
+                  <h3 className="font-semibold text-gray-800 text-sm">
+                    Multi-Room Booking: Select Room(s) to Bill & Settle
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Uncheck any room to generate and settle the bill for specific room(s) only. Unselected rooms remain checked-in.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedTargetRooms.length < booking.breakdown.rooms.length && (
+                  <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full border border-amber-300">
+                    Partial Bill ({selectedTargetRooms.length} of {booking.breakdown.rooms.length} rooms)
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSelectAllTargetRooms}
+                  className="text-xs h-7"
+                >
+                  Select All Rooms
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {booking.breakdown.rooms.map((room) => {
+                const isChecked = selectedTargetRooms.includes(room.room_id);
+                return (
+                  <label
+                    key={room.room_id}
+                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                      isChecked
+                        ? "bg-blue-50/70 border-blue-400 text-blue-900 shadow-xs"
+                        : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleTargetRoom(room.room_id)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div>
+                        <div className="font-semibold text-sm">
+                          Room {room.room_number}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {room.room_type}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-medium text-gray-700">
+                        ₹{(room.tariff || room.baseTariff || 0).toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-gray-400">/ night</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div
           id="printable-bill"
           className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
