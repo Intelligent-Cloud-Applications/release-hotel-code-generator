@@ -1531,12 +1531,15 @@ const Bill = () => {
         const discountAmount = Math.round(rawDiscount * roomRatio);
         const advanceReceived = Math.round(rawAdvance * roomRatio);
 
-        // Calculate subtotal: room charges + service charges - discount
+        const effectiveTariff =
+          totalRoomCharges + totalRatePlanFromBreakdown + totalExtraPaxFromBreakdown;
+
+        // Calculate subtotal: effective room charges + service charges - discount
         const calculatedSubTotal =
-          totalRoomCharges + totalServiceCharges - discountAmount;
+          effectiveTariff + totalServiceCharges - discountAmount;
 
         // Calculate tax on the discounted amount (room charges after discount)
-        const discountedRoomCharges = totalRoomCharges - discountAmount;
+        const discountedRoomCharges = Math.max(0, effectiveTariff - discountAmount);
         const cgstAmountOnDiscounted = Math.round(
           (discountedRoomCharges * 2.5) / 100,
         );
@@ -1546,7 +1549,7 @@ const Bill = () => {
         const totalTaxAmountOnDiscounted =
           cgstAmountOnDiscounted + sgstAmountOnDiscounted;
 
-        // Calculate grand total: subtotal + tax on discounted amount - advance payment
+        // Calculate grand total: subtotal + tax on discounted amount
         const calculatedGrandTotal =
           calculatedSubTotal + totalTaxAmountOnDiscounted;
 
@@ -1558,7 +1561,7 @@ const Bill = () => {
           serviceChargesByDate: dailyCharges,
           billingSummary: {
             ...prev.billingSummary,
-            totalRoomServices: totalRoomCharges,
+            totalRoomServices: effectiveTariff,
             totalServiceCharges: totalServiceCharges,
             extraPaxCharges: calculatedExtraPaxTotal,
             totalDiscount: discountAmount,
@@ -1669,12 +1672,15 @@ const Bill = () => {
       const discountAmount = billData?.billingSummary?.totalDiscount || 0;
       const advanceReceived = billData?.billingSummary?.partialPayment || 0;
 
-      // Calculate subtotal: room charges + service charges - discount
+      // Include rate plan base tariff and extra pax in effective tariff
+      const effectiveTariff = totalRoomCharges + totalRatePlanFromBreakdown + totalExtraPaxFromBreakdown;
+
+      // Calculate subtotal: effective room charges + service charges - discount
       const calculatedSubTotal =
-        totalRoomCharges + totalServiceCharges - discountAmount;
+        effectiveTariff + totalServiceCharges - discountAmount;
 
       // Calculate tax on the discounted amount (room charges after discount)
-      const discountedRoomCharges = totalRoomCharges - discountAmount;
+      const discountedRoomCharges = Math.max(0, effectiveTariff - discountAmount);
       const cgstAmountOnDiscounted = Math.round(
         (discountedRoomCharges * 2.5) / 100,
       );
@@ -1684,31 +1690,31 @@ const Bill = () => {
       const totalTaxAmountOnDiscounted =
         cgstAmountOnDiscounted + sgstAmountOnDiscounted;
 
-      // Calculate grand total: subtotal + tax on discounted amount - advance payment
+      // Calculate grand total: subtotal + tax on discounted amount
       const calculatedGrandTotal =
         calculatedSubTotal + totalTaxAmountOnDiscounted;
 
-      // Calculate balance due: grand total (same as grand total since no advance payment)
+      // Calculate balance due: grand total - advance payment
       const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
       setBillData((prev) => ({
         ...prev,
         billingSummary: {
           ...prev.billingSummary,
-          totalRoomServices: totalRoomCharges,
+          totalRoomServices: effectiveTariff,
           totalServiceCharges: totalServiceCharges,
           // Use calculated values for consistency
           subTotal: calculatedSubTotal,
-          cgstAmount: cgstAmountOnDiscounted, // Use CGST amount calculated on discounted room charges
-          sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
-          totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
+          cgstAmount: cgstAmountOnDiscounted,
+          sgstAmount: sgstAmountOnDiscounted,
+          totalTaxAmount: totalTaxAmountOnDiscounted,
           balanceDue: calculatedBalanceDue,
           grandTotal: calculatedGrandTotal,
         },
         finalSummary: {
           ...prev.finalSummary,
           // Use calculated values for consistency
-          amountInWords: numberToWords(calculatedGrandTotal),
+          amountInWords: numberToWords(Math.max(0, calculatedGrandTotal)),
           totalAmount: calculatedGrandTotal,
         },
       }));
@@ -2098,12 +2104,14 @@ const Bill = () => {
     const discountAmount = discountOverride !== undefined ? discountOverride : (billData?.billingSummary?.totalDiscount || 0);
     const advanceReceived = advancePaymentOverride !== undefined ? advancePaymentOverride : (billData?.billingSummary?.partialPayment || 0);
 
-    // Calculate subtotal: room charges + service charges - discount
+    const effectiveTariff = totalRoomCharges + totalRatePlanFromBreakdown + totalExtraPaxFromBreakdown;
+
+    // Calculate subtotal: effective room charges + service charges - discount
     const calculatedSubTotal =
-      totalRoomCharges + totalServiceCharges - discountAmount;
+      effectiveTariff + totalServiceCharges - discountAmount;
 
     // Calculate tax on the discounted amount (room charges after discount)
-    const discountedRoomCharges = totalRoomCharges - discountAmount;
+    const discountedRoomCharges = Math.max(0, effectiveTariff - discountAmount);
     const cgstAmountOnDiscounted = Math.round(
       (discountedRoomCharges * 2.5) / 100,
     );
@@ -2113,11 +2121,11 @@ const Bill = () => {
     const totalTaxAmountOnDiscounted =
       cgstAmountOnDiscounted + sgstAmountOnDiscounted;
 
-    // Calculate grand total: subtotal + tax on discounted amount - advance payment
+    // Calculate grand total: subtotal + tax on discounted amount
     const calculatedGrandTotal =
       calculatedSubTotal + totalTaxAmountOnDiscounted;
 
-    // Calculate balance due: grand total (same as grand total since no advance payment)
+    // Calculate balance due: grand total - advance payment
     const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
     setBillData((prev) => ({
@@ -2126,20 +2134,20 @@ const Bill = () => {
         ...prev.billingSummary,
         totalDiscount: discountAmount,
         partialPayment: advanceReceived,
-        totalRoomServices: totalRoomCharges,
+        totalRoomServices: effectiveTariff,
         totalServiceCharges: totalServiceCharges,
         // Use calculated values for consistency
         subTotal: calculatedSubTotal,
-        cgstAmount: cgstAmountOnDiscounted, // Use CGST amount calculated on discounted room charges
-        sgstAmount: sgstAmountOnDiscounted, // Use SGST amount calculated on discounted room charges
-        totalTaxAmount: totalTaxAmountOnDiscounted, // Use total tax amount calculated on discounted room charges
+        cgstAmount: cgstAmountOnDiscounted,
+        sgstAmount: sgstAmountOnDiscounted,
+        totalTaxAmount: totalTaxAmountOnDiscounted,
         balanceDue: calculatedBalanceDue,
         grandTotal: calculatedGrandTotal,
       },
       finalSummary: {
         ...prev.finalSummary,
         // Use calculated values for consistency
-        amountInWords: numberToWords(calculatedGrandTotal),
+        amountInWords: numberToWords(Math.max(0, calculatedGrandTotal)),
         totalAmount: calculatedGrandTotal,
       },
     }));
@@ -2223,12 +2231,15 @@ const Bill = () => {
     const discountAmount = billData?.billingSummary?.totalDiscount || 0;
     const advanceReceived = billData?.billingSummary?.partialPayment || 0;
 
-    // Calculate subtotal: room charges + service charges - discount
+    const effectiveTariff =
+      totalRoomCharges + totalRatePlanFromBreakdown + totalExtraPaxFromBreakdown;
+
+    // Calculate subtotal: effective room charges + service charges - discount
     const calculatedSubTotal =
-      totalRoomCharges + totalServiceCharges - discountAmount;
+      effectiveTariff + totalServiceCharges - discountAmount;
 
     // Calculate tax on the discounted amount (room charges after discount)
-    const discountedRoomCharges = totalRoomCharges - discountAmount;
+    const discountedRoomCharges = Math.max(0, effectiveTariff - discountAmount);
     const cgstAmountOnDiscounted = Math.round(
       (discountedRoomCharges * 2.5) / 100,
     );
@@ -2238,18 +2249,18 @@ const Bill = () => {
     const totalTaxAmountOnDiscounted =
       cgstAmountOnDiscounted + sgstAmountOnDiscounted;
 
-    // Calculate grand total: subtotal + tax on discounted amount - advance payment
+    // Calculate grand total: subtotal + tax on discounted amount
     const calculatedGrandTotal =
       calculatedSubTotal + totalTaxAmountOnDiscounted;
 
-    // Calculate balance due: grand total (same as grand total since no advance payment)
+    // Calculate balance due: grand total - advance payment
     const calculatedBalanceDue = calculatedGrandTotal - advanceReceived;
 
     setBillData((prev) => ({
       ...prev,
       billingSummary: {
         ...prev.billingSummary,
-        totalRoomServices: totalRoomCharges,
+        totalRoomServices: effectiveTariff,
         totalServiceCharges: totalServiceCharges,
         // Use calculated values for consistency
         subTotal: calculatedSubTotal,

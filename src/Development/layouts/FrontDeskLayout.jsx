@@ -15,7 +15,6 @@ const FrontDeskLayout = () => {
     { id: "room_list", label: "Room List" },
     { id: "new_booking", label: "New Booking" },
     { id: "cancel_booking", label: "Cancel Booking" },
-    { id: "availability", label: "Room Availability" },
     { id: "check_in", label: "Check In" },
     { id: "amend_booking", label: "Amend Checkin" },
     { id: "check_out", label: "Check Out" },

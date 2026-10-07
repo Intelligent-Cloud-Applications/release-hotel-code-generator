@@ -173,11 +173,11 @@ const AppRoutes = () => {
           <Route path="/dashboard/frontdesk/bill" element={<Bill />} />
           <Route
             path="/dashboard/frontdesk/availability"
-            element={<AvailabilityForecaster />}
+            element={<Navigate to="/dashboard/frontdesk/room_list" replace />}
           />
           <Route
             path="/dashboard/frontdesk/forecaster"
-            element={<AvailabilityForecaster />}
+            element={<Navigate to="/dashboard/frontdesk/room_list" replace />}
           />
         </Route>
 

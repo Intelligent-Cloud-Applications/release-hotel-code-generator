@@ -11,7 +11,6 @@ const RegistrationsLayout = () => {
     { id: "room_list", label: "Room List", path: "/dashboard/frontdesk/room_list" },
     { id: "new_booking", label: "New Booking", path: "/dashboard/frontdesk/new_booking" },
     { id: "cancel_booking", label: "Cancel Booking", path: "/dashboard/frontdesk/cancel_booking" },
-    { id: "availability", label: "Room Availability", path: "/dashboard/frontdesk/availability" },
     { id: "check_in", label: "Check In", path: "/dashboard/frontdesk/check_in" },
     { id: "amend_booking", label: "Amend Checkin", path: "/dashboard/frontdesk/amend_booking" },
     { id: "check_out", label: "Check Out", path: "/dashboard/frontdesk/check_out" },

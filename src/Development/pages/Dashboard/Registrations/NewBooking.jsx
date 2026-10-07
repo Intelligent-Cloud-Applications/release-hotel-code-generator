@@ -765,16 +765,6 @@ const NewBooking = () => {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50"
-                onClick={() => navigate("/dashboard/frontdesk/availability")}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Room Availability</span>
-              </Button>
               <RefreshButton
                 onRefresh={handleRefresh}
                 loading={refreshing}

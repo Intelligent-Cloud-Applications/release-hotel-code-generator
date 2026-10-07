@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
 import { useNavigate, useLocation } from "react-router";
-import { Wifi, RefreshCw, AlertCircle, Loader2, Filter, TrendingUp, Calendar } from "lucide-react";
+import { Wifi, RefreshCw, AlertCircle, Calendar, User, Phone, Mail, Clock, Bed, X } from "lucide-react";
 
 import VacantIcon from "../../../assets/Icons/vacant-svg.svg";
 import ReservedIcon from "../../../assets/Icons/rederved-svg.svg";
@@ -16,36 +16,214 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../../../components/ui/dialog.js";
 
 const RoomList = () => {
-  const { rooms, fetchRooms, error } = useAppContext();
+  const { rooms, fetchRooms, bookings = [], fetchBookings, guests = [], fetchGuests, error } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [pageLoading, setPageLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [dataFetched, setDataFetched] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedBookingModal, setSelectedBookingModal] = useState(null);
+
+  // Date selection directly in Room List top bar (local date to prevent timezone shift)
+  const formatLocalDate = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+  const todayStr = useMemo(() => formatLocalDate(new Date()), []);
+  const tomorrowStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return formatLocalDate(d);
+  }, []);
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const isToday = selectedDate === todayStr;
+
+  const normalizeDate = (d) => {
+    if (!d) return 0;
+    if (typeof d === "string") {
+      const trimmed = d.trim();
+      if (!trimmed.includes("T") && !trimmed.includes("Z")) {
+        const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+        if (dmyMatch) {
+          const day = parseInt(dmyMatch[1], 10);
+          const month = parseInt(dmyMatch[2], 10) - 1;
+          const year = parseInt(dmyMatch[3], 10);
+          return new Date(year, month, day, 0, 0, 0, 0).getTime();
+        }
+        const ymdMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+        if (ymdMatch) {
+          const year = parseInt(ymdMatch[1], 10);
+          const month = parseInt(ymdMatch[2], 10) - 1;
+          const day = parseInt(ymdMatch[3], 10);
+          return new Date(year, month, day, 0, 0, 0, 0).getTime();
+        }
+      }
+    }
+    let num = typeof d === "string" && !isNaN(Number(d)) ? Number(d) : d;
+    if (typeof num === "number" && num > 0 && num < 10000000000) {
+      num = num * 1000;
+    }
+    const dateObj = new Date(num);
+    if (isNaN(dateObj.getTime())) return 0;
+    return new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 0, 0, 0, 0).getTime();
+  };
+
+  const selectedDayTs = useMemo(() => normalizeDate(selectedDate), [selectedDate]);
+
+  const getGuestDetails = (booking) => {
+    if (!booking) return {};
+    if (booking.full_name) {
+      return {
+        full_name: booking.full_name,
+        mobile: booking.mobile,
+        email: booking.email,
+        company_name: booking.company_name,
+      };
+    }
+    const guestObj = (guests || []).find(
+      (g) =>
+        g.guest_id === booking.guest_id ||
+        g.id === booking.guest_id ||
+        g._id === booking.guest_id
+    );
+    return guestObj || {};
+  };
+
+  const isBookingActiveOnDate = (b, targetDayTs) => {
+    if (!b || !targetDayTs) return false;
+    const st = String(b.status || "").toLowerCase();
+    if (st.includes("cancel")) return false;
+    const cin = normalizeDate(b.checkin_date);
+    const cout = normalizeDate(b.checkout_date);
+    if (!cin) return false;
+    if (!cout || cin === cout) return targetDayTs === cin;
+    return targetDayTs >= cin && targetDayTs <= cout;
+  };
+
+  const doesBookingMatchRoom = (b, room) => {
+    if (!b || !room) return false;
+    const targetId = String(room.room_id || "").toLowerCase().trim();
+    const targetNum = String(room.room_number || "").toLowerCase().trim();
+
+    const checkValue = (val) => {
+      if (val === undefined || val === null || val === "" || val === "none") return false;
+      if (Array.isArray(val)) return val.some(checkValue);
+      if (typeof val === "object") {
+        return (
+          checkValue(val.room_id) ||
+          checkValue(val.room_number) ||
+          checkValue(val.id) ||
+          checkValue(val.number)
+        );
+      }
+      const str = String(val).toLowerCase().trim();
+      return (targetId && str === targetId) || (targetNum && str === targetNum);
+    };
+
+    return (
+      checkValue(b.room_id) ||
+      checkValue(b.room_number) ||
+      checkValue(b.room_numbers) ||
+      checkValue(b.roomNumber) ||
+      checkValue(b.rooms_config) ||
+      checkValue(b.rooms) ||
+      checkValue(b.allocated_room) ||
+      checkValue(b.allocated_rooms)
+    );
+  };
+
+  // Map each room to its active booking on the selected date
+  const roomOccupancyMap = useMemo(() => {
+    const activeBookings = (bookings || []).filter((b) =>
+      isBookingActiveOnDate(b, selectedDayTs)
+    );
+
+    const map = {};
+    const assignedBookingIds = new Set();
+
+    // 1. Explicit room matches (room_id, room_number, rooms_config, rooms)
+    (rooms || []).forEach((room) => {
+      const matchedBooking = activeBookings.find((b) => doesBookingMatchRoom(b, room));
+
+      if (matchedBooking) {
+        assignedBookingIds.add(matchedBooking.booking_id);
+        const guest = getGuestDetails(matchedBooking);
+        map[room.room_id] = {
+          booking: matchedBooking,
+          guestName:
+            guest.full_name ||
+            matchedBooking.full_name ||
+            matchedBooking.guest_name ||
+            "Guest",
+          guestMobile: guest.mobile || matchedBooking.mobile || "",
+          guestEmail: guest.email || matchedBooking.email || "",
+          status: matchedBooking.status || "Reserved",
+          isExplicit: true,
+        };
+      }
+    });
+
+    // 2. Unallocated bookings matching room category/type
+    const unassigned = activeBookings.filter(
+      (b) => !assignedBookingIds.has(b.booking_id)
+    );
+    const unassignedRooms = (rooms || []).filter((r) => !map[r.room_id]);
+
+    unassigned.forEach((b) => {
+      const bCat = (b.room_category || b.room_type || "").trim().toLowerCase();
+      const candidateRoom = unassignedRooms.find(
+        (r) =>
+          !map[r.room_id] &&
+          (r.room_type || "").trim().toLowerCase() === bCat
+      );
+      if (candidateRoom) {
+        const guest = getGuestDetails(b);
+        map[candidateRoom.room_id] = {
+          booking: b,
+          guestName:
+            guest.full_name ||
+            b.full_name ||
+            b.guest_name ||
+            "Guest",
+          guestMobile: guest.mobile || b.mobile || "",
+          guestEmail: guest.email || b.email || "",
+          status: b.status || "Reserved",
+          isExplicit: false,
+        };
+      }
+    });
+
+    return map;
+  }, [rooms, bookings, guests, selectedDayTs]);
 
   useEffect(() => {
     const fetchData = async () => {
-      try { 
-        console.log('RoomList: Starting to fetch rooms data...');
+      try {
         setDataFetched(false);
         setInitialLoad(true);
-        
-        // Fetch rooms data
+
         await fetchRooms();
-        
-        console.log('RoomList: Rooms data fetched successfully');
-        
-        // Add a small delay to make skeleton loading visible (remove in production)
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Mark data as fetched and initial load as complete
+        if (fetchBookings) await fetchBookings();
+        if (fetchGuests) await fetchGuests();
+
+        await new Promise((resolve) => setTimeout(resolve, 600));
+
         setDataFetched(true);
         setInitialLoad(false);
-      } catch (error) {
-        console.error("Error fetching data:", error);
+      } catch (err) {
+        console.error("Error fetching data:", err);
         setDataFetched(true);
         setInitialLoad(false);
       }
@@ -59,14 +237,16 @@ const RoomList = () => {
       setPageLoading(true);
       setDataFetched(false);
       setInitialLoad(true);
-      
+
       await fetchRooms();
-      
+      if (fetchBookings) await fetchBookings();
+      if (fetchGuests) await fetchGuests();
+
       setDataFetched(true);
       setInitialLoad(false);
       setPageLoading(false);
-    } catch (error) {
-      console.error("Error refreshing data:", error);
+    } catch (err) {
+      console.error("Error refreshing data:", err);
       setDataFetched(true);
       setInitialLoad(false);
       setPageLoading(false);
@@ -74,20 +254,28 @@ const RoomList = () => {
   };
 
   const getRoomStatus = (room) => {
-    return room.status;
+    if (isToday) {
+      return room.status;
+    }
+    const bookingInfo = roomOccupancyMap[room.room_id];
+    if (bookingInfo) {
+      return bookingInfo.status === "Checked-in" ? "Occupied" : "Reserved";
+    }
+    return "Vacant";
   };
 
   // Filter and sort rooms based on selected status and room number
   const filteredAndSortedRooms = rooms
+    .map((room) => ({
+      ...room,
+      status: getRoomStatus(room),
+      bookingInfo: roomOccupancyMap[room.room_id] || null,
+    }))
     .filter((room) => {
       if (statusFilter === "all") return true;
-      const currentStatus = getRoomStatus(room);
-      return currentStatus === statusFilter;
+      return room.status === statusFilter;
     })
-    .sort((a, b) => {
-      // Sort by room number (treating as numbers for proper numeric sorting)
-      return parseInt(a.room_number) - parseInt(b.room_number);
-    });
+    .sort((a, b) => parseInt(a.room_number) - parseInt(b.room_number));
 
   // Get room counts for each status
   const getRoomCounts = () => {
@@ -114,11 +302,11 @@ const RoomList = () => {
 
   return (
     <>
-      {/* Header with refresh button */}
-      <div className="flex items-center justify-between mb-4 px-2">
+      {/* Header with date selector, filter, and refresh */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4 px-2">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-gray-800">Rooms</h2>
-          
+
           {/* Online indicator */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 text-green-600">
@@ -127,14 +315,49 @@ const RoomList = () => {
             </div>
           </div>
         </div>
-        
+
         {/* Action Buttons */}
-        <div className="flex items-center gap-4 mb-4">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Date Selector */}
+          <div className="flex items-center gap-1.5 border border-gray-300 rounded-md px-2.5 py-1 bg-white h-9 text-sm shadow-2xs">
+            <Calendar className="h-4 w-4 text-gray-500" />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="text-sm border-0 bg-transparent focus:outline-none text-gray-700 cursor-pointer"
+              title="Filter room status and view bookings by date"
+            />
+            <button
+              type="button"
+              onClick={() => setSelectedDate(todayStr)}
+              className={`text-xs px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
+                isToday
+                  ? "bg-gray-800 text-white"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+              title="View today's rooms"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(tomorrowStr)}
+              className={`text-xs px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
+                selectedDate === tomorrowStr
+                  ? "bg-purple-600 text-white"
+                  : "text-purple-700 hover:bg-purple-50"
+              }`}
+              title="View tomorrow's bookings"
+            >
+              Tomorrow
+            </button>
+          </div>
+
           {/* Status Filter */}
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-600" />
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px] h-8 text-sm">
+              <SelectTrigger className="w-[180px] h-9">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -143,27 +366,22 @@ const RoomList = () => {
                 <SelectItem value="Reserved">Reserved ({roomCounts.Reserved})</SelectItem>
                 <SelectItem value="Occupied">Occupied ({roomCounts.Occupied})</SelectItem>
                 <SelectItem value="Dirty">Dirty ({roomCounts.Dirty})</SelectItem>
-                <SelectItem value="Under Maintenance">Maintenance ({roomCounts["Under Maintenance"]})</SelectItem>
+                <SelectItem value="Under Maintenance">
+                  Maintenance ({roomCounts["Under Maintenance"]})
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
-          
+
           <Button
             onClick={handleRefresh}
             disabled={pageLoading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 h-9"
           >
-            <RefreshCw className={`h-4 w-4 ${pageLoading ? 'animate-spin' : ''}`} />
-            {pageLoading ? 'Refreshing...' : 'Refresh'}
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() => navigate("/dashboard/frontdesk/availability")}
-            className="flex items-center gap-2 text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
-          >
-            <Calendar className="h-4 w-4" />
-            <span>Room Availability</span>
+            <RefreshCw
+              className={`h-4 w-4 ${pageLoading ? "animate-spin" : ""}`}
+            />
+            {pageLoading ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
       </div>
@@ -175,7 +393,9 @@ const RoomList = () => {
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-red-800 mb-1">Error Loading Rooms</h4>
+                <h4 className="text-sm font-medium text-red-800 mb-1">
+                  Error Loading Rooms
+                </h4>
                 <p className="text-sm text-red-700 mb-3">{error}</p>
                 <div className="flex gap-2">
                   <button
@@ -191,14 +411,15 @@ const RoomList = () => {
         </div>
       )}
 
-      {/* Only show loading spinner for refresh, not initial load */}
+      {/* Refreshing loader */}
       {pageLoading && (
         <div className="flex items-center justify-center py-4">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
           <span className="ml-2 text-sm text-gray-600">Refreshing rooms...</span>
         </div>
       )}
-      
+
+      {/* Rooms Grid */}
       <div>
         <div
           className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 max-h-[calc(100vh-16rem)] overflow-y-auto px-2 custom-scrollbar"
@@ -207,8 +428,9 @@ const RoomList = () => {
             scrollbarColor: "#9ca3af #f3f4f6",
           }}
         >
-          <style dangerouslySetInnerHTML={{
-            __html: `
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
               .custom-scrollbar::-webkit-scrollbar {
                 width: 8px;
               }
@@ -223,58 +445,90 @@ const RoomList = () => {
               .custom-scrollbar::-webkit-scrollbar-thumb:hover {
                 background: #6b7280;
               }
-            `
-          }} />
+            `,
+            }}
+          />
           {filteredAndSortedRooms.map((room) => (
-            <RoomCard 
-              key={room.room_id} 
-              room={room} 
+            <RoomCard
+              key={room.room_id}
+              room={room}
+              bookingInfo={room.bookingInfo}
               isLoading={initialLoad}
-              onDoubleClick={(roomId) => {
-                // Find the room to verify its status
-                const clickedRoom = rooms.find(r => 
-                  r.room_id === roomId || 
-                  String(r.room_id) === String(roomId)
+              onClick={(roomId) => {
+                const clickedRoom = rooms.find(
+                  (r) =>
+                    r.room_id === roomId || String(r.room_id) === String(roomId)
                 );
-                
-                if (clickedRoom && (clickedRoom.status === "Vacant" || clickedRoom.status === "Clean")) {
-                  // Navigate to check-in page with room_id parameter
-                  // Determine the correct check-in route based on current location
-                  const isFrontDesk = location.pathname.includes('/frontdesk');
-                  const checkInPath = isFrontDesk 
-                    ? `/dashboard/frontdesk/check_in?room_id=${roomId}`
-                    : `/dashboard/registrations/check_in?room_id=${roomId}`;
-                  navigate(checkInPath);
-                } else if (clickedRoom) {
-                  // Room is not vacant/clean, show a message (optional)
-                  console.log(`Room ${clickedRoom.room_number} is ${clickedRoom.status}, cannot check-in`);
+                const info = roomOccupancyMap[roomId];
+                if (info && info.booking) {
+                  setSelectedBookingModal({
+                    room: clickedRoom || room,
+                    bookingInfo: info,
+                  });
+                }
+              }}
+              onDoubleClick={(roomId) => {
+                const clickedRoom = rooms.find(
+                  (r) =>
+                    r.room_id === roomId || String(r.room_id) === String(roomId)
+                );
+                const currentStatus = getRoomStatus(clickedRoom || room);
+                const info = roomOccupancyMap[roomId];
+
+                if (info && info.booking) {
+                  setSelectedBookingModal({
+                    room: clickedRoom || room,
+                    bookingInfo: info,
+                  });
+                } else if (
+                  clickedRoom &&
+                  (currentStatus === "Vacant" || currentStatus === "Clean")
+                ) {
+                  if (isToday) {
+                    const isFrontDesk = location.pathname.includes("/frontdesk");
+                    const checkInPath = isFrontDesk
+                      ? `/dashboard/frontdesk/check_in?room_id=${roomId}`
+                      : `/dashboard/registrations/check_in?room_id=${roomId}`;
+                    navigate(checkInPath);
+                  } else {
+                    navigate(
+                      `/dashboard/frontdesk/new_booking?checkin_date=${selectedDayTs}&room_number=${clickedRoom.room_number}`
+                    );
+                  }
                 }
               }}
             />
           ))}
         </div>
-        
-        {/* No rooms message */}
-        {filteredAndSortedRooms.length === 0 && !pageLoading && dataFetched && !initialLoad && (
-          <div className="text-center py-8 text-gray-500">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-            <p className="text-lg font-medium">
-              {rooms.length === 0 ? "No rooms found" : `No ${statusFilter.toLowerCase()} rooms found`}
-            </p>
-            <p className="text-sm">
-              {rooms.length === 0 
-                ? "No rooms are currently available."
-                : `No rooms with "${statusFilter}" status are currently available.`
-              }
-            </p>
-          </div>
-        )}
 
-        {/* Initial loading state - show skeleton rooms */}
+        {/* No rooms message */}
+        {filteredAndSortedRooms.length === 0 &&
+          !pageLoading &&
+          dataFetched &&
+          !initialLoad && (
+            <div className="text-center py-8 text-gray-500">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p className="text-lg font-medium">
+                {rooms.length === 0
+                  ? "No rooms found"
+                  : `No ${statusFilter.toLowerCase()} rooms found`}
+              </p>
+              <p className="text-sm">
+                {rooms.length === 0
+                  ? "No rooms are currently available."
+                  : `No rooms with "${statusFilter}" status are currently available.`}
+              </p>
+            </div>
+          )}
+
+        {/* Skeleton rooms */}
         {rooms.length === 0 && initialLoad && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
             {Array.from({ length: 8 }).map((_, index) => (
-              <div key={index} className="bg-gray-200 h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-300 rounded-lg p-1 sm:p-2 animate-pulse">
+              <div
+                key={index}
+                className="bg-gray-200 h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-300 rounded-lg p-1 sm:p-2 animate-pulse"
+              >
                 <div className="h-full flex flex-col justify-between">
                   <div className="w-6 h-6 bg-gray-300 rounded-full ml-auto"></div>
                   <div className="space-y-2">
@@ -288,17 +542,149 @@ const RoomList = () => {
           </div>
         )}
       </div>
+
+      {/* Booking Details Modal on click */}
+      {selectedBookingModal && (
+        <Dialog
+          open={Boolean(selectedBookingModal)}
+          onOpenChange={(open) => !open && setSelectedBookingModal(null)}
+        >
+          <DialogContent className="max-w-md bg-white p-6 rounded-lg shadow-xl">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold flex items-center justify-between">
+                <span>
+                  Room {selectedBookingModal.room.room_number} ({selectedBookingModal.room.room_type})
+                </span>
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                    selectedBookingModal.bookingInfo.status === "Occupied" ||
+                    selectedBookingModal.bookingInfo.status === "Checked-in"
+                      ? "bg-indigo-100 text-indigo-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {selectedBookingModal.bookingInfo.status}
+                </span>
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3 py-3 text-sm border-t border-b my-2">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 flex items-center gap-1.5">
+                  <User className="h-4 w-4 text-gray-400" /> Guest Name:
+                </span>
+                <span className="font-semibold text-gray-800">
+                  {selectedBookingModal.bookingInfo.guestName}
+                </span>
+              </div>
+
+              {selectedBookingModal.bookingInfo.guestMobile && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 flex items-center gap-1.5">
+                    <Phone className="h-4 w-4 text-gray-400" /> Phone:
+                  </span>
+                  <span className="font-medium text-gray-800">
+                    {selectedBookingModal.bookingInfo.guestMobile}
+                  </span>
+                </div>
+              )}
+
+              {selectedBookingModal.bookingInfo.guestEmail && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 flex items-center gap-1.5">
+                    <Mail className="h-4 w-4 text-gray-400" /> Email:
+                  </span>
+                  <span className="font-medium text-gray-800">
+                    {selectedBookingModal.bookingInfo.guestEmail}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-gray-400" /> Check-in:
+                </span>
+                <span className="font-medium text-gray-800">
+                  {selectedBookingModal.bookingInfo.booking?.checkin_date
+                    ? new Date(
+                        Number(
+                          selectedBookingModal.bookingInfo.booking.checkin_date
+                        ) ||
+                          selectedBookingModal.bookingInfo.booking.checkin_date
+                      ).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "N/A"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-gray-400" /> Check-out:
+                </span>
+                <span className="font-medium text-gray-800">
+                  {selectedBookingModal.bookingInfo.booking?.checkout_date
+                    ? new Date(
+                        Number(
+                          selectedBookingModal.bookingInfo.booking.checkout_date
+                        ) ||
+                          selectedBookingModal.bookingInfo.booking.checkout_date
+                      ).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "N/A"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Booking ID:</span>
+                <span className="font-mono text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded">
+                  {selectedBookingModal.bookingInfo.booking?.booking_id || "N/A"}
+                </span>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-row justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const bId =
+                    selectedBookingModal.bookingInfo.booking?.booking_id || "";
+                  setSelectedBookingModal(null);
+                  navigate(
+                    `/dashboard/frontdesk/cancel_booking?search=${encodeURIComponent(
+                      bId
+                    )}`
+                  );
+                }}
+              >
+                View in Cancel/Amend
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setSelectedBookingModal(null)}
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 };
 
-// Reusable Room Card
-const RoomCard = ({ room, isLoading, onDoubleClick }) => {
+// Reusable Room Card (100% preserves original styling & dimensions)
+const RoomCard = ({ room, bookingInfo, isLoading, onClick, onDoubleClick }) => {
   const getStatusIcon = (status, isLoading = false) => {
     const iconClass =
       "w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center font-bold relative";
 
-    // Show skeleton loading if still loading initial data
     if (isLoading) {
       return (
         <div className={`${iconClass} bg-gray-300 animate-pulse`}>
@@ -309,15 +695,39 @@ const RoomCard = ({ room, isLoading, onDoubleClick }) => {
 
     switch (status) {
       case "Vacant":
-        return <div className={`${iconClass} bg-[#065F46]`}><img src={VacantIcon} alt="Vacant" className="w-3 h-3 sm:w-4 sm:h-4" /></div>;
+        return (
+          <div className={`${iconClass} bg-[#065F46]`}>
+            <img src={VacantIcon} alt="Vacant" className="w-3 h-3 sm:w-4 sm:h-4" />
+          </div>
+        );
       case "Reserved":
-        return <div className={`${iconClass} bg-[#92400E]`}><img src={ReservedIcon} alt="Reserved" className="w-3 h-3 sm:w-4 sm:h-4" /></div>;
+        return (
+          <div className={`${iconClass} bg-[#92400E]`}>
+            <img src={ReservedIcon} alt="Reserved" className="w-3 h-3 sm:w-4 sm:h-4" />
+          </div>
+        );
       case "Occupied":
-        return <div className={`${iconClass} bg-[#3730A3]`}><img src={OccupiedIcon} alt="Occupied" className="w-3 h-3 sm:w-4 sm:h-4" /></div>;
+        return (
+          <div className={`${iconClass} bg-[#3730A3]`}>
+            <img src={OccupiedIcon} alt="Occupied" className="w-3 h-3 sm:w-4 sm:h-4" />
+          </div>
+        );
       case "Dirty":
-        return <div className={`${iconClass} bg-[#B91C1C]`}><img src={DirtyIcon} alt="Dirty" className="w-3 h-3 sm:w-4 sm:h-4" /></div>;
+        return (
+          <div className={`${iconClass} bg-[#B91C1C]`}>
+            <img src={DirtyIcon} alt="Dirty" className="w-3 h-3 sm:w-4 sm:h-4" />
+          </div>
+        );
       case "Under Maintenance":
-        return <div className={`${iconClass} bg-[#C2410C]`}><img src={MaintenanceIcon} alt="Under Maintenance" className="w-3 h-3 sm:w-4 sm:h-4" /></div>;
+        return (
+          <div className={`${iconClass} bg-[#C2410C]`}>
+            <img
+              src={MaintenanceIcon}
+              alt="Under Maintenance"
+              className="w-3 h-3 sm:w-4 sm:h-4"
+            />
+          </div>
+        );
       default:
         return <div className={`${iconClass} bg-gray-400`}>?</div>;
     }
@@ -341,9 +751,7 @@ const RoomCard = ({ room, isLoading, onDoubleClick }) => {
   };
 
   const getStatusText = (status, isLoading = false) => {
-    if (isLoading) {
-      return null; // Handled in JSX
-    }
+    if (isLoading) return null;
 
     switch (status) {
       case "Vacant":
@@ -364,29 +772,30 @@ const RoomCard = ({ room, isLoading, onDoubleClick }) => {
   const handleDoubleClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    // Only allow double-click for vacant/clean rooms
-    if (room.status === "Vacant" || room.status === "Clean") {
-      if (onDoubleClick) {
-        onDoubleClick(room.room_id);
-      }
+    if (onDoubleClick) {
+      onDoubleClick(room.room_id);
+    }
+  };
+
+  const handleClick = (e) => {
+    if (bookingInfo && onClick) {
+      e.preventDefault();
+      onClick(room.room_id);
     }
   };
 
   const bgClass = isLoading ? "bg-gray-100" : getStatusBackground(room.status);
-  
-  // Add cursor pointer for vacant/clean rooms to indicate they're clickable
-  const cursorClass = (!isLoading && (room.status === "Vacant" || room.status === "Clean")) 
-    ? "cursor-pointer hover:shadow-lg" 
-    : "";
-  
-  const tooltipText = !isLoading && (room.status === "Vacant" || room.status === "Clean") 
-    ? "Double-click to check-in" 
+  const cursorClass = !isLoading ? "cursor-pointer hover:shadow-lg" : "";
+  const tooltipText = bookingInfo?.guestName
+    ? `Booked by ${bookingInfo.guestName} (Click for details)`
+    : !isLoading && (room.status === "Vacant" || room.status === "Clean")
+    ? "Double-click to check-in / book"
     : "";
 
   return (
-    <div 
+    <div
       className={`${bgClass} ${cursorClass} h-20 sm:h-24 md:h-28 lg:h-[7rem] border border-gray-300 rounded-lg p-1 sm:p-2 hover:shadow-md transition-shadow relative min-w-0`}
+      onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       title={tooltipText}
     >
@@ -399,7 +808,7 @@ const RoomCard = ({ room, isLoading, onDoubleClick }) => {
       {isLoading ? (
         <div className="h-3 bg-gray-300 rounded animate-pulse w-16 mb-1"></div>
       ) : (
-        <div className="text-xs  mb-1 truncate">Room {room.room_number}</div>
+        <div className="text-xs mb-1 truncate">Room {room.room_number}</div>
       )}
 
       {/* Room Type */}
@@ -411,16 +820,25 @@ const RoomCard = ({ room, isLoading, onDoubleClick }) => {
         </div>
       )}
 
-      {/* Status and Floor */}
+      {/* Status / Guest Name and Floor */}
       <div className="text-xs flex items-center gap-1 flex-row flex-wrap">
         {isLoading ? (
           <div className="h-3 bg-gray-300 rounded animate-pulse w-16"></div>
         ) : (
-          <div className="truncate text-xs">
-            {getStatusText(room.status)}
+          <div
+            className="truncate text-xs font-semibold max-w-[85px]"
+            title={bookingInfo?.guestName || getStatusText(room.status)}
+          >
+            {bookingInfo?.guestName
+              ? bookingInfo.guestName
+              : getStatusText(room.status)}
           </div>
         )}
-        <span className={`h-1 w-1 rounded-full bg-gray-400 inline-block flex-shrink-0 ${isLoading ? 'invisible' : ''}`}></span>
+        <span
+          className={`h-1 w-1 rounded-full bg-gray-400 inline-block flex-shrink-0 ${
+            isLoading ? "invisible" : ""
+          }`}
+        ></span>
         {isLoading ? (
           <div className="h-3 bg-gray-300 rounded animate-pulse w-12"></div>
         ) : (
