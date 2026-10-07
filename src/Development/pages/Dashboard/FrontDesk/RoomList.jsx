@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
 import { useNavigate, useLocation } from "react-router";
-import { Wifi, RefreshCw, AlertCircle, Loader2, Filter } from "lucide-react";
+import { Wifi, RefreshCw, AlertCircle, Loader2, Filter, TrendingUp, Calendar } from "lucide-react";
 
 import VacantIcon from "../../../assets/Icons/vacant-svg.svg";
 import ReservedIcon from "../../../assets/Icons/rederved-svg.svg";
@@ -155,6 +155,15 @@ const RoomList = () => {
           >
             <RefreshCw className={`h-4 w-4 ${pageLoading ? 'animate-spin' : ''}`} />
             {pageLoading ? 'Refreshing...' : 'Refresh'}
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => navigate("/dashboard/frontdesk/availability")}
+            className="flex items-center gap-2 text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
+          >
+            <Calendar className="h-4 w-4" />
+            <span>Room Availability</span>
           </Button>
         </div>
       </div>

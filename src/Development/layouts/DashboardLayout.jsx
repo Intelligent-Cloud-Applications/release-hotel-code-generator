@@ -8,7 +8,7 @@ const DashboardLayout = () => {
   console.log(pathname.split("/")[2]);
 
   return (
-    <div className="min-h-screen max-h-screen overflow-y-auto inter">
+    <div className="min-h-screen max-h-screen inter">
       <DashboardNavbar />
       <Outlet />
     </div>

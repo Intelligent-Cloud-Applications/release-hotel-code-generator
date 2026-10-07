@@ -92,8 +92,19 @@ const BookingSelector = ({
                               </span>
                             </p>
                             <p className="text-sm text-gray-600">
-                              <span className="font-medium">Room Type:</span>{" "}
-                              {booking.room_type}
+                              <span className="font-medium">Rooms:</span>{" "}
+                              {booking.rooms_config && booking.rooms_config.length > 1 ? (
+                                <span>
+                                  {booking.rooms_config.length} Rooms (
+                                  {booking.rooms_config.map((r, idx) => `R${idx + 1}: ${r.room_category}${r.room_number ? ` #${r.room_number}` : ''}`).join(', ')}
+                                  )
+                                </span>
+                              ) : (
+                                <>
+                                  {booking.room_category || booking.room_type || "N/A"}
+                                  {booking.no_of_rooms ? ` (${booking.no_of_rooms} ${booking.no_of_rooms > 1 ? "rooms" : "room"})` : ""}
+                                </>
+                              )}
                             </p>
                             <p className="text-sm text-gray-600">
                               <span className="font-medium">Source:</span>{" "}
@@ -112,8 +123,8 @@ const BookingSelector = ({
                             </p>
                             <p className="text-sm text-gray-600">
                               <span className="font-medium">Guests:</span>{" "}
-                              {booking.no_of_adults} Adults,{" "}
-                              {booking.no_of_children} Children
+                              {booking.no_of_persons || booking.no_of_adults || 1} Person(s)
+                              {booking.no_of_children ? `, ${booking.no_of_children} Children` : ""}
                             </p>
                           </div>
                         </div>

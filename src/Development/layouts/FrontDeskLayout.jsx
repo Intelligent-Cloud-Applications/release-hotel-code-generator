@@ -18,6 +18,7 @@ const FrontDeskLayout = () => {
     { id: "check_in", label: "Check In" },
     { id: "amend_booking", label: "Amend Checkin" },
     { id: "check_out", label: "Check Out" },
+    { id: "availability", label: "Room Availability" },
   ];
 
   useEffect(() => {
@@ -51,7 +52,11 @@ const FrontDeskLayout = () => {
     const path = location.pathname.split("/").pop();
 
     // Check if the path matches any of the topTabs ids
-    const matchingTab = topTabs.find((tab) => tab.id === path);
+    const matchingTab = topTabs.find(
+      (tab) =>
+        tab.id === path ||
+        (tab.id === "availability" && (path === "forecaster" || path === "availability"))
+    );
 
     if (matchingTab) {
       setActiveTab(matchingTab.id);

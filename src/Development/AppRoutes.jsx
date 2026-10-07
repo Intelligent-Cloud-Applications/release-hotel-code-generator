@@ -42,6 +42,7 @@ import RoomList from "./pages/Dashboard/FrontDesk/RoomList.jsx";
 import AmendBooking from "./pages/Dashboard/FrontDesk/AmendBooking.jsx";
 import CancelBooking from "./pages/Dashboard/FrontDesk/CancelBooking.jsx";
 import FrontDesk from "./pages/Dashboard/FrontDesk/FrontDesk.jsx";
+import AvailabilityForecaster from "./pages/Dashboard/FrontDesk/AvailabilityForecaster.jsx";
 import NewBooking from "./pages/Dashboard/Registrations/NewBooking.jsx";
 import AdminReports from "./pages/Dashboard/Admin/Reports.jsx";
 import Registrations from "./pages/Dashboard/Registrations/Registrations.jsx";
@@ -170,6 +171,14 @@ const AppRoutes = () => {
           <Route path="/dashboard/frontdesk/check_in" element={<CheckIn />} />
           <Route path="/dashboard/frontdesk/check_out" element={<CheckOut />} />
           <Route path="/dashboard/frontdesk/bill" element={<Bill />} />
+          <Route
+            path="/dashboard/frontdesk/availability"
+            element={<AvailabilityForecaster />}
+          />
+          <Route
+            path="/dashboard/frontdesk/forecaster"
+            element={<AvailabilityForecaster />}
+          />
         </Route>
 
         {/* Registrations */}
@@ -199,6 +208,14 @@ const AppRoutes = () => {
             element={<CheckOut />}
           />
           <Route path="/dashboard/registrations/bill" element={<Bill />} />
+          <Route
+            path="/dashboard/registrations/availability"
+            element={<AvailabilityForecaster />}
+          />
+          <Route
+            path="/dashboard/registrations/forecaster"
+            element={<AvailabilityForecaster />}
+          />
         </Route>
 
         {/* Guest History */}

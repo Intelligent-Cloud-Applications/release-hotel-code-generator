@@ -68,7 +68,7 @@ import { toast } from "sonner";
 import { useAuthContext } from "../../../context/AuthContext.jsx";
 
 const CancelBooking = () => {
-  const { bookings, guests, fetchBookings, fetchGuests, cancelGuestBooking, updateBooking,amendBooking } =
+  const { bookings, guests, rooms, fetchBookings, fetchGuests, cancelGuestBooking, updateBooking, amendBooking } =
     useAppContext();
     const {userData} = useAuthContext();
   const [searchTerm, setSearchTerm] = useState("");
@@ -79,7 +79,7 @@ const CancelBooking = () => {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [sortOrder, setSortOrder] = useState("asc"); // "asc" or "desc"
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Edit booking states
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingBooking, setEditingBooking] = useState(null);
@@ -91,7 +91,33 @@ const CancelBooking = () => {
     // Booking details
     checkin_date: "",
     checkout_date: "",
+    room_category: "",
+    no_of_rooms: 1,
+    no_of_persons: 1,
   });
+
+  const availableCategories = React.useMemo(() => {
+    const dynamicCategories = (rooms || [])
+      .map((r) => r.room_type)
+      .filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const fromBooking = [
+      editingBooking?.room_category,
+      editingBooking?.room_type,
+      editFormData?.room_category,
+      ...(editingBooking?.rooms_config?.map((rc) => rc.room_category || rc.room_type) || []),
+    ].filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const standardCategories = [
+      "Standard",
+      "Deluxe",
+      "Super Deluxe",
+      "Executive",
+      "Suite",
+      "Single",
+      "Double",
+      "Family",
+    ];
+    return Array.from(new Set([...fromBooking, ...dynamicCategories, ...standardCategories]));
+  }, [rooms, editingBooking, editFormData?.room_category]);
 
   // Fetch data on component mount
   useEffect(() => {
@@ -260,6 +286,12 @@ const CancelBooking = () => {
   // Open edit dialog
   const openEditDialog = (booking) => {
     const guest = getGuestDetails(booking);
+    const category =
+      booking.room_category ||
+      booking.room_type ||
+      booking?.rooms_config?.[0]?.room_category ||
+      booking?.rooms_config?.[0]?.room_type ||
+      "";
     setEditingBooking(booking);
     setEditFormData({
       full_name: guest.full_name || guest.name || guest.guest_name || "",
@@ -267,6 +299,9 @@ const CancelBooking = () => {
       email: guest.email || "",
       checkin_date: booking.checkin_date ? new Date(booking.checkin_date).toISOString().split('T')[0] : "",
       checkout_date: booking.checkout_date ? new Date(booking.checkout_date).toISOString().split('T')[0] : "",
+      room_category: category,
+      no_of_rooms: booking.no_of_rooms || booking.number_of_rooms || (booking?.rooms_config ? booking.rooms_config.length : 1),
+      no_of_persons: booking.no_of_persons || booking.no_of_adults || 1,
     });
     setShowEditDialog(true);
   };
@@ -312,11 +347,21 @@ const CancelBooking = () => {
         updated_at: Date.now(),
       };
 
+      const finalCategory = (editFormData.room_category || editingBooking.room_category || editingBooking.room_type || "").trim();
+      const finalRooms = Math.max(1, parseInt(editFormData.no_of_rooms, 10) || 1);
+      const finalPersons = Math.max(1, parseInt(editFormData.no_of_persons, 10) || 1);
+
       // Prepare booking data
       const bookingData = {
         ...editingBooking,
         checkin_date: editFormData.checkin_date,
         checkout_date: editFormData.checkout_date,
+        room_category: finalCategory,
+        room_type: finalCategory,
+        no_of_rooms: finalRooms,
+        number_of_rooms: finalRooms,
+        no_of_persons: finalPersons,
+        no_of_adults: finalPersons,
         updated_at: Date.now(),
       };
 
@@ -336,6 +381,9 @@ const CancelBooking = () => {
         email: "",
         checkin_date: "",
         checkout_date: "",
+        room_category: "",
+        no_of_rooms: 1,
+        no_of_persons: 1,
       });
     } catch (error) {
       console.error("Error amending booking:", error);
@@ -537,6 +585,16 @@ const CancelBooking = () => {
                   </div>
                 </div>
 
+                {/* Room Requirement Details */}
+                <div className="hidden md:flex flex-col text-right justify-center px-2">
+                  <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    {booking.room_category || booking.room_type || "Standard"}
+                  </span>
+                  <span className="text-[11px] text-gray-500 mt-0.5">
+                    {booking.no_of_rooms || booking.number_of_rooms || 1} Room(s) • {booking.no_of_persons || booking.no_of_adults || 1} Person(s)
+                  </span>
+                </div>
+
                 {/* Actions */}
                 <div className="ml-3 flex-shrink-0 flex gap-2">
                   <Button
@@ -654,22 +712,53 @@ const CancelBooking = () => {
 
         {/* Edit Booking Dialog */}
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
+          <DialogContent className="max-w-xl w-[95vw] max-h-[85vh] p-0 flex flex-col overflow-hidden">
+            <DialogHeader className="p-4 pb-3 border-b flex-shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 <Edit className="h-5 w-5 text-blue-600" />
                 Edit Booking Details
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              {/* Booking Info */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">
-                  Booking ID: {editingBooking?.booking_id}
-                </h4>
-                <p className="text-sm text-gray-600">
-                  Edit guest details and booking dates
-                </p>
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              {/* Booking & Room Summary Banner */}
+              <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-lg text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-blue-900 text-sm">
+                    Booking #{editingBooking?.booking_id}
+                  </h4>
+                  <Badge className="bg-blue-600 text-white font-semibold text-xs">
+                    {editingBooking?.room_category || editingBooking?.room_type || editFormData.room_category || "N/A"}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-blue-800">
+                  <span>
+                    <strong>Rooms:</strong> {editFormData.no_of_rooms || editingBooking?.no_of_rooms || 1} Room(s)
+                  </span>
+                  <span>
+                    <strong>Persons:</strong> {editFormData.no_of_persons || editingBooking?.no_of_persons || editingBooking?.no_of_adults || 1} Person(s)
+                  </span>
+                  {editingBooking?.room_id && (
+                    <span>
+                      <strong>Assigned:</strong>{" "}
+                      {Array.isArray(editingBooking.room_id)
+                        ? editingBooking.room_id.join(", ")
+                        : editingBooking.room_id}
+                    </span>
+                  )}
+                </div>
+                {editingBooking?.rooms_config && editingBooking.rooms_config.length > 0 && (
+                  <div className="pt-1.5 border-t border-blue-200/60 flex flex-wrap gap-1">
+                    {editingBooking.rooms_config.map((r, i) => (
+                      <span
+                        key={i}
+                        className="bg-white border border-blue-200 text-blue-900 px-1.5 py-0.5 rounded text-[11px] font-medium"
+                      >
+                        Room {r.room_index || i + 1}: <strong>{r.room_category || r.room_type || "Standard"}</strong>
+                        {r.room_number ? ` (No. ${r.room_number})` : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Guest Details */}
@@ -742,6 +831,56 @@ const CancelBooking = () => {
                 </div>
               </div>
 
+              {/* Room & Guest Requirements */}
+              <div className="space-y-4">
+                <h4 className="font-medium text-gray-900">Room & Guest Requirements</h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="edit_room_category">Room Category *</Label>
+                    <Select
+                      value={editFormData.room_category}
+                      onValueChange={(val) => handleEditFormChange("room_category", val)}
+                    >
+                      <SelectTrigger id="edit_room_category" className="mt-1">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCategories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="edit_no_of_rooms">Number of Rooms *</Label>
+                    <Input
+                      id="edit_no_of_rooms"
+                      type="number"
+                      min="1"
+                      value={editFormData.no_of_rooms}
+                      onChange={(e) => handleEditFormChange("no_of_rooms", e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="edit_no_of_persons">Number of Persons *</Label>
+                    <Input
+                      id="edit_no_of_persons"
+                      type="number"
+                      min="1"
+                      value={editFormData.no_of_persons}
+                      onChange={(e) => handleEditFormChange("edit_no_of_persons", e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Current Booking Summary */}
               {editingBooking && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -749,8 +888,13 @@ const CancelBooking = () => {
                     <Calendar className="h-4 w-4 text-blue-600 mt-0.5" />
                     <div className="text-sm text-blue-800">
                       <p className="font-medium">Current Booking Summary</p>
-                      <p>Room: {editingBooking.room_id} | Type: {editingBooking.room_type}</p>
-                      <p>Guests: {editingBooking.adults || 1} Adult(s), {editingBooking.children || 0} Child(ren)</p>
+                      <p>
+                        Category: {editingBooking.room_category || editingBooking.room_type || "N/A"}
+                        {editingBooking.room_id ? ` | Assigned: ${Array.isArray(editingBooking.room_id) ? editingBooking.room_id.join(", ") : editingBooking.room_id}` : ""}
+                      </p>
+                      <p>
+                        Requirements: {editingBooking.no_of_rooms || 1} Room(s) • {editingBooking.no_of_persons || editingBooking.no_of_adults || 1} Person(s)
+                      </p>
                       <p>Status: <Badge variant={getStatusBadgeVariant(editingBooking.status)}>{editingBooking.status}</Badge></p>
                     </div>
                   </div>
@@ -758,7 +902,7 @@ const CancelBooking = () => {
               )}
             </div>
             
-            <DialogFooter>
+            <DialogFooter className="p-3 border-t bg-gray-50 flex-shrink-0 flex items-center justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={() => setShowEditDialog(false)}

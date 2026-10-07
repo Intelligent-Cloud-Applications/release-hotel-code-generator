@@ -14,6 +14,7 @@ const RegistrationsLayout = () => {
     { id: "check_in", label: "Check In", path: "/dashboard/frontdesk/check_in" },
     { id: "amend_booking", label: "Amend Checkin", path: "/dashboard/frontdesk/amend_booking" },
     { id: "check_out", label: "Check Out", path: "/dashboard/frontdesk/check_out" },
+    { id: "availability", label: "Room Availability", path: "/dashboard/frontdesk/availability" },
   ];
 
   useEffect(() => {
