@@ -11,6 +11,8 @@ import {
   Building,
   Calendar,
   Hotel,
+  Users,
+  Sparkles,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAppContext } from "../../../context/AppContext.jsx";
@@ -27,6 +29,7 @@ import {
   LegalSignature,
   BillFooter,
   RestaurantBill,
+  ExtraPaxFolio,
 } from "./components/index.js";
 import SplitBill from "./components/SplitBill.jsx";
 import {
@@ -108,6 +111,26 @@ const Bill = () => {
 
   // New state for split bill functionality
   const [showSplitBill, setShowSplitBill] = useState(false);
+
+  // New states for Standalone Extra Pax Folio functionality
+  const [activeFolioMode, setActiveFolioMode] = useState("master"); // "master", "primary", "extrapax"
+  const [selectedPaxIndex, setSelectedPaxIndex] = useState("all"); // "all" = Combined (default), 0 = Pax 1, 1 = Pax 2, etc.
+  const [checkoutWithSeparateExtraPax, setCheckoutWithSeparateExtraPax] = useState(false);
+  const [extraPaxSettings, setExtraPaxSettings] = useState({
+    occupantName: "",
+    occupantPhone: "",
+    includedIncidentals: {
+      extraPaxCharges: true,
+      extraBedCharges: true,
+      foodCharges: true,
+      laundryCharges: true,
+      minibarCharges: true,
+      manualCharges: true,
+    },
+    advance: 0,
+    discount: 0,
+  });
+  const [extraPaxPaymentMode, setExtraPaxPaymentMode] = useState("Same as Room Bill");
 
   // Partial billing state (multi-room selection)
   const [selectedTargetRooms, setSelectedTargetRooms] = useState([]);
@@ -487,6 +510,57 @@ const Bill = () => {
     try {
       await checkoutGuest({ bookingDetails: checkoutData });
 
+      // If separate Extra Guest bill is enabled, persist folio metadata
+      if (checkoutWithSeparateExtraPax && hasExtraPaxCharges) {
+        try {
+          const actualExtraPaxPaymentMode =
+            extraPaxPaymentMode === "Same as Room Bill"
+              ? checkoutFormData.payment_mode
+              : extraPaxPaymentMode;
+
+          const extraPaxRecord = {
+            id: `EP-${bookingId || Date.now()}`,
+            bookingId: bookingId || booking?.breakdown?.booking?.booking_id,
+            roomNumber: booking?.breakdown?.rooms?.[0]?.room_number || "All",
+            guestName: extraPaxSettings.occupantName || booking?.extra_pax?.[0]?.full_name || "Additional Guest",
+            occupantPhone: extraPaxSettings.occupantPhone || "",
+            settledAt: new Date().toISOString(),
+            amount: extraPaxStandaloneTotal || extraPaxGrandTotal,
+            subtotal: extraPaxGrandTotal,
+            paymentMode: actualExtraPaxPaymentMode,
+            roomPaymentMode: checkoutFormData.payment_mode,
+            folioType: "EXTRA_GUEST_BILL",
+            primaryReservationAmount: primaryReservationTotal,
+          };
+          const existingFolios = JSON.parse(localStorage.getItem("hotel_extra_pax_folios") || "[]");
+          existingFolios.unshift(extraPaxRecord);
+          localStorage.setItem("hotel_extra_pax_folios", JSON.stringify(existingFolios.slice(0, 100)));
+
+          // If extra guest paid in Cash separately from room, record cash in drawer
+          if (
+            actualExtraPaxPaymentMode === "Cash" &&
+            checkoutFormData.payment_mode !== "Cash" &&
+            extraPaxStandaloneTotal > 0
+          ) {
+            try {
+              const cashReceivedData = {
+                date: new Date().toLocaleDateString("en-GB"),
+                name: `${booking.breakdown.booking.booking_id}-EP`,
+                description: `Cash payment received for Extra Guest Bill - ${extraPaxRecord.guestName}`,
+                amount: extraPaxStandaloneTotal || 0,
+                bill_id: `${booking.breakdown.booking.booking_id}-EP`,
+                receivedId: Math.random().toString(36).substr(2, 9),
+              };
+              await addExpense({ received: cashReceivedData });
+            } catch (err) {
+              console.error("Error adding extra pax cash received to drawer:", err);
+            }
+          }
+        } catch (e) {
+          console.error("Error archiving extra pax folio:", e);
+        }
+      }
+
       if (checkoutFormData.payment_mode === "Cash") {
         try {
           // Get guest details for the description
@@ -523,7 +597,9 @@ const Bill = () => {
           .join(", ");
 
         toast.success(
-          `Room ${checkedOutRoomNumbers} checked out & bill settled successfully! Remaining rooms stay checked-in.`
+          checkoutWithSeparateExtraPax
+            ? `Room ${checkedOutRoomNumbers} checked out with separate Extra Guest Bill!`
+            : `Room ${checkedOutRoomNumbers} checked out & bill settled successfully! Remaining rooms stay checked-in.`
         );
         if (typeof fetchBookings === "function") await fetchBookings();
         if (typeof fetchRooms === "function") await fetchRooms();
@@ -539,7 +615,11 @@ const Bill = () => {
         setSelectedTargetRooms(remainingRooms.map((r) => r.room_id));
         setForceRefresh((prev) => prev + 1);
       } else {
-        toast.success("Guest checked out successfully!");
+        toast.success(
+          checkoutWithSeparateExtraPax
+            ? "Guest checked out successfully with separate Extra Guest Bill!"
+            : "Guest checked out successfully!"
+        );
         if (typeof fetchBookings === "function") await fetchBookings();
         if (typeof fetchRooms === "function") await fetchRooms();
         if (typeof listTotalBill === "function") await listTotalBill();
@@ -643,6 +723,7 @@ const Bill = () => {
       setRefreshing(true);
       await Promise.all([
         fetchGuests(),
+        fetchBookings ? fetchBookings() : Promise.resolve(),
         calculateTotalBill({
           booking_id: bookingId,
           guest_id: guestId,
@@ -766,6 +847,7 @@ const Bill = () => {
   useEffect(() => {
     const loadData = async () => {
       await fetchGuests();
+      if (fetchBookings) await fetchBookings();
     };
     loadData();
   }, []);
@@ -836,11 +918,34 @@ const Bill = () => {
         activeRooms.map((r) => String(r.room_number))
       );
 
-      // Calculate extra pax charges if present
+      // Calculate extra pax charges if present (supporting multiple sources & multiple pax per room)
+      const targetBId = String(
+        booking?.breakdown?.booking?.booking_id || bookingId || ""
+      ).trim();
+      const matchedB = bookings?.find(
+        (b) => String(b.booking_id || "").trim() === targetBId
+      );
+      const rawExtraPax =
+        matchedB?.extra_pax ||
+        booking?.breakdown?.booking?.extra_pax ||
+        booking?.extra_pax ||
+        matchedB?.additional_guests ||
+        booking?.breakdown?.booking?.additional_guests ||
+        booking?.additional_guests;
+
+      let extra_pax = [];
+      if (Array.isArray(rawExtraPax)) {
+        extra_pax = rawExtraPax;
+      } else if (typeof rawExtraPax === "string" && rawExtraPax.trim()) {
+        try {
+          const parsed = JSON.parse(rawExtraPax);
+          if (Array.isArray(parsed)) extra_pax = parsed;
+        } catch (e) {
+          extra_pax = [];
+        }
+      }
+
       let calculatedExtraPaxTotal = 0;
-      const extra_pax = bookings?.find(
-        (b) => booking?.breakdown?.booking?.booking_id === b.booking_id,
-      )?.extra_pax;
       if (extra_pax && Array.isArray(extra_pax)) {
         calculatedExtraPaxTotal = extra_pax
           .filter(
@@ -850,7 +955,7 @@ const Bill = () => {
               activeRoomNumbers.has(String(pax.room_number))
           )
           .reduce((total, pax) => {
-            return total + (pax.extra_pax_amount || 0);
+            return total + (Number(pax.extra_pax_amount) || 0);
           }, 0);
       }
       setExtraPaxTotal(calculatedExtraPaxTotal);
@@ -859,9 +964,10 @@ const Bill = () => {
       const extraPaxByRoomId = {};
       if (extra_pax && Array.isArray(extra_pax)) {
         extra_pax.forEach((pax) => {
-          if (pax.room_id && pax.extra_pax_amount) {
-            extraPaxByRoomId[pax.room_id] =
-              (extraPaxByRoomId[pax.room_id] || 0) + pax.extra_pax_amount;
+          const rKey = pax.room_id || pax.room_number;
+          const amt = Number(pax.extra_pax_amount) || 0;
+          if (rKey && amt > 0) {
+            extraPaxByRoomId[rKey] = (extraPaxByRoomId[rKey] || 0) + amt;
           }
         });
       }
@@ -950,7 +1056,9 @@ const Bill = () => {
             companyGstNo: companyDetails.gst_no || "N/A",
             grc_no: grcNo,
             no_of_adults: no_of_adults,
+            extra_pax: extra_pax,
           },
+          extraPaxList: extra_pax,
           billingSummary: {
             // Use the breakdown data for more accurate calculations
             totalRoomServices:
@@ -1325,21 +1433,47 @@ const Bill = () => {
               }
             }
 
-            // If still no extra pax charges, apply extra pax from booking data
+            // If still no extra pax charges, apply extra pax from booking data (supporting multiple pax per room)
             if (roomSpecificExtraPax === 0) {
-              // Get extra pax from booking data as fallback
-              const bookingExtraPax = bookings?.find(
-                (b) => booking?.breakdown?.booking?.booking_id === b.booking_id,
-              )?.extra_pax;
+              const targetBId = String(
+                booking?.breakdown?.booking?.booking_id || bookingId || ""
+              ).trim();
+              const matchedB = bookings?.find(
+                (b) => String(b.booking_id || "").trim() === targetBId
+              );
+              const rawBExtraPax =
+                matchedB?.extra_pax ||
+                booking?.breakdown?.booking?.extra_pax ||
+                booking?.extra_pax ||
+                [];
 
-              if (bookingExtraPax && Array.isArray(bookingExtraPax)) {
-                const roomExtraPax = bookingExtraPax.find(
+              const paxArray = Array.isArray(rawBExtraPax)
+                ? rawBExtraPax
+                : typeof rawBExtraPax === "string"
+                ? JSON.parse(rawBExtraPax || "[]")
+                : [];
+
+              if (paxArray.length > 0) {
+                const roomPaxList = paxArray.filter(
                   (pax) =>
                     pax.room_id === room.room_id ||
-                    pax.room_number === roomNumber,
+                    pax.room_number === roomNumber ||
+                    String(pax.room_id) === String(room.room_id) ||
+                    String(pax.room_number) === String(roomNumber)
                 );
-                if (roomExtraPax?.extra_pax_amount) {
-                  roomSpecificExtraPax = roomExtraPax.extra_pax_amount;
+
+                if (roomPaxList.length > 0) {
+                  roomSpecificExtraPax = roomPaxList.reduce(
+                    (sum, p) => sum + (Number(p.extra_pax_amount) || 0),
+                    0
+                  );
+                } else if (!paxArray.some((p) => p.room_id || p.room_number)) {
+                  if (activeRooms[0]?.room_id === room.room_id) {
+                    roomSpecificExtraPax = paxArray.reduce(
+                      (sum, p) => sum + (Number(p.extra_pax_amount) || 0),
+                      0
+                    );
+                  }
                 }
               }
             }
@@ -1726,6 +1860,196 @@ const Bill = () => {
     billData?.billingSummary?.partialPayment,
     extraPaxTotal,
   ]);
+
+  // Comprehensive extraction of all extra occupants
+  const extraPaxList = useMemo(() => {
+    const targetBookingId = String(
+      booking?.booking_id ||
+      booking?.breakdown?.booking?.booking_id ||
+      billData?.bookingDetails?.bookingId ||
+      bookingId ||
+      ""
+    ).trim();
+
+    const matchedBooking = bookings?.find(
+      (b) => String(b.booking_id || "").trim() === targetBookingId
+    );
+
+    const candidates = [
+      billData?.extraPaxList,
+      billData?.bookingDetails?.extra_pax,
+      matchedBooking?.extra_pax,
+      booking?.extra_pax,
+      booking?.breakdown?.booking?.extra_pax,
+      matchedBooking?.additional_guests,
+      booking?.breakdown?.booking?.additional_guests,
+      booking?.additional_guests,
+    ];
+
+    for (const cand of candidates) {
+      if (Array.isArray(cand) && cand.length > 0) {
+        return cand
+          .map((p, idx) => ({
+            id: p.id || p.pax_id || idx + 1,
+            full_name: (p.full_name || p.name || p.guest_name || "").trim(),
+            gender: p.gender || "",
+            age: p.age !== undefined && p.age !== null ? String(p.age) : "",
+            mobile: (p.mobile || p.phone || p.contact || "").trim(),
+            room_id: p.room_id || "",
+            room_number:
+              p.room_number ||
+              (rooms?.find((r) => r.room_id === p.room_id)?.room_number) ||
+              "",
+            extra_pax_amount: Number(p.extra_pax_amount || p.amount || 0),
+          }))
+          .filter((p) => p.full_name || p.extra_pax_amount > 0);
+      }
+      if (typeof cand === "string" && cand.trim().startsWith("[")) {
+        try {
+          const parsed = JSON.parse(cand);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed
+              .map((p, idx) => ({
+                id: p.id || p.pax_id || idx + 1,
+                full_name: (p.full_name || p.name || p.guest_name || "").trim(),
+                gender: p.gender || "",
+                age: p.age !== undefined && p.age !== null ? String(p.age) : "",
+                mobile: (p.mobile || p.phone || p.contact || "").trim(),
+                room_id: p.room_id || "",
+                room_number:
+                  p.room_number ||
+                  (rooms?.find((r) => r.room_id === p.room_id)?.room_number) ||
+                  "",
+                extra_pax_amount: Number(p.extra_pax_amount || p.amount || 0),
+              }))
+              .filter((p) => p.full_name || p.extra_pax_amount > 0);
+          }
+        } catch (e) {}
+      }
+    }
+
+    return [];
+  }, [booking, billData, bookings, rooms, bookingId]);
+
+  // Helper to compute Extra Pax Standalone and Primary Reservation totals
+  const { extraPaxStandaloneTotal, extraPaxGrandTotal, primaryReservationTotal, hasExtraPaxCharges } = useMemo(() => {
+    let extraPaxTariff = 0;
+    let incidentals = 0;
+
+    (billData?.serviceChargesByDate || []).forEach((dayData) => {
+      const date = Object.keys(dayData)[0];
+      (dayData[date] || []).forEach((entry) => {
+        const c = entry.charges || {};
+        extraPaxTariff += Number(c.extraPaxCharges || 0);
+        if (extraPaxSettings?.includedIncidentals?.extraBedCharges) incidentals += Number(c.extraBedCharges || 0);
+        if (extraPaxSettings?.includedIncidentals?.foodCharges) incidentals += Number(c.foodCharges || 0);
+        if (extraPaxSettings?.includedIncidentals?.laundryCharges) incidentals += Number(c.laundryCharges || 0);
+        if (extraPaxSettings?.includedIncidentals?.minibarCharges) incidentals += Number(c.minibarCharges || 0);
+        if (extraPaxSettings?.includedIncidentals?.manualCharges) incidentals += Number(c.manualCharges || 0);
+      });
+    });
+
+    if (extraPaxTariff === 0 && extraPaxList.length > 0) {
+      extraPaxTariff = extraPaxList.reduce((sum, p) => sum + (Number(p.extra_pax_amount) || 0), 0);
+    }
+    if (extraPaxTariff === 0 && extraPaxTotal > 0) {
+      extraPaxTariff = extraPaxTotal;
+    }
+
+    const extraPaxSubtotal = Math.max(0, extraPaxTariff + incidentals - Number(extraPaxSettings?.discount || 0));
+    const extraPaxTax = Math.round((extraPaxSubtotal * 5) / 100);
+    const extraPaxGrand = extraPaxSubtotal + extraPaxTax;
+    const extraPaxNet = Math.max(0, extraPaxGrand - Number(extraPaxSettings?.advance || 0));
+
+    const fullBalance = billData?.billingSummary?.balanceDue || 0;
+    const primaryBal = Math.max(0, fullBalance - extraPaxNet);
+
+    const hasPax = extraPaxTariff > 0 || incidentals > 0 || extraPaxList.length > 0 || extraPaxTotal > 0;
+
+    return {
+      extraPaxStandaloneTotal: extraPaxNet,
+      extraPaxGrandTotal: extraPaxGrand,
+      primaryReservationTotal: primaryBal,
+      hasExtraPaxCharges: hasPax,
+    };
+  }, [billData?.serviceChargesByDate, extraPaxList, extraPaxTotal, extraPaxSettings, billData?.billingSummary?.balanceDue]);
+
+  // Primary Reservation Bill Data (with Extra Pax and separated incidentals cleanly excluded)
+  const primaryBillData = useMemo(() => {
+    if (!billData) return null;
+
+    const filteredDailyCharges = (billData.serviceChargesByDate || []).map((dayData) => {
+      const date = Object.keys(dayData)[0];
+      const roomEntries = (dayData[date] || []).map((entry) => {
+        const c = { ...(entry.charges || {}) };
+        const removedAmount = (c.extraPaxCharges || 0);
+        return {
+          ...entry,
+          charges: {
+            ...c,
+            extraPaxCharges: 0,
+            dailyTotal: Math.max(0, (c.dailyTotal || 0) - removedAmount),
+          },
+        };
+      });
+      return { [date]: roomEntries };
+    });
+
+    let totalRoom = 0;
+    let totalServices = 0;
+    let totalRatePlan = 0;
+
+    filteredDailyCharges.forEach((dayData) => {
+      const date = Object.keys(dayData)[0];
+      (dayData[date] || []).forEach((entry) => {
+        const c = entry.charges || {};
+        totalRoom += c.roomCharges || 0;
+        totalRatePlan += c.ratePlanCharges || 0;
+        totalServices +=
+          (c.foodCharges || 0) +
+          (c.laundryCharges || 0) +
+          (c.minibarCharges || 0) +
+          (c.extraBedCharges || 0) +
+          (c.manualCharges || 0);
+      });
+    });
+
+    const discount = billData.billingSummary?.totalDiscount || 0;
+    const advance = billData.billingSummary?.partialPayment || 0;
+    const effectiveTariff = totalRoom + totalRatePlan;
+    const subtotal = Math.max(0, effectiveTariff + totalServices - discount);
+    const discountedRoom = Math.max(0, effectiveTariff - discount);
+    const cgst = Math.round((discountedRoom * 2.5) / 100);
+    const sgst = Math.round((discountedRoom * 2.5) / 100);
+    const totalTax = cgst + sgst;
+    const grandTotal = subtotal + totalTax;
+    const balanceDue = grandTotal - advance;
+
+    return {
+      ...billData,
+      serviceChargesByDate: filteredDailyCharges,
+      billingSummary: {
+        ...billData.billingSummary,
+        totalRoomServices: effectiveTariff,
+        totalServiceCharges: totalServices,
+        extraPaxCharges: 0,
+        subTotal: subtotal,
+        cgstAmount: cgst,
+        sgstAmount: sgst,
+        totalTaxAmount: totalTax,
+        grandTotal: grandTotal,
+        balanceDue: balanceDue,
+      },
+      finalSummary: {
+        ...billData.finalSummary,
+        totalAmount: grandTotal,
+        amountInWords: numberToWords(Math.max(0, balanceDue)),
+      },
+    };
+  }, [billData]);
+
+  // Current display data according to active folio mode
+  const currentDisplayBillData = activeFolioMode === "primary" ? (primaryBillData || billData) : billData;
 
   // Show loading state
   if (loading || !guests || guests.length === 0 || !billData) {
@@ -2558,16 +2882,110 @@ const Bill = () => {
               />
             </div>
 
+            {/* Separate Bill Option at Checkout */}
+            {hasExtraPaxCharges && (
+              <div className="border border-gray-200 bg-gray-50/80 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-900 select-none">
+                    <input
+                      type="checkbox"
+                      checked={checkoutWithSeparateExtraPax}
+                      onChange={(e) =>
+                        setCheckoutWithSeparateExtraPax(e.target.checked)
+                      }
+                      className="rounded border-gray-300 text-gray-900 focus:ring-gray-400 h-4 w-4"
+                    />
+                    <Users className="h-4 w-4 text-gray-700" />
+                    <span>Generate Separate Bill for Extra Guest / Services</span>
+                  </label>
+                  <span className="text-[10px] bg-gray-200 text-gray-800 px-2 py-0.5 rounded font-medium">
+                    Separate Bill
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-600 leading-tight">
+                  Settle extra occupant charges and incidental services on a separate bill. The master reservation remains consolidated in history.
+                </p>
+
+                {checkoutWithSeparateExtraPax && (
+                  <div className="space-y-2.5 mt-2 pt-2 border-t border-gray-200">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-white p-2 rounded border border-gray-200 shadow-xs">
+                        <div className="text-[10px] text-gray-500 font-medium">Room Bill</div>
+                        <div className="font-bold text-gray-900 text-sm">
+                          ₹{(primaryReservationTotal || 0).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-gray-200 shadow-xs">
+                        <div className="text-[10px] text-gray-700 font-medium">
+                          Extra Guest Bill{extraPaxList.length > 1 ? ` (${extraPaxList.length} Guests)` : ""}
+                        </div>
+                        <div className="font-bold text-gray-900 text-sm">
+                          ₹{(extraPaxStandaloneTotal || 0).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="extrapax_payment_mode" className="text-xs font-medium text-gray-700 block mb-1">
+                        Extra Guest Payment Mode:
+                      </Label>
+                      <Select
+                        value={extraPaxPaymentMode}
+                        onValueChange={(val) => setExtraPaxPaymentMode(val)}
+                      >
+                        <SelectTrigger className="w-full h-8 text-xs border-gray-300">
+                          <SelectValue placeholder="Select Payment Mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Same as Room Bill">
+                            Same as Room Bill ({checkoutFormData.payment_mode || "Selected Mode"})
+                          </SelectItem>
+                          <SelectItem value="Cash">Cash</SelectItem>
+                          <SelectItem value="QR">QR</SelectItem>
+                          <SelectItem value="UPI">UPI</SelectItem>
+                          <SelectItem value="Credit Card">Credit Card</SelectItem>
+                          <SelectItem value="Debit Card">Debit Card</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Bill Summary */}
             {billData && (
               <div className="border-t pt-3 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium">Amount to Pay:</span>
-                  <span className="font-bold text-lg text-green-600">
-                    ₹
-                    {billData.billingSummary?.balanceDue?.toLocaleString() || 0}
-                  </span>
-                </div>
+                {checkoutWithSeparateExtraPax && hasExtraPaxCharges ? (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Room Bill Due:</span>
+                      <span className="font-semibold text-gray-800">
+                        ₹{(primaryReservationTotal || 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-gray-700">
+                      <span>Extra Guest Bill Due:</span>
+                      <span className="font-semibold text-gray-900">
+                        ₹{(extraPaxStandaloneTotal || 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t pt-1.5 font-medium">
+                      <span>Combined Balance Due:</span>
+                      <span className="font-bold text-lg text-green-600">
+                        ₹{(billData.billingSummary?.balanceDue || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium">Amount to Pay:</span>
+                    <span className="font-bold text-lg text-green-600">
+                      ₹
+                      {billData.billingSummary?.balanceDue?.toLocaleString() || 0}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2967,45 +3385,165 @@ const Bill = () => {
           </div>
         )}
 
-        <div
-          id="printable-bill"
-          className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
-        >
-          <div className="p-8 print:p-6">
-            <BillHeader
-              billData={billData}
-              institutionData={institutionData}
-              bills={bills?.length + 1}
-            />
-            <GuestDetails
-              billData={billData}
-              guestData={guestData}
-              isAmountEditing={isAmountEditing}
-              setGuestData={setGuestData}
-            />
-            {/* <BookingDetails billData={billData} /> */}
-            <ChargesBreakdown
-              billData={billData}
-              isAmountEditing={isAmountEditing}
-              editingChargeAmounts={editingChargeAmounts}
-              setEditingChargeAmounts={setEditingChargeAmounts}
-              isChargeExcluded={isChargeExcluded}
-              getFilteredCharges={getFilteredCharges}
-            />
-            <BillingSummary
-              billData={billData}
-              isAmountEditing={isAmountEditing}
-              editingDiscount={editingDiscount}
-              setEditingDiscount={setEditingDiscount}
-              editingAdvancePayment={editingAdvancePayment}
-              setEditingAdvancePayment={setEditingAdvancePayment}
-              editingChargeAmounts={editingChargeAmounts}
-            />
+        {/* Bill View Switcher (Screen Only) */}
+        {hasExtraPaxCharges && (
+          <div className="print:hidden mb-4 bg-white border border-gray-200 rounded-lg p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Bill View:
+              </span>
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveFolioMode("master")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    activeFolioMode === "master"
+                      ? "bg-gray-900 text-white shadow-xs font-semibold"
+                      : "text-gray-700 hover:text-gray-900 cursor-pointer"
+                  }`}
+                >
+                  <Hotel className="h-3.5 w-3.5" />
+                  <span>Master Bill (All Charges)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveFolioMode("primary")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    activeFolioMode === "primary"
+                      ? "bg-gray-900 text-white shadow-xs font-semibold"
+                      : "text-gray-700 hover:text-gray-900 cursor-pointer"
+                  }`}
+                >
+                  <Building className="h-3.5 w-3.5" />
+                  <span>Room Bill</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveFolioMode("extrapax")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    activeFolioMode === "extrapax"
+                      ? "bg-gray-900 text-white shadow-xs font-semibold"
+                      : "text-gray-700 hover:text-gray-900 cursor-pointer"
+                  }`}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  <span>Extra Guest Bill</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                      activeFolioMode === "extrapax"
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-200 text-gray-800"
+                    }`}
+                  >
+                    Separate Bill
+                  </span>
+                </button>
+              </div>
+            </div>
 
-            <LegalSignature billData={billData} userData={userData} />
-            <BillFooter billData={billData} />
+            <div className="flex items-center gap-3 text-xs">
+              {activeFolioMode === "master" && (
+                <span className="text-gray-500 text-[11px]">
+                  Consolidated bill with all charges (₹
+                  {(billData?.billingSummary?.balanceDue || 0).toLocaleString()} due).
+                </span>
+              )}
+              {activeFolioMode === "primary" && (
+                <span className="text-gray-700 text-[11px] font-medium bg-gray-100 px-2 py-1 rounded border border-gray-200">
+                  Room accommodation only (₹
+                  {(primaryReservationTotal || 0).toLocaleString()} due).
+                </span>
+              )}
+              {activeFolioMode === "extrapax" && (
+                <span className="text-gray-800 text-[11px] font-medium bg-gray-100 px-2 py-1 rounded border border-gray-200">
+                  Extra occupant & services only (₹
+                  {(extraPaxStandaloneTotal || 0).toLocaleString()} due).
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeFolioMode === "extrapax" ? (
+          <ExtraPaxFolio
+            billData={billData}
+            booking={booking}
+            guestData={guestData}
+            userData={userData}
+            institutionData={institutionData}
+            bills={bills?.length + 1}
+            extraPaxSettings={extraPaxSettings}
+            setExtraPaxSettings={setExtraPaxSettings}
+            isAmountEditing={isAmountEditing}
+            editingChargeAmounts={editingChargeAmounts}
+            setEditingChargeAmounts={setEditingChargeAmounts}
+            editingDiscount={editingDiscount}
+            setEditingDiscount={setEditingDiscount}
+            editingAdvancePayment={editingAdvancePayment}
+            setEditingAdvancePayment={setEditingAdvancePayment}
+            bookings={bookings}
+            rooms={rooms}
+            selectedPaxIndex={selectedPaxIndex}
+            setSelectedPaxIndex={setSelectedPaxIndex}
+          />
+        ) : (
+          <div
+            id="printable-bill"
+            className="relative bg-white print:shadow-none print:border-none border shadow-lg print:bg-white"
+          >
+            <div className="p-8 print:p-6">
+              {activeFolioMode === "primary" && (
+                <div className="print:hidden mb-4 bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <Building className="h-4 w-4 text-gray-700" />
+                    <span>
+                      Viewing <strong>Room Bill</strong> (Extra occupant and room services separated).
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFolioMode("master")}
+                    className="underline text-gray-900 font-semibold hover:text-black cursor-pointer"
+                  >
+                    Switch to Master Bill
+                  </button>
+                </div>
+              )}
+              <BillHeader
+                billData={currentDisplayBillData}
+                institutionData={institutionData}
+                bills={bills?.length + 1}
+              />
+              <GuestDetails
+                billData={currentDisplayBillData}
+                guestData={guestData}
+                isAmountEditing={isAmountEditing}
+                setGuestData={setGuestData}
+              />
+              {/* <BookingDetails billData={currentDisplayBillData} /> */}
+              <ChargesBreakdown
+                billData={currentDisplayBillData}
+                isAmountEditing={isAmountEditing}
+                editingChargeAmounts={editingChargeAmounts}
+                setEditingChargeAmounts={setEditingChargeAmounts}
+                isChargeExcluded={isChargeExcluded}
+                getFilteredCharges={getFilteredCharges}
+              />
+              <BillingSummary
+                billData={currentDisplayBillData}
+                isAmountEditing={isAmountEditing}
+                editingDiscount={editingDiscount}
+                setEditingDiscount={setEditingDiscount}
+                editingAdvancePayment={editingAdvancePayment}
+                setEditingAdvancePayment={setEditingAdvancePayment}
+                editingChargeAmounts={editingChargeAmounts}
+              />
+
+              <LegalSignature billData={currentDisplayBillData} userData={userData} />
+              <BillFooter billData={currentDisplayBillData} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
