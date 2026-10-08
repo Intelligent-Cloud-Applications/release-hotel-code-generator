@@ -84,7 +84,13 @@ const ChargesBreakdown = ({
                         // Show charge types that have values OR are being actively edited
                         ...(() => {
                           const chargeTypes = [
-                            { key: "extraPaxCharges", description: "Extra Pax Charges" },
+                            {
+                              key: "extraPaxCharges",
+                              description:
+                                Array.isArray(billData?.extraPaxList) && billData.extraPaxList.length > 0
+                                  ? `Extra Pax Charges (${billData.extraPaxList.map((p) => p.full_name).filter(Boolean).join(", ")})`
+                                  : "Extra Pax Charges",
+                            },
                             { key: "foodCharges", description: "Food Charges" },
                             { key: "laundryCharges", description: "Laundry Charges" },
                             { key: "minibarCharges", description: "Bar Charges" },

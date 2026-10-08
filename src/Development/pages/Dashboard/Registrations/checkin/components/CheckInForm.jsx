@@ -51,11 +51,18 @@ const CheckInForm = ({
   nextBillNumber,
   bills = [],
   guests: propGuests = [],
+  selectedBooking,
 }) => {
-  const { companies = [], createCompany, guests: contextGuests = [] } = useAppContext?.() || {
+  const {
+    companies = [],
+    createCompany,
+    guests: contextGuests = [],
+    rooms = [],
+  } = useAppContext?.() || {
     companies: [],
     createCompany: null,
     guests: [],
+    rooms: [],
   };
 
   // Auto-create company control
@@ -552,6 +559,95 @@ const CheckInForm = ({
 
   const getSelectedRoomsCount = () => {
     return checkInData.room_id ? checkInData.room_id.length : 0;
+  };
+
+  const availableCategories = useMemo(() => {
+    const dynamicCategories = (rooms || [])
+      .map((r) => r.room_type)
+      .filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const standardCategories = [
+      "Standard",
+      "Deluxe",
+      "Super Deluxe",
+      "Executive",
+      "Suite",
+      "Single",
+      "Double",
+      "Family",
+    ];
+    return Array.from(new Set([...dynamicCategories, ...standardCategories]));
+  }, [rooms]);
+
+  const targetCategory = useMemo(() => {
+    return (
+      selectedBooking?.room_category ||
+      selectedBooking?.room_type ||
+      checkInData?.room_type ||
+      ""
+    ).trim();
+  }, [selectedBooking, checkInData?.room_type]);
+
+  const targetCategories = useMemo(() => {
+    const list = [];
+    if (selectedBooking?.rooms_config && Array.isArray(selectedBooking.rooms_config)) {
+      selectedBooking.rooms_config.forEach((r) => {
+        if (r.room_category && typeof r.room_category === "string" && !list.includes(r.room_category.trim())) {
+          list.push(r.room_category.trim());
+        }
+      });
+    }
+    if (targetCategory) {
+      targetCategory.split(",").forEach((c) => {
+        const trimmed = c.trim();
+        if (trimmed && !list.includes(trimmed)) {
+          list.push(trimmed);
+        }
+      });
+    }
+    return list;
+  }, [selectedBooking, targetCategory]);
+
+  const bookedRoomsCount = useMemo(() => {
+    return (
+      selectedBooking?.no_of_rooms ||
+      selectedBooking?.number_of_rooms ||
+      (selectedBooking?.rooms_config ? selectedBooking.rooms_config.length : 1) ||
+      1
+    );
+  }, [selectedBooking]);
+
+  const bookedPersonsCount = useMemo(() => {
+    return (
+      selectedBooking?.no_of_persons ||
+      selectedBooking?.no_of_adults ||
+      checkInData?.no_of_adults ||
+      1
+    );
+  }, [selectedBooking, checkInData?.no_of_adults]);
+
+  const matchingVacantRooms = useMemo(() => {
+    if (!targetCategories.length || !getVacantRooms) return [];
+    return getVacantRooms.filter((room) =>
+      targetCategories.some(
+        (cat) => (room.room_type || "").toLowerCase() === cat.toLowerCase()
+      )
+    );
+  }, [getVacantRooms, targetCategories]);
+
+  const getSortedAvailableRooms = () => {
+    const available = getAvailableRooms();
+    if (!targetCategories.length) return available;
+    return [...available].sort((a, b) => {
+      const aMatch = targetCategories.some(
+        (cat) => (a.room_type || "").toLowerCase() === cat.toLowerCase()
+      );
+      const bMatch = targetCategories.some(
+        (cat) => (b.room_type || "").toLowerCase() === cat.toLowerCase()
+      );
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
   };
 
   // PAX management for Check-In form
@@ -1065,6 +1161,32 @@ const CheckInForm = ({
 
             <div className="space-y-1">
               <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Bed className="h-3 w-3 text-gray-500" />
+                Room Category {selectedBooking && (selectedBooking.room_category || selectedBooking.room_type) && (
+                  <span className="text-[10px] text-blue-600 font-normal">
+                    (Booked: {selectedBooking.room_category || selectedBooking.room_type})
+                  </span>
+                )}
+              </Label>
+              <Select
+                value={checkInData.room_type || targetCategory || ""}
+                onValueChange={(value) => handleInputChange("room_type", value)}
+              >
+                <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                  <SelectValue placeholder="Select room category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
                 <Users className="h-3 w-3 text-gray-500" />
                 Number of Adults <span className="text-red-500">*</span>
               </Label>
@@ -1281,6 +1403,79 @@ const CheckInForm = ({
             </div>
 
             <div className="md:col-span-2 lg:col-span-3">
+              {(targetCategories.length > 0 || targetCategory) && (
+                <div className="mb-4 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 p-3 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs text-white font-bold">
+                        ★
+                      </span>
+                      <div>
+                        <div className="text-xs font-semibold text-blue-900">
+                          Booking Preference:{" "}
+                          <span className="text-blue-700 underline underline-offset-2">
+                            {targetCategories.length > 0 ? targetCategories.join(" + ") : targetCategory}
+                          </span>
+                          {bookedRoomsCount > 0 ? ` • ${bookedRoomsCount} Room${bookedRoomsCount > 1 ? "s" : ""}` : ""}
+                          {bookedPersonsCount > 0 ? ` • ${bookedPersonsCount} Guest${bookedPersonsCount > 1 ? "s" : ""}` : ""}
+                        </div>
+                        <p className="text-[11px] text-blue-700">
+                          {matchingVacantRooms.length > 0
+                            ? `${matchingVacantRooms.length} vacant matching room${matchingVacantRooms.length > 1 ? "s" : ""} available. Click below to quickly assign:`
+                            : `No vacant matching rooms currently available. You can assign any other vacant room below.`}
+                        </p>
+                      </div>
+                    </div>
+                    {bookedRoomsCount > 0 && (
+                      <span className="text-[11px] font-medium text-blue-800 bg-blue-100/90 px-2.5 py-0.5 rounded-full border border-blue-200">
+                        Assigned: {getSelectedRoomsCount()} / {bookedRoomsCount}
+                      </span>
+                    )}
+                  </div>
+
+                  {matchingVacantRooms.length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap gap-2 pt-2 border-t border-blue-200/60">
+                      {matchingVacantRooms.map((room) => {
+                        const selected = isRoomSelected(room.room_id);
+                        return (
+                          <button
+                            key={room.room_id}
+                            type="button"
+                            onClick={() => {
+                              if (selected) {
+                                removeRoom(room.room_id);
+                              } else {
+                                handleRoomSelection(room.room_id);
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all shadow-xs ${
+                              selected
+                                ? "bg-green-600 text-white hover:bg-green-700 border border-green-700"
+                                : "bg-white text-blue-900 hover:bg-blue-100 hover:text-blue-950 border border-blue-300"
+                            }`}
+                          >
+                            <span>Room {room.room_number}</span>
+                            <span className={`text-[10px] font-medium ${selected ? "text-green-200" : "text-blue-600"}`}>
+                              ({room.room_type})
+                            </span>
+                            <span className={`text-[11px] ${selected ? "text-green-100" : "text-gray-500"}`}>
+                              (₹{room.tariff})
+                            </span>
+                            <span
+                              className={`text-[10px] px-1 py-0.2 rounded font-semibold ${
+                                selected ? "bg-white/20 text-white" : "bg-blue-100 text-blue-800"
+                              }`}
+                            >
+                              {selected ? "✓ Assigned" : "+ Assign"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
@@ -1312,21 +1507,33 @@ const CheckInForm = ({
                         </div>
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
-                        {getAvailableRooms().length > 0 ? (
-                          getAvailableRooms().map((room) => (
-                            <SelectItem key={room.room_id} value={room.room_id}>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={isRoomSelected(room.room_id)}
-                                  className="mr-2"
-                                />
-                                <span>
-                                  Room {room.room_number} - {room.room_type} (₹
-                                  {room.tariff})
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))
+                        {getSortedAvailableRooms().length > 0 ? (
+                          getSortedAvailableRooms().map((room) => {
+                            const isSuggested = targetCategories.some(
+                              (cat) => (room.room_type || "").toLowerCase() === cat.toLowerCase()
+                            );
+                            return (
+                              <SelectItem key={room.room_id} value={room.room_id}>
+                                <div className="flex items-center justify-between w-full gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Checkbox
+                                      checked={isRoomSelected(room.room_id)}
+                                      className="mr-2"
+                                    />
+                                    <span>
+                                      Room {room.room_number} - {room.room_type} (₹
+                                      {room.tariff})
+                                    </span>
+                                  </div>
+                                  {isSuggested && (
+                                    <span className="text-[10px] bg-amber-100 text-amber-800 font-semibold px-1.5 py-0.5 rounded border border-amber-300">
+                                      ★ Suggested
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            );
+                          })
                         ) : (
                           <SelectItem value="no-rooms" disabled>
                             {checkInData.room_id && checkInData.room_id.length > 0

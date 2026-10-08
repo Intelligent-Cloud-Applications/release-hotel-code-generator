@@ -418,6 +418,25 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
+      if (bookingId && bookingData) {
+        const metaPayload = {
+          no_of_rooms: bookingData.no_of_rooms,
+          number_of_rooms: bookingData.number_of_rooms || bookingData.no_of_rooms,
+          no_of_persons: bookingData.no_of_persons,
+          no_of_adults: bookingData.no_of_adults,
+          room_category: bookingData.room_category,
+          room_type: bookingData.room_type,
+          rooms_config: bookingData.rooms_config,
+          room_id: bookingData.room_id,
+        };
+        saveBookingMetaToCache(bookingId, metaPayload);
+        const metaStr = "__BOOKING_META__=" + encodeURIComponent(JSON.stringify(metaPayload)) + ";";
+        const cleanRemarks = String(bookingData.remarks || "").replace(/__BOOKING_META__=[^;]+;?/g, "").trim();
+        bookingData = {
+          ...bookingData,
+          remarks: cleanRemarks ? `${cleanRemarks} ${metaStr}` : metaStr,
+        };
+      }
       const { body } = await put({
         apiName: "frontdesk",
         path: `/offline/amend-booking/${bookingId}`,
@@ -444,6 +463,105 @@ export const AppContextProvider = ({ children }) => {
     }
   }
 
+  // Bookings metadata persistence helper
+  const saveBookingMetaToCache = (bookingId, meta) => {
+    if (!bookingId) return;
+    try {
+      const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+      const store = JSON.parse(rawStore);
+      store[bookingId] = {
+        ...(store[bookingId] || {}),
+        ...meta,
+      };
+      localStorage.setItem("hotel_bookings_meta", JSON.stringify(store));
+    } catch (e) {
+      console.error("Error saving booking metadata to localStorage:", e);
+    }
+  };
+
+  const enrichReservation = (res) => {
+    if (!res || typeof res !== "object") return res;
+
+    let parsedMeta = {};
+    try {
+      const notes = String(res.special_requests || res.remarks || "");
+      if (notes.includes("__BOOKING_META__=")) {
+        const match = notes.match(/__BOOKING_META__=([^;]+);?/);
+        if (match && match[1]) {
+          parsedMeta = JSON.parse(decodeURIComponent(match[1]));
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    let cachedMeta = {};
+    try {
+      const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+      const store = JSON.parse(rawStore);
+      if (res.booking_id && store[res.booking_id]) {
+        cachedMeta = store[res.booking_id];
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    const meta = { ...parsedMeta, ...cachedMeta };
+
+    const configRoomIds = Array.isArray(meta.rooms_config)
+      ? meta.rooms_config.map((r) => r.room_id).filter((id) => id && id !== "none")
+      : [];
+
+    const assignedRoomIds =
+      Array.isArray(res.room_id) && res.room_id.length > 0
+        ? res.room_id
+        : typeof res.room_id === "string" && res.room_id.trim()
+        ? [res.room_id.trim()]
+        : Array.isArray(meta.room_id) && meta.room_id.length > 0
+        ? meta.room_id
+        : configRoomIds;
+
+    const rawNoOfRooms =
+      res.no_of_rooms ||
+      meta.no_of_rooms ||
+      (meta.rooms_config && meta.rooms_config.length > 0 ? meta.rooms_config.length : null) ||
+      (assignedRoomIds.length > 0 ? assignedRoomIds.length : 1);
+
+    const finalNoOfRooms = Math.max(1, parseInt(rawNoOfRooms, 10) || 1);
+
+    const finalNoOfPersons = Math.max(
+      1,
+      parseInt(res.no_of_persons || meta.no_of_persons || res.no_of_adults, 10) || 1
+    );
+
+    const finalCategory =
+      res.room_category ||
+      meta.room_category ||
+      res.room_type ||
+      "";
+
+    const cleanSpecialRequests = String(res.special_requests || "")
+      .replace(/__BOOKING_META__=[^;]+;?/g, "")
+      .trim();
+    const cleanRemarks = String(res.remarks || "")
+      .replace(/__BOOKING_META__=[^;]+;?/g, "")
+      .trim();
+
+    return {
+      ...res,
+      no_of_rooms: finalNoOfRooms,
+      number_of_rooms: finalNoOfRooms,
+      no_of_persons: finalNoOfPersons,
+      no_of_adults: res.no_of_adults || finalNoOfPersons,
+      room_category: finalCategory,
+      room_type: res.room_type || finalCategory,
+      rooms_config: meta.rooms_config || res.rooms_config || [],
+      room_id: assignedRoomIds,
+      special_requests: cleanSpecialRequests,
+      remarks: cleanRemarks,
+    };
+  };
+
   // Bookings Sections
   async function fetchBookings() {
     setLoading(true);
@@ -457,8 +575,10 @@ export const AppContextProvider = ({ children }) => {
         },
       }).response;
       const data = await body.json();
-      setBookings(data.reservations || []);
-      return data.reservations || [];
+      const rawReservations = data.reservations || [];
+      const enriched = rawReservations.map(enrichReservation);
+      setBookings(enriched);
+      return enriched;
     } catch (error) {
       console.error("Error fetching bookings:", error);
       setError("Failed to fetch bookings");
@@ -479,6 +599,18 @@ export const AppContextProvider = ({ children }) => {
     console.log("Updating booking:", bookingId, bookingData);
 
     try {
+      if (bookingId && bookingData) {
+        saveBookingMetaToCache(bookingId, {
+          no_of_rooms: bookingData.no_of_rooms,
+          number_of_rooms: bookingData.number_of_rooms || bookingData.no_of_rooms,
+          no_of_persons: bookingData.no_of_persons,
+          no_of_adults: bookingData.no_of_adults,
+          room_category: bookingData.room_category,
+          room_type: bookingData.room_type,
+          rooms_config: bookingData.rooms_config,
+          room_id: bookingData.room_id,
+        });
+      }
       const { body } = await put({
         apiName: "frontdesk",
         path: `/reservations/${bookingId}?institutionId=${institutionId}`,
@@ -498,7 +630,7 @@ export const AppContextProvider = ({ children }) => {
       setBookings((prev) =>
         prev.map((booking) =>
           booking.booking_id === data.booking.booking_id
-            ? data.booking
+            ? enrichReservation(data.booking)
             : booking
         )
       );
@@ -831,6 +963,18 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
+      if (bookingData?.booking_id) {
+        saveBookingMetaToCache(bookingData.booking_id, {
+          no_of_rooms: bookingData.no_of_rooms,
+          number_of_rooms: bookingData.number_of_rooms || bookingData.no_of_rooms,
+          no_of_persons: bookingData.no_of_persons,
+          no_of_adults: bookingData.no_of_adults,
+          room_category: bookingData.room_category,
+          room_type: bookingData.room_type,
+          rooms_config: bookingData.rooms_config,
+          room_id: bookingData.room_id,
+        });
+      }
       const { body } = await post({
         apiName: "frontdesk",
         path: "/reservations",
@@ -845,7 +989,20 @@ export const AppContextProvider = ({ children }) => {
         },
       }).response;
       const data = await body.json();
-      return data.booking.booking_id; // Return the created reservation ID
+      const createdId = data?.booking?.booking_id || bookingData?.booking_id;
+      if (createdId) {
+        saveBookingMetaToCache(createdId, {
+          no_of_rooms: bookingData.no_of_rooms,
+          number_of_rooms: bookingData.number_of_rooms || bookingData.no_of_rooms,
+          no_of_persons: bookingData.no_of_persons,
+          no_of_adults: bookingData.no_of_adults,
+          room_category: bookingData.room_category,
+          room_type: bookingData.room_type,
+          rooms_config: bookingData.rooms_config,
+          room_id: bookingData.room_id,
+        });
+      }
+      return createdId;
     } catch (error) {
       console.error("Error creating booking:", error);
       setError("Failed to create booking");

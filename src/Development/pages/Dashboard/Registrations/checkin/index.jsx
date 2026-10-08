@@ -335,7 +335,13 @@ const CheckIn = () => {
         checkin_date: currentDateTime,
         checkout_date: checkoutDate,
         room_type: selectedBooking.room_category || selectedBooking.room_type || "",
-        room_id: selectedBooking.room_id || [],
+        room_id: (Array.isArray(selectedBooking.room_id) && selectedBooking.room_id.length > 0)
+          ? selectedBooking.room_id
+          : (typeof selectedBooking.room_id === "string" && selectedBooking.room_id.trim())
+          ? [selectedBooking.room_id.trim()]
+          : (Array.isArray(selectedBooking.rooms_config)
+              ? selectedBooking.rooms_config.map((r) => r.room_id).filter((id) => id && id !== "none")
+              : []),
         no_of_adults: selectedBooking.no_of_persons || selectedBooking.no_of_adults || 1,
         no_of_children: selectedBooking.no_of_children || 0,
         company_id: selectedBooking.company_id || "",

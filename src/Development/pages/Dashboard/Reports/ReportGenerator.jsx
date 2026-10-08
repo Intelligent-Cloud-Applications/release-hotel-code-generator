@@ -35,12 +35,19 @@ import {
   DollarSign,
   UtensilsCrossed,
   Receipt,
+  Shirt,
+  Package,
+  ArrowUpFromLine,
+  ShoppingCart,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { get } from "aws-amplify/api";
 import { useInstitutionContext } from "../../../context/InstitutionContext.jsx";
+import { institutionId as defaultInstitutionId } from "../../../../Operation/data.json";
 
 const ReportGenerator = () => {
   const {
@@ -112,6 +119,13 @@ const ReportGenerator = () => {
   const [restaurantDisplayOptions, setRestaurantDisplayOptions] = useState({
     showOrderSource: false,
     showPaidBy: false,
+  });
+
+  // Store Stock specific state & filters
+  const [stockHistory, setStockHistory] = useState([]);
+  const [stockFilters, setStockFilters] = useState({
+    department: "all",
+    category: "all",
   });
 
   const getUniqueCompanyNames = () => {
@@ -361,6 +375,75 @@ const ReportGenerator = () => {
         { key: "status", label: "Status", type: "text" },
         { key: "advance_payment", label: "Advance Payment", type: "currency" },
         { key: "discount", label: "Discount", type: "currency" },
+        { key: "total_amount", label: "Total Amount", type: "currency" },
+      ],
+    },
+    laundry: {
+      title: "Laundry Revenue Report",
+      icon: Shirt,
+      description: "Granular laundry revenue itemized by care type (Washing vs Pressing vs Dry Clean), room folios & direct settlements",
+      dataSource: "laundry",
+      columns: [
+        { key: "token", label: "Tag / Token", type: "text" },
+        { key: "date", label: "Date", type: "date" },
+        { key: "guest", label: "Guest / Room", type: "text" },
+        { key: "garments", label: "Garments (Pcs)", type: "number" },
+        { key: "care_types", label: "Care Types", type: "text" },
+        { key: "speed", label: "Speed", type: "text" },
+        { key: "subtotal", label: "Items Subtotal", type: "currency" },
+        { key: "surcharge", label: "Express Fee", type: "currency" },
+        { key: "cgst", label: "CGST", type: "currency" },
+        { key: "sgst", label: "SGST", type: "currency" },
+        { key: "total_amount", label: "Total Amount", type: "currency" },
+        { key: "settlement", label: "Settlement", type: "text" },
+        { key: "status", label: "Status", type: "text" },
+      ],
+    },
+    stock_inventory: {
+      title: "Store Stock Inventory Report",
+      icon: Package,
+      description: "Live store stock quantities, category, unit, par levels, rates and total valuation",
+      dataSource: "stock",
+      columns: [
+        { key: "itemName", label: "Item Name", type: "text" },
+        { key: "category", label: "Category", type: "text" },
+        { key: "quantity", label: "Current Qty", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "parLevel", label: "Par Level", type: "number" },
+        { key: "status", label: "Status", type: "text" },
+        { key: "price", label: "Last Rate", type: "currency" },
+        { key: "total_valuation", label: "Valuation", type: "currency" },
+      ],
+    },
+    stock_issues: {
+      title: "Store Issue & Consumption Report",
+      icon: ArrowUpFromLine,
+      description: "Date-wise departmental consumption (Kitchen, Housekeeping, Laundry & other depts)",
+      dataSource: "stock",
+      columns: [
+        { key: "date", label: "Issue Date", type: "date" },
+        { key: "department", label: "Department", type: "text" },
+        { key: "itemName", label: "Item Name", type: "text" },
+        { key: "quantity", label: "Quantity", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "type", label: "Type", type: "text" },
+        { key: "description", label: "Remarks / Purpose", type: "text" },
+      ],
+    },
+    stock_purchases: {
+      title: "Store Purchase Register",
+      icon: ShoppingCart,
+      description: "Vendor inward purchase invoices, GRN numbers and total expenditure",
+      dataSource: "stock",
+      columns: [
+        { key: "date", label: "Bill Date", type: "date" },
+        { key: "grnNo", label: "GRN No", type: "text" },
+        { key: "billNo", label: "Bill No", type: "text" },
+        { key: "vendorName", label: "Vendor", type: "text" },
+        { key: "itemName", label: "Item", type: "text" },
+        { key: "quantity", label: "Quantity", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "price", label: "Rate", type: "currency" },
         { key: "total_amount", label: "Total Amount", type: "currency" },
       ],
     },
@@ -650,13 +733,162 @@ const ReportGenerator = () => {
     });
   };
 
+  // Helper to process laundry orders and room services
+  const processLaundryReportData = () => {
+    let rawOrders = [];
+    try {
+      const saved = localStorage.getItem("hotel_laundry_orders");
+      if (saved) rawOrders = JSON.parse(saved);
+    } catch (e) {}
+
+    return (rawOrders || []).map((ord) => {
+      const allItems = ord.items || [];
+      const distinctCare = Array.from(
+        new Set(
+          allItems.map((i) =>
+            i.careType === "wash_and_press"
+              ? "Wash & Press"
+              : i.careType === "press_only"
+              ? "Iron Only"
+              : i.careType === "dry_clean"
+              ? "Dry Clean"
+              : "Care"
+          )
+        )
+      ).join(", ");
+
+      const roomText = ord.roomNumber && ord.roomNumber !== "Walk-In" ? `Room ${ord.roomNumber}` : "Walk-In";
+
+      return {
+        token: ord.token || ord.orderId || "LND-000",
+        date: toYMD(ord.createdAt) || toYMD(new Date()),
+        guest: `${ord.guestName || "Guest"} (${roomText})`,
+        room_number: ord.roomNumber || "",
+        garments: ord.totalGarments || allItems.reduce((acc, i) => acc + (Number(i.quantity) || 1), 0),
+        care_types: distinctCare || "Laundering",
+        speed: ord.serviceSpeedLabel || "Standard",
+        subtotal: Number(ord.itemsSubtotal || 0),
+        surcharge: Number(ord.surchargeAmount || 0),
+        cgst: Number(ord.cgstAmount || 0),
+        sgst: Number(ord.sgstAmount || 0),
+        total_amount: Number(ord.grandTotal || ord.itemsSubtotal || 0),
+        settlement: ord.settlementType === "ROOM_FOLIO" ? `Room Folio (${ord.roomNumber})` : `Direct (${ord.paymentMethod || "CASH"})`,
+        status: ord.status || "Completed",
+      };
+    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  };
+
+  // Helper to process stock inventory data
+  const processStockInventoryData = () => {
+    const map = {};
+    const sorted = [...(stockHistory || [])].sort((a, b) => (a.dateEpoch || 0) - (b.dateEpoch || 0));
+
+    sorted.forEach((entry) => {
+      const key = `${entry.itemName}_${entry.unit}_${entry.category}`;
+      if (!map[key]) {
+        const catLower = (entry.category || "").toLowerCase();
+        let defaultPar = 10;
+        if (catLower.includes("linen") || catLower.includes("towel")) defaultPar = 25;
+        if (catLower.includes("chemical") || catLower.includes("clean")) defaultPar = 15;
+        if (catLower.includes("consumable")) defaultPar = 20;
+
+        map[key] = {
+          itemName: entry.itemName,
+          category: entry.category,
+          unit: entry.unit,
+          quantity: 0,
+          parLevel: Number(entry.parLevel) || defaultPar,
+          price: Number(entry.price) || 0,
+        };
+      }
+      if (entry.parLevel) map[key].parLevel = Number(entry.parLevel);
+      if (entry.price && Number(entry.price) > 0) map[key].price = Number(entry.price);
+
+      const q = Number(entry.quantity) || 0;
+      if (entry.actionType === "add" || entry.actionType === "purchase-entry") map[key].quantity += q;
+      if (entry.actionType === "distributed" || entry.actionType === "issue_entry") map[key].quantity -= q;
+      if (entry.actionType === "adjustment" || entry.actionType === "wastage" || entry.actionType === "return") map[key].quantity = q;
+    });
+
+    return Object.values(map).map((item) => {
+      const isCritical = item.quantity === 0;
+      const isLow = item.quantity <= item.parLevel;
+      const status = isCritical ? "OUT OF STOCK" : isLow ? "LOW STOCK" : "OK";
+      const total_valuation = (item.quantity * item.price).toFixed(2);
+      return {
+        ...item,
+        status,
+        total_valuation: Number(total_valuation),
+      };
+    });
+  };
+
+  // Helper to process stock departmental issues
+  const processStockIssuesData = () => {
+    const issueLogs = (stockHistory || []).filter(
+      (log) => log.actionType === "issue_entry" || log.actionType === "distributed" || log.actionType === "return"
+    );
+
+    return issueLogs.map((log) => {
+      const d = log.issueDate ? toDateObj(log.issueDate) : toDateObj(log.dateEpoch);
+      return {
+        date: d ? toYMD(d) : "",
+        department: (log.department || "General").toUpperCase(),
+        itemName: log.itemName || "—",
+        quantity: Number(log.adjustmentQuantity || log.quantity || 0),
+        unit: log.unit || "pcs",
+        type: log.actionType === "return" ? "Return" : "Issue",
+        description: log.description || "—",
+      };
+    }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
+  };
+
+  // Helper to process stock purchase register
+  const processStockPurchasesData = () => {
+    const purchaseLogs = (stockHistory || []).filter((log) => log.actionType === "purchase-entry");
+
+    return purchaseLogs.map((log) => {
+      const d = log.billDate ? toDateObj(log.billDate) : toDateObj(log.dateEpoch);
+      const q = Number(log.quantity) || 0;
+      const p = Number(log.price) || 0;
+      return {
+        date: d ? toYMD(d) : "",
+        grnNo: log.grnNo || "—",
+        billNo: log.billNo || "—",
+        vendorName: log.vendorName || "—",
+        itemName: log.itemName || "—",
+        quantity: q,
+        unit: log.unit || "pcs",
+        price: p,
+        total_amount: Number((q * p).toFixed(2)),
+      };
+    }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
+  };
+
   // Fetch data based on selected report
   useEffect(() => {
     const fetchData = async () => {
       if (!selectedReport) return;
 
       try {
+        if (selectedReport === "stock_inventory" || selectedReport === "stock_issues" || selectedReport === "stock_purchases") {
+          const instId = institutionData?.institutionId || defaultInstitutionId;
+          const { body } = await get({
+            apiName: "frontdesk",
+            path: `/stock?institutionId=${instId}`,
+          }).response;
+          const res = await body.json();
+          if (res?.success && Array.isArray(res.stockHistory)) {
+            setStockHistory(res.stockHistory);
+          }
+          return;
+        }
+
         switch (selectedReport) {
+          case "laundry":
+            await fetchBookings();
+            await listTotalBill();
+            break;
           case "rooms":
             await fetchRooms();
             break;
@@ -729,6 +961,9 @@ const ReportGenerator = () => {
       };
     } else {
       switch (selectedReport) {
+        case "laundry":
+          data = processLaundryReportData();
+          break;
         case "rooms":
           data = rooms || [];
           break;
@@ -860,6 +1095,15 @@ const ReportGenerator = () => {
           });
           break;
         }
+        case "stock_inventory":
+          data = processStockInventoryData();
+          break;
+        case "stock_issues":
+          data = processStockIssuesData();
+          break;
+        case "stock_purchases":
+          data = processStockPurchasesData();
+          break;
         default:
           data = [];
       }
@@ -1466,6 +1710,24 @@ const ReportGenerator = () => {
       }
     }
 
+    // Apply stock issues specific filters (Department filter)
+    if (selectedReport === "stock_issues") {
+      if (stockFilters.department && stockFilters.department !== "all") {
+        data = data.filter(
+          (item) => String(item.department || "").toUpperCase() === String(stockFilters.department).toUpperCase()
+        );
+      }
+    }
+
+    // Apply stock inventory specific filters (Category filter)
+    if (selectedReport === "stock_inventory") {
+      if (stockFilters.category && stockFilters.category !== "all") {
+        data = data.filter(
+          (item) => String(item.category || "").toLowerCase() === String(stockFilters.category).toLowerCase()
+        );
+      }
+    }
+
     setReportData(data);
     setCurrentPage(1);
   }, [
@@ -1487,6 +1749,8 @@ const ReportGenerator = () => {
     restaurantFilters,
     restaurantDisplayOptions,
     expenses,
+    stockHistory,
+    stockFilters,
   ]);
 
   // Pagination
@@ -1604,14 +1868,20 @@ const ReportGenerator = () => {
 
       const formattedData = formatDataForExport(reportData, columns);
 
-      const doc = new jsPDF();
+      const isLandscape = selectedReport === "laundry" || columns.length > 7;
+      const doc = new jsPDF({
+        orientation: isLandscape ? "landscape" : "portrait",
+        unit: "mm",
+        format: "a4",
+      });
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
 
       doc.setFillColor(240, 240, 240);
       doc.rect(0, 0, pageWidth, 40, "F");
 
       if (institutionData?.name || institutionData?.companyName) {
-        doc.setFontSize(20);
+        doc.setFontSize(isLandscape ? 18 : 20);
         doc.setFont("courier", "bold");
         doc.setTextColor(0, 0, 0);
         const companyName =
@@ -1658,12 +1928,15 @@ const ReportGenerator = () => {
         currentY += 6;
       }
 
+      const fixedTableWidth = isLandscape ? pageWidth - 20 : pageWidth * 0.92;
+      const tableLeftMargin = (pageWidth - fixedTableWidth) / 2;
+
       doc.setTextColor(0, 0, 0);
       currentY += 8;
       doc.setLineWidth(0.5);
       doc.setDrawColor(0, 0, 0);
       doc.setLineDashPattern([2, 1], 0);
-      doc.line(20, currentY, pageWidth - 20, currentY);
+      doc.line(tableLeftMargin, currentY, pageWidth - tableLeftMargin, currentY);
       doc.setLineDashPattern([], 0);
 
       const tableStartY = currentY + 15;
@@ -1673,10 +1946,7 @@ const ReportGenerator = () => {
 
       doc.setLineWidth(0.2);
       doc.setDrawColor(80, 80, 80);
-      doc.rect(5, 5, pageWidth - 11, doc.internal.pageSize.getHeight() - 10);
-
-      const fixedTableWidth = pageWidth * 0.9;
-      const tableLeftMargin = (pageWidth - fixedTableWidth) / 2;
+      doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
 
       autoTable(doc, {
         head: [columns.map((col) => col.label)],
@@ -1693,27 +1963,30 @@ const ReportGenerator = () => {
         showHead: "everyPage",
         styles: {
           fontSize:
-            selectedReport === "rooms"
+            selectedReport === "laundry"
+              ? 6.5
+              : selectedReport === "rooms"
               ? 8
               : selectedReport === "companies"
               ? 8
               : 7,
           font: "helvetica",
-          cellPadding: { horizontal: 2, vertical: 3 },
+          cellPadding: selectedReport === "laundry" ? { horizontal: 1.5, vertical: 2 } : { horizontal: 2, vertical: 3 },
           overflow: "linebreak",
           halign: "left",
-          valign: "top",
-          lineWidth: 0.2,
+          valign: "middle",
+          lineWidth: 0.15,
           lineColor: [220, 220, 220],
           textColor: [0, 0, 0],
           fillColor: [255, 255, 255],
-          cellWidth: "wrap",
         },
         headStyles: {
-          fillColor: [220, 220, 220],
+          fillColor: [230, 230, 230],
           textColor: [0, 0, 0],
           fontSize:
-            selectedReport === "rooms"
+            selectedReport === "laundry"
+              ? 7.5
+              : selectedReport === "rooms"
               ? 10
               : selectedReport === "companies"
               ? 9
@@ -1722,7 +1995,7 @@ const ReportGenerator = () => {
           fontStyle: "bold",
           halign: "center",
           valign: "middle",
-          cellPadding: { horizontal: 1, vertical: 2 },
+          cellPadding: selectedReport === "laundry" ? { horizontal: 1, vertical: 2 } : { horizontal: 1, vertical: 2 },
           lineWidth: 0.2,
           lineColor: [180, 180, 180],
         },
@@ -1736,7 +2009,22 @@ const ReportGenerator = () => {
           ...Object.fromEntries(
             columns.map((col, index) => {
               let width = "auto";
-              if (selectedReport === "rooms") {
+              if (selectedReport === "laundry") {
+                if (col.key === "token") width = "7%";
+                else if (col.key === "date") width = "7%";
+                else if (col.key === "guest") width = "13%";
+                else if (col.key === "garments") width = "6%";
+                else if (col.key === "care_types") width = "12%";
+                else if (col.key === "speed") width = "7%";
+                else if (col.key === "subtotal") width = "8%";
+                else if (col.key === "surcharge") width = "7%";
+                else if (col.key === "cgst") width = "6%";
+                else if (col.key === "sgst") width = "6%";
+                else if (col.key === "total_amount") width = "8%";
+                else if (col.key === "settlement") width = "8%";
+                else if (col.key === "status") width = "5%";
+                else width = "auto";
+              } else if (selectedReport === "rooms") {
                 if (col.key.includes("room_number")) width = "15%";
                 else if (col.key.includes("room_type")) width = "20%";
                 else if (col.key.includes("status")) width = "25%";
@@ -1782,13 +2070,18 @@ const ReportGenerator = () => {
                 else if (col.key.includes("payment")) width = "12%";
                 else width = "10%";
               }
+
+              const isRight = col.type === "currency" || col.type === "number";
+              const isCenter = col.key === "token" || col.key === "date" || col.key === "status" || col.key === "speed";
+
               return [
                 index,
                 {
                   cellWidth: width,
+                  halign: isRight ? "right" : isCenter ? "center" : "left",
                   textColor: [0, 0, 0],
                   overflow: "linebreak",
-                  cellPadding: { horizontal: 2, vertical: 3 },
+                  cellPadding: selectedReport === "laundry" ? { horizontal: 1.5, vertical: 2 } : { horizontal: 2, vertical: 3 },
                 },
               ];
             })
@@ -1865,7 +2158,6 @@ const ReportGenerator = () => {
       });
 
       const finalY = doc.lastAutoTable.finalY || tableStartY + 200;
-      const pageHeight = doc.internal.pageSize.getHeight();
       const footerY = pageHeight - 25;
       const summaryY = Math.max(finalY + 10, footerY - 40);
 
@@ -1988,6 +2280,10 @@ const ReportGenerator = () => {
     setRestaurantDisplayOptions({
       showOrderSource: false,
       showPaidBy: false,
+    });
+    setStockFilters({
+      department: "all",
+      category: "all",
     });
   };
 
@@ -2475,6 +2771,71 @@ const ReportGenerator = () => {
                       </>
                     )}
 
+                    {/* Store Issues Report Filters */}
+                    {selectedReport === "stock_issues" && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-sm text-gray-700 mb-3">
+                          Department Filter
+                        </h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Filter by Department</Label>
+                            <Select
+                              value={stockFilters.department || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, department: val }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All Departments" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Departments</SelectItem>
+                                <SelectItem value="KITCHEN">Kitchen</SelectItem>
+                                <SelectItem value="HOUSEKEEPING">Housekeeping</SelectItem>
+                                <SelectItem value="LAUNDRY">Laundry</SelectItem>
+                                <SelectItem value="FRONT DESK">Front Desk</SelectItem>
+                                <SelectItem value="RESTAURANT">Restaurant</SelectItem>
+                                <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Store Inventory Report Filters */}
+                    {selectedReport === "stock_inventory" && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-sm text-gray-700 mb-3">
+                          Category Filter
+                        </h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Filter by Category</Label>
+                            <Select
+                              value={stockFilters.category || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, category: val }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All Categories" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Categories</SelectItem>
+                                <SelectItem value="Linen">Linen</SelectItem>
+                                <SelectItem value="Chemicals">Chemicals</SelectItem>
+                                <SelectItem value="Consumables">Consumables</SelectItem>
+                                <SelectItem value="Amenities">Amenities</SelectItem>
+                                <SelectItem value="Kitchen">Kitchen</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <Button
                         onClick={clearFilters}
@@ -2582,8 +2943,8 @@ const ReportGenerator = () => {
                       </div>
 
                       {/* Data Preview Table */}
-                      <div className="w-full overflow-hidden">
-                        <table className="w-full divide-y divide-gray-200 table-fixed">
+                      <div className="w-full overflow-x-auto border border-gray-200 rounded-md">
+                        <table className="w-full divide-y divide-gray-200 min-w-[950px]">
                           <thead className="bg-gray-50">
                             <tr>
                               {displayedColumns.map((column) => (
@@ -2869,6 +3230,68 @@ const ReportGenerator = () => {
                                         >
                                           <span className="text-gray-700 font-medium">
                                             {value || "N/A"}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                  }
+
+                                  // Special handling for store stock reports
+                                  if (selectedReport === "stock_inventory") {
+                                    if (column.key === "status") {
+                                      const isCritical = value === "OUT OF STOCK";
+                                      const isLow = value === "LOW STOCK";
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span
+                                            className={`inline-flex px-2 py-0.5 text-xs font-bold rounded ${
+                                              isCritical
+                                                ? "bg-red-100 text-red-800"
+                                                : isLow
+                                                ? "bg-amber-100 text-amber-800"
+                                                : "bg-emerald-100 text-emerald-800"
+                                            }`}
+                                          >
+                                            {value}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                  }
+
+                                  if (selectedReport === "stock_issues") {
+                                    if (column.key === "department") {
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span className="inline-flex px-2 py-0.5 text-xs font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                            {value}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                    if (column.key === "type") {
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span
+                                            className={`inline-flex px-2 py-0.5 text-xs font-bold rounded ${
+                                              value === "Return"
+                                                ? "bg-emerald-100 text-emerald-800"
+                                                : "bg-blue-100 text-blue-800"
+                                            }`}
+                                          >
+                                            {value}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                  }
+
+                                  if (selectedReport === "stock_purchases") {
+                                    if (column.key === "grnNo") {
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span className="inline-flex px-2 py-0.5 text-xs font-mono font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                            {value}
                                           </span>
                                         </td>
                                       );

@@ -137,6 +137,30 @@ const AmendBooking = () => {
   const isNewCompany = useMemo(() => {
     return companyQuery && !formData.company_id && filteredCompanies.length === 0;
   }, [companyQuery, formData.company_id, filteredCompanies.length]);
+
+  const availableCategories = useMemo(() => {
+    const dynamicCategories = (rooms || [])
+      .map((r) => r.room_type)
+      .filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const fromBooking = [
+      editingBooking?.room_category,
+      editingBooking?.room_type,
+      formData?.room_category,
+      formData?.room_type,
+      ...(editingBooking?.rooms_config?.map((rc) => rc.room_category || rc.room_type) || []),
+    ].filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const standardCategories = [
+      "Standard",
+      "Deluxe",
+      "Super Deluxe",
+      "Executive",
+      "Suite",
+      "Single",
+      "Double",
+      "Family",
+    ];
+    return Array.from(new Set([...fromBooking, ...dynamicCategories, ...standardCategories]));
+  }, [rooms, editingBooking, formData?.room_category, formData?.room_type]);
   // Close suggestions on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -500,6 +524,9 @@ const AmendBooking = () => {
       checkout_date: editingBooking.checkout_date ? Number(editingBooking.checkout_date) : '',
       room_ids: currentRoomIds,
       room_type: getRoomDetails(currentRoomIds[0]).room_type || editingBooking.room_type || '',
+      room_category: editingBooking.room_category || getRoomDetails(currentRoomIds[0]).room_type || editingBooking.room_type || '',
+      no_of_rooms: editingBooking.no_of_rooms || editingBooking.number_of_rooms || (currentRoomIds ? currentRoomIds.length : 1),
+      no_of_persons: editingBooking.no_of_persons || editingBooking.no_of_adults || 1,
       no_of_adults: editingBooking.no_of_adults || 1,
       no_of_children: editingBooking.no_of_children || 0,
       discount: editingBooking.discount || 0,
@@ -573,6 +600,9 @@ const AmendBooking = () => {
       checkout_date: booking.checkout_date ? Number(booking.checkout_date) : '',
       room_ids: currentRoomIds,
       room_type: getRoomDetails(currentRoomIds[0]).room_type || booking.room_type || '',
+      room_category: booking.room_category || getRoomDetails(currentRoomIds[0]).room_type || booking.room_type || '',
+      no_of_rooms: booking.no_of_rooms || booking.number_of_rooms || (currentRoomIds ? currentRoomIds.length : 1),
+      no_of_persons: booking.no_of_persons || booking.no_of_adults || 1,
       no_of_adults: booking.no_of_adults || 1,
       no_of_children: booking.no_of_children || 0,
       discount: booking.discount || 0,
@@ -1022,6 +1052,10 @@ const AmendBooking = () => {
       booking_id: editingBooking.booking_id,
       room_id: formData.room_ids,
       room_type: formData.room_type,
+      room_category: formData.room_category || formData.room_type,
+      no_of_rooms: parseInt(formData.no_of_rooms) || (formData.room_ids ? formData.room_ids.length : 1),
+      number_of_rooms: parseInt(formData.no_of_rooms) || (formData.room_ids ? formData.room_ids.length : 1),
+      no_of_persons: parseInt(formData.no_of_persons || formData.no_of_adults) || 1,
       no_of_adults: parseInt(formData.no_of_adults) || 1,
       services: formData.services || {},
       updated_at: Math.floor(Date.now())
@@ -1370,9 +1404,9 @@ const AmendBooking = () => {
       </div>
       {/* Edit Modal - Moved outside table */}
       {showEditDialog && editingBooking && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl px-4 max-w-[95vw] max-h-[95vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col overflow-hidden">
+            <div className="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between flex-shrink-0">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Amend Check-in - {editingBooking.booking_id}</h2>
                 {isOldCheckin && (
@@ -1391,7 +1425,8 @@ const AmendBooking = () => {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+            <div className="overflow-y-auto flex-1 p-4 sm:p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Guest Details Section */}
               <div className="bg-gray-50 p-3 rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
@@ -1599,9 +1634,98 @@ const AmendBooking = () => {
               <div className="bg-gray-50 p-3 rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
                   <Calendar className="h-3 w-3" />
-                  Booking Information
+                  Booking & Room Information
                 </h4>
+
+                {/* Visible Room & Booking Summary Banner */}
+                <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-md text-xs space-y-1 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-blue-900">Room Category / Type:</span>
+                    <span className="bg-blue-600 text-white font-bold px-2 py-0.5 rounded text-xs">
+                      {formData.room_category || formData.room_type || editingBooking?.room_category || editingBooking?.room_type || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-blue-800">
+                    <span>
+                      <strong>Total Rooms:</strong> {formData.no_of_rooms || editingBooking?.no_of_rooms || (formData.room_ids ? formData.room_ids.length : 1)}
+                    </span>
+                    <span>
+                      <strong>Total Persons:</strong> {formData.no_of_persons || editingBooking?.no_of_persons || editingBooking?.no_of_adults || 1}
+                    </span>
+                    {formData.room_ids && formData.room_ids.length > 0 && (
+                      <span>
+                        <strong>Assigned Rooms:</strong>{" "}
+                        {formData.room_ids
+                          .map((id) => getRoomDetails(id)?.room_number || id)
+                          .filter(Boolean)
+                          .join(", ")}
+                      </span>
+                    )}
+                  </div>
+                  {editingBooking?.rooms_config && editingBooking.rooms_config.length > 0 && (
+                    <div className="pt-1 border-t border-blue-200/60 flex flex-wrap gap-1">
+                      {editingBooking.rooms_config.map((r, i) => (
+                        <span
+                          key={i}
+                          className="bg-white border border-blue-200 text-blue-900 px-1.5 py-0.5 rounded text-[11px] font-medium"
+                        >
+                          Room {r.room_index || i + 1}: <strong>{r.room_category || r.room_type || "Standard"}</strong>
+                          {r.room_number ? ` (No. ${r.room_number})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Room Category *</Label>
+                    <Select
+                      value={formData.room_category || formData.room_type || ''}
+                      onValueChange={(val) => {
+                        handleInputChange('room_category', val);
+                        handleInputChange('room_type', val);
+                      }}
+                      disabled={isOldCheckin}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select room category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCategories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs font-medium text-gray-700">Rooms *</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.no_of_rooms || 1}
+                        onChange={(e) => handleInputChange('no_of_rooms', e.target.value)}
+                        className="h-7 text-xs"
+                        disabled={isOldCheckin}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium text-gray-700">Persons *</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.no_of_persons || formData.no_of_adults || 1}
+                        onChange={(e) => {
+                          handleInputChange('no_of_persons', e.target.value);
+                          handleInputChange('no_of_adults', e.target.value);
+                        }}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </div>
                   <div>
                     <Label className="text-xs font-medium text-gray-700">Check-in Date *</Label>
                     <Input
@@ -2019,7 +2143,8 @@ const AmendBooking = () => {
                 )}
               </div>
             </div>
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-between">
+            </div>
+            <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
               <Button
                 variant="outline"
                 onClick={resetForm}
