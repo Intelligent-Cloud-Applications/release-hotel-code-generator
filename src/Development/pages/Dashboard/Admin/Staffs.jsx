@@ -51,7 +51,13 @@ const staticColumns = [
           <span className="font-semibold text-gray-700">{info.getValue()}</span>
           {roles.length > 0 && (
             <span className="text-xs text-gray-500 truncate">
-              {roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(", ")}
+              {roles
+                .map((r) => {
+                  const str = typeof r === "object" ? r.value || r.label || "" : String(r || "");
+                  return str ? str.charAt(0).toUpperCase() + str.slice(1) : "";
+                })
+                .filter(Boolean)
+                .join(", ")}
             </span>
           )}
         </div>
@@ -107,7 +113,7 @@ const Staffs = () => {
   });
 
   const [currentStaff, setCurrentStaff] = useState(null);
-  const availableRoles = ["admin", "frontdesk", "housekeeping", "accountant"].map((r) => ({
+  const availableRoles = ["admin", "frontdesk", "housekeeping", "accountant", "laundry", "store"].map((r) => ({
     label: r.charAt(0).toUpperCase() + r.slice(1),
     value: r,
   }));
@@ -157,11 +163,21 @@ const Staffs = () => {
         toast.error("Select at least one role");
         return;
       }
-      const payload = { ...newStaffData, role: newStaffData.role.map((r) => r.value) };
+      const payload = {
+        ...newStaffData,
+        role: newStaffData.role.map((r) => (typeof r === "object" ? r.value : r)),
+      };
       const result = await createStaff(payload);
       if (result.success) {
         toast.success("Staff added successfully");
         setIsAddStaffOpen(false);
+        setNewStaffData({
+          name: "",
+          email: "",
+          mobile: "",
+          role: [],
+          password: "",
+        });
       } else toast.error("Failed to add staff");
     } catch (err) {
       toast.error("Error creating staff");
@@ -170,13 +186,21 @@ const Staffs = () => {
 
   const handleEditStaff = (staff) => {
     setCurrentStaff(staff);
+    let initialRoles = [];
+    if (Array.isArray(staff.role)) {
+      initialRoles = staff.role.map((r) => {
+        const val = typeof r === "object" ? (r.value || "").toLowerCase() : String(r).toLowerCase();
+        return { label: val.charAt(0).toUpperCase() + val.slice(1), value: val };
+      });
+    } else if (typeof staff.role === "string" && staff.role.trim()) {
+      const val = staff.role.trim().toLowerCase();
+      initialRoles = [{ label: val.charAt(0).toUpperCase() + val.slice(1), value: val }];
+    }
     setNewStaffData({
       name: staff.name,
       email: staff.email,
       mobile: staff.mobile,
-      role: Array.isArray(staff.role)
-        ? staff.role.map((r) => ({ label: r, value: r.toLowerCase() }))
-        : [],
+      role: initialRoles,
       password: "",
     });
     setIsEditStaffOpen(true);
@@ -191,7 +215,7 @@ const Staffs = () => {
       }
       const payload = {
         ...newStaffData,
-        role: newStaffData.role.map((r) => r.value),
+        role: newStaffData.role.map((r) => (typeof r === "object" ? r.value : r)),
         staff_id: currentStaff.staff_id,
       };
       await updateStaff(payload);
@@ -320,9 +344,50 @@ const Staffs = () => {
                 isMulti
                 options={availableRoles}
                 value={newStaffData.role}
-                onChange={(selected) => setNewStaffData((prev) => ({ ...prev, role: selected }))}
+                onChange={(selected) => setNewStaffData((prev) => ({ ...prev, role: selected || [] }))}
                 placeholder="Select roles..."
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+                styles={{
+                  menuPortal: (base) => ({ ...base, zIndex: 99999 }),
+                }}
               />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {availableRoles.map((r) => {
+                  const isSelected = (newStaffData.role || []).some(
+                    (sel) => (typeof sel === "object" ? sel.value : sel) === r.value
+                  );
+                  return (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setNewStaffData((prev) => ({
+                            ...prev,
+                            role: (prev.role || []).filter(
+                              (sel) => (typeof sel === "object" ? sel.value : sel) !== r.value
+                            ),
+                          }));
+                        } else {
+                          setNewStaffData((prev) => ({
+                            ...prev,
+                            role: [...(prev.role || []), r],
+                          }));
+                        }
+                      }}
+                      className={`px-2.5 py-1 text-xs rounded-md font-semibold transition-all border ${
+                        isSelected
+                          ? "bg-black text-white border-black"
+                          : "bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200"
+                      }`}
+                    >
+                      {isSelected ? "✓ " : "+ "}
+                      {r.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsAddStaffOpen(false)}>
@@ -365,9 +430,50 @@ const Staffs = () => {
                 isMulti
                 options={availableRoles}
                 value={newStaffData.role}
-                onChange={(selected) => setNewStaffData((prev) => ({ ...prev, role: selected }))}
+                onChange={(selected) => setNewStaffData((prev) => ({ ...prev, role: selected || [] }))}
                 placeholder="Select roles..."
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+                styles={{
+                  menuPortal: (base) => ({ ...base, zIndex: 99999 }),
+                }}
               />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {availableRoles.map((r) => {
+                  const isSelected = (newStaffData.role || []).some(
+                    (sel) => (typeof sel === "object" ? sel.value : sel) === r.value
+                  );
+                  return (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setNewStaffData((prev) => ({
+                            ...prev,
+                            role: (prev.role || []).filter(
+                              (sel) => (typeof sel === "object" ? sel.value : sel) !== r.value
+                            ),
+                          }));
+                        } else {
+                          setNewStaffData((prev) => ({
+                            ...prev,
+                            role: [...(prev.role || []), r],
+                          }));
+                        }
+                      }}
+                      className={`px-2.5 py-1 text-xs rounded-md font-semibold transition-all border ${
+                        isSelected
+                          ? "bg-black text-white border-black"
+                          : "bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200"
+                      }`}
+                    >
+                      {isSelected ? "✓ " : "+ "}
+                      {r.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsEditStaffOpen(false)}>Cancel</Button>

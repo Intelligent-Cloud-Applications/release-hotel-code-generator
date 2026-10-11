@@ -10,6 +10,41 @@ const ChargesBreakdown = ({
 }) => {
   // Track which fields are currently being edited (have focus or are empty but being typed in)
   const [activeEditingFields, setActiveEditingFields] = React.useState(new Set());
+  // Helper to extract granular laundry care types if available
+  const getLaundryDescription = (roomNum, serviceDate) => {
+    try {
+      const saved = localStorage.getItem("hotel_laundry_orders");
+      if (!saved) return "Laundry Charges";
+      const parsedOrders = JSON.parse(saved);
+      const matched = parsedOrders.filter(
+        (o) =>
+          String(o.roomNumber) === String(roomNum) &&
+          (o.createdAt ? o.createdAt.startsWith(serviceDate) : true)
+      );
+      if (matched.length > 0) {
+        const allItems = matched.flatMap((o) => o.items || []);
+        const careLabels = Array.from(
+          new Set(
+            allItems.map((i) =>
+              i.careType === "wash_and_press"
+                ? "Wash & Press"
+                : i.careType === "press_only"
+                ? "Iron Only"
+                : i.careType === "dry_clean"
+                ? "Dry Clean"
+                : "Care"
+            )
+          )
+        );
+        const totalPcs = matched.reduce((sum, o) => sum + (o.totalGarments || 0), 0);
+        if (careLabels.length > 0) {
+          return `Laundry Charges (${totalPcs > 0 ? `${totalPcs} pcs: ` : ""}${careLabels.join(", ")})`;
+        }
+      }
+    } catch (e) {}
+    return "Laundry Charges";
+  };
+
   return (
     <div className="mb-6">
       <div className="flex items-center justify-between mb-2 mt-2">
@@ -92,7 +127,10 @@ const ChargesBreakdown = ({
                                   : "Extra Pax Charges",
                             },
                             { key: "foodCharges", description: "Food Charges" },
-                            { key: "laundryCharges", description: "Laundry Charges" },
+                            {
+                              key: "laundryCharges",
+                              description: getLaundryDescription(roomNumber, date),
+                            },
                             { key: "minibarCharges", description: "Bar Charges" },
                             { key: "extraBedCharges", description: "Extra Bed Charges" },
                             { key: "manualCharges", description: "Miscellaneous Charges" },

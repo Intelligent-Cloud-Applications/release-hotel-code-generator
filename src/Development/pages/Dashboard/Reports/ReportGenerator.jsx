@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
+import { useAuthContext } from "../../../context/AuthContext.jsx";
 import { Button } from "../../../components/ui/button.js";
 import {
   Card,
@@ -71,9 +72,12 @@ const ReportGenerator = () => {
     fetchRestaurantOrders,
     loading,
   } = useAppContext();
+  const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
   console.log("listExpenses", expenses);
-  const [selectedReport, setSelectedReport] = useState("");
+  const [selectedReport, setSelectedReport] = useState(
+    userData?.userType === "store" ? "stock_inventory" : ""
+  );
   const [dateRange, setDateRange] = useState({ from: null, to: null });
   const [filters, setFilters] = useState({});
   const [reportData, setReportData] = useState([]);
@@ -194,6 +198,16 @@ const ReportGenerator = () => {
       }
     }
   }, []);
+
+  // Enforce store-only reports when userType is store
+  useEffect(() => {
+    if (userData?.userType === "store") {
+      const storeReports = ["stock_inventory", "stock_issues", "stock_purchases"];
+      if (!storeReports.includes(selectedReport)) {
+        setSelectedReport("stock_inventory");
+      }
+    }
+  }, [userData?.userType, selectedReport]);
 
   // Report configurations
   const reportConfigs = {
@@ -2372,14 +2386,21 @@ const ReportGenerator = () => {
                       <SelectValue placeholder="Choose a report type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.entries(reportConfigs).map(([key, config]) => (
-                        <SelectItem key={key} value={key}>
-                          <div className="flex items-center gap-2">
-                            <config.icon className="h-4 w-4" />
-                            {config.title}
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {Object.entries(reportConfigs)
+                        .filter(([key]) => {
+                          if (userData?.userType === "store") {
+                            return ["stock_inventory", "stock_issues", "stock_purchases"].includes(key);
+                          }
+                          return true;
+                        })
+                        .map(([key, config]) => (
+                          <SelectItem key={key} value={key}>
+                            <div className="flex items-center gap-2">
+                              <config.icon className="h-4 w-4" />
+                              {config.title}
+                            </div>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

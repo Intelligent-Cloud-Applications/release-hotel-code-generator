@@ -44,9 +44,10 @@ export const InstitutionProvider = ({ children }) => {
     }
   }
 
-  async function updateInstitutionData() {
+  async function updateInstitutionData(customData = null) {
     try {
-      console.log("Updating institution data:", institutionData);
+      const dataToSave = customData || institutionData;
+      console.log("Updating institution data in backend database:", dataToSave);
       const res = await get({
         apiName: "common",
         path: `/any/${institutionId}/get-institution-data`,
@@ -58,17 +59,17 @@ export const InstitutionProvider = ({ children }) => {
       if (template === "template1") {
         updatedData = {
           ...existingData,
-          template1: institutionData,
+          template1: dataToSave,
         };
       } else if (template === "template2") {
         updatedData = {
           ...existingData,
-          template2: institutionData,
+          template2: dataToSave,
         };
       }
       console.log("Updated data: ", updatedData);
 
-      console.log("Merged institution data to be sent:", updatedData);
+      console.log("Merged institution data to be sent to backend database:", updatedData);
 
       const restOperation = await put({
         apiName: "common",
