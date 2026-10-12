@@ -26,7 +26,7 @@ import {
     Download,
     Filter,
 } from "lucide-react";
-import { get, post } from "aws-amplify/api";
+import { get, post, put, del } from "aws-amplify/api";
 import { useAuthContext } from "../../../context/AuthContext";
 import { institutionId as defaultInstitutionId } from "../../../../Operation/data.json";
 
@@ -119,6 +119,19 @@ export default function Store() {
     const [loadingPurchaseEntry, setLoadingPurchaseEntry] = useState(false);
     const [loadingIssueEntry, setLoadingIssueEntry] = useState(false);
     const [loadingAdjustment, setLoadingAdjustment] = useState(false);
+    const [loadingEditItem, setLoadingEditItem] = useState(false);
+    const [loadingDeleteItem, setLoadingDeleteItem] = useState(false);
+    const [loadingParAction, setLoadingParAction] = useState(false);
+
+    // Edit Item Modal
+    const [editItemModal, setEditItemModal] = useState({
+        isOpen: false,
+        item: null,
+        name: "",
+        category: "",
+        unit: "pcs",
+        parLevel: "",
+    });
 
     // Forms
     const [itemForm, setItemForm] = useState({
@@ -229,19 +242,20 @@ export default function Store() {
                 if (catLower.includes("chemical") || catLower.includes("clean")) defaultPar = 15;
                 if (catLower.includes("consumable")) defaultPar = 20;
 
+                const hasExplicitPar = entry.parLevel !== undefined && entry.parLevel !== null;
                 map[key] = {
                     itemName: entry.itemName,
                     category: entry.category,
                     unit: entry.unit,
                     quantity: 0,
-                    parLevel: Number(entry.parLevel) || defaultPar,
+                    parLevel: hasExplicitPar ? Number(entry.parLevel) : defaultPar,
                     totalPurchased: 0,
                     totalIssued: 0,
                     lastPrice: 0,
                 };
             }
 
-            if (entry.parLevel) {
+            if (entry.parLevel !== undefined && entry.parLevel !== null) {
                 map[key].parLevel = Number(entry.parLevel);
             }
 
@@ -250,6 +264,11 @@ export default function Store() {
             }
 
             const q = Number(entry.quantity) || 0;
+            const deltaQty = Number(
+                entry.adjustmentQuantity !== null && entry.adjustmentQuantity !== undefined
+                    ? entry.adjustmentQuantity
+                    : entry.quantity
+            ) || 0;
 
             if (entry.actionType === "add") map[key].quantity += q;
             if (entry.actionType === "distributed") {
@@ -265,8 +284,11 @@ export default function Store() {
                 map[key].totalPurchased += q;
             }
             if (entry.actionType === "adjustment") map[key].quantity = q;
-            if (entry.actionType === "wastage") map[key].quantity = q;
-            if (entry.actionType === "return") map[key].quantity = q;
+            if (entry.actionType === "wastage") map[key].quantity = Math.max(0, map[key].quantity - deltaQty);
+            if (entry.actionType === "return") {
+                map[key].quantity += deltaQty;
+                map[key].totalIssued = Math.max(0, (map[key].totalIssued || 0) - deltaQty);
+            }
         });
 
         return Object.values(map);
@@ -366,7 +388,7 @@ export default function Store() {
     }, [stockHistory, issueSearch, issueDeptFilter]);
 
     const replenishmentItems = useMemo(() => {
-        return items.filter((item) => item.quantity <= item.parLevel);
+        return items.filter((item) => item.parLevel > 0 && item.quantity <= item.parLevel);
     }, [items]);
 
     /* ----------------------- ITEM MOVEMENT LEDGER (NO MODAL) ------------------------ */
@@ -1097,6 +1119,156 @@ export default function Store() {
         }
     };
 
+    /* ----------------------- STORE ITEM CRUD HANDLERS ------------------------ */
+
+    const handleOpenEditItem = (item) => {
+        setEditItemModal({
+            isOpen: true,
+            item,
+            name: item.itemName || "",
+            category: item.category || "",
+            unit: item.unit || "pcs",
+            parLevel: item.parLevel !== undefined && item.parLevel !== null ? String(item.parLevel) : "",
+        });
+    };
+
+    const handleSaveEditItem = async () => {
+        if (!editItemModal.name.trim() || !editItemModal.category.trim() || !editItemModal.unit.trim()) {
+            return alert("Item name, category, and unit are required.");
+        }
+
+        const oldItem = editItemModal.item;
+        const matchingRecords = stockHistory.filter(
+            (e) => e.itemName === oldItem.itemName && e.category === oldItem.category && e.unit === oldItem.unit
+        );
+
+        setLoadingEditItem(true);
+        try {
+            const newPar = editItemModal.parLevel !== "" ? Number(editItemModal.parLevel) : 0;
+            const updatedName = editItemModal.name.trim();
+            const updatedCategory = editItemModal.category.trim();
+            const updatedUnit = editItemModal.unit.trim();
+
+            if (matchingRecords.length > 0) {
+                for (const rec of matchingRecords) {
+                    await put({
+                        apiName: "frontdesk",
+                        path: `/stock/${rec.dateEpoch}?institutionId=${institutionId}`,
+                        options: {
+                            body: {
+                                itemName: updatedName,
+                                category: updatedCategory,
+                                unit: updatedUnit,
+                                parLevel: newPar,
+                            },
+                        },
+                    }).response;
+                }
+            } else {
+                await post({
+                    apiName: "frontdesk",
+                    path: `/stock?institutionId=${institutionId}`,
+                    options: {
+                        body: {
+                            itemName: updatedName,
+                            category: updatedCategory,
+                            unit: updatedUnit,
+                            quantity: oldItem.quantity || 0,
+                            parLevel: newPar,
+                            actionType: "create-item",
+                            description: "Item updated",
+                        },
+                    },
+                }).response;
+            }
+
+            setEditItemModal({ isOpen: false, item: null, name: "", category: "", unit: "pcs", parLevel: "" });
+            await fetchStockHistory();
+            alert("Item updated successfully!");
+        } catch (error) {
+            console.error("Error updating item:", error);
+            alert("Failed to update item: " + (error.message || "Unknown error"));
+        } finally {
+            setLoadingEditItem(false);
+        }
+    };
+
+    const handleDeleteItem = async (item) => {
+        const matchingRecords = stockHistory.filter(
+            (e) => e.itemName === item.itemName && e.category === item.category && e.unit === item.unit
+        );
+
+        const confirmMsg = `Are you sure you want to delete "${item.itemName}" (${item.category}) from the store?\n\nThis will remove all associated ledger entries (${matchingRecords.length} record${matchingRecords.length === 1 ? "" : "s"}). This action cannot be undone.`;
+        if (!window.confirm(confirmMsg)) return;
+
+        setLoadingDeleteItem(true);
+        try {
+            for (const rec of matchingRecords) {
+                await del({
+                    apiName: "frontdesk",
+                    path: `/stock/${rec.dateEpoch}?institutionId=${institutionId}`,
+                }).response;
+            }
+            await fetchStockHistory();
+            alert(`Item "${item.itemName}" deleted successfully!`);
+        } catch (error) {
+            console.error("Error deleting item:", error);
+            alert("Failed to delete item: " + (error.message || "Unknown error"));
+        } finally {
+            setLoadingDeleteItem(false);
+        }
+    };
+
+    const handleDeleteParLevel = async (item) => {
+        const confirmMsg = `Are you sure you want to delete / remove the Par Level for "${item.itemName}"?`;
+        if (!window.confirm(confirmMsg)) return;
+
+        setLoadingParAction(true);
+        try {
+            const matchingRecords = stockHistory.filter(
+                (e) => e.itemName === item.itemName && e.category === item.category && e.unit === item.unit
+            );
+
+            if (matchingRecords.length > 0) {
+                for (const rec of matchingRecords) {
+                    await put({
+                        apiName: "frontdesk",
+                        path: `/stock/${rec.dateEpoch}?institutionId=${institutionId}`,
+                        options: {
+                            body: {
+                                parLevel: 0,
+                            },
+                        },
+                    }).response;
+                }
+            } else {
+                await post({
+                    apiName: "frontdesk",
+                    path: `/stock?institutionId=${institutionId}`,
+                    options: {
+                        body: {
+                            itemName: item.itemName,
+                            category: item.category,
+                            unit: item.unit,
+                            quantity: item.quantity || 0,
+                            parLevel: 0,
+                            actionType: "adjustment",
+                            description: "Par level deleted",
+                        },
+                    },
+                }).response;
+            }
+
+            await fetchStockHistory();
+            alert(`Par level for "${item.itemName}" deleted successfully!`);
+        } catch (error) {
+            console.error("Error deleting par level:", error);
+            alert("Failed to delete par level: " + (error.message || "Unknown error"));
+        } finally {
+            setLoadingParAction(false);
+        }
+    };
+
     /* ----------------------- LOADING STATE ------------------------ */
 
     if (loading && stockHistory.length === 0) {
@@ -1153,7 +1325,7 @@ export default function Store() {
                                 : "text-gray-600 hover:text-gray-900"
                         }`}
                     >
-                        <ArrowDownToLine size={13} /> Purchase Entry (Section)
+                        <ArrowDownToLine size={13} /> Purchase Entry
                     </button>
                     <button
                         onClick={() => setActiveTab("issue_section")}
@@ -1163,7 +1335,7 @@ export default function Store() {
                                 : "text-gray-600 hover:text-gray-900"
                         }`}
                     >
-                        <ArrowUpFromLine size={13} /> Issue & Consumption (Section)
+                        <ArrowUpFromLine size={13} /> Issue & Consumption
                     </button>
                     <button
                         onClick={() => setActiveTab("history_section")}
@@ -1189,12 +1361,20 @@ export default function Store() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {loading && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-[11px] font-semibold animate-pulse shadow-2xs">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                            <span>Syncing Store...</span>
+                        </div>
+                    )}
                     <button
                         onClick={fetchStockHistory}
+                        disabled={loading}
                         title="Sync with cloud database"
-                        className="p-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-100 text-gray-700 transition"
+                        className="px-2 py-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-100 text-gray-700 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
                     >
-                        <RefreshCw size={14} />
+                        <RefreshCw size={14} className={loading ? "animate-spin text-blue-600" : ""} />
+                        <span className="text-[11px] font-medium hidden sm:inline">{loading ? "Syncing..." : "Sync"}</span>
                     </button>
                 </div>
             </div>
@@ -1305,6 +1485,12 @@ export default function Store() {
 
                         {/* Items Table */}
                         <div className="overflow-x-auto max-h-[calc(100vh-270px)]">
+                            {loading && (
+                                <div className="py-2 text-center text-xs font-semibold text-blue-600 bg-blue-50/80 border-b border-blue-100 flex items-center justify-center gap-2">
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                                    Syncing inventory records...
+                                </div>
+                            )}
                             <table className="w-full text-xs">
                                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                                     <tr>
@@ -1320,7 +1506,7 @@ export default function Store() {
                                 </thead>
                                 <tbody>
                                     {filteredItems.map((item, idx) => {
-                                        const isLow = item.quantity <= item.parLevel;
+                                        const isLow = item.parLevel > 0 && item.quantity <= item.parLevel;
                                         return (
                                             <tr key={item.itemName + idx} className="border-b border-gray-100 hover:bg-gray-50">
                                                 <Td className="text-gray-400">{idx + 1}</Td>
@@ -1338,7 +1524,9 @@ export default function Store() {
                                                     </span>
                                                 </Td>
                                                 <Td className="text-gray-600">{item.unit}</Td>
-                                                <Td className="text-gray-500">{item.parLevel} {item.unit}</Td>
+                                                <Td className="text-gray-500">
+                                                    {item.parLevel > 0 ? `${item.parLevel} ${item.unit}` : <span className="text-gray-400 italic">None</span>}
+                                                </Td>
                                                 <Td>
                                                     {item.quantity === 0 ? (
                                                         <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">
@@ -1358,7 +1546,7 @@ export default function Store() {
                                                     <div className="flex gap-1.5 justify-end">
                                                         <button
                                                             onClick={() => openIssueForSpecificItem(item)}
-                                                            className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition"
+                                                            className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition cursor-pointer"
                                                             title="Issue to department"
                                                         >
                                                             <ArrowUpFromLine size={11} /> Issue
@@ -1369,10 +1557,25 @@ export default function Store() {
                                                                 setAdjustmentForm({ newQuantity: "", description: "", adjustmentType: "adjustment" });
                                                                 setShowAdjustment(true);
                                                             }}
-                                                            className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition"
+                                                            className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition cursor-pointer"
                                                             title="Stock Adjustment"
                                                         >
-                                                            <Edit size={11} /> Adjust
+                                                            <RotateCcw size={11} /> Adjust
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleOpenEditItem(item)}
+                                                            className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition cursor-pointer"
+                                                            title="Edit Item Details"
+                                                        >
+                                                            <Edit size={11} /> Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteItem(item)}
+                                                            disabled={loadingDeleteItem}
+                                                            className="px-2 py-1 bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                                                            title="Delete Item from Store"
+                                                        >
+                                                            <Trash2 size={11} /> Delete
                                                         </button>
                                                         <button
                                                             onClick={() => {
@@ -1384,7 +1587,7 @@ export default function Store() {
                                                                 setHistoryPage(1);
                                                                 setActiveTab("history_section");
                                                             }}
-                                                            className="px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition"
+                                                            className="px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition cursor-pointer"
                                                             title="View Item Movement Ledger"
                                                         >
                                                             <History size={11} /> History
@@ -1585,6 +1788,12 @@ export default function Store() {
                         </div>
 
                         <div className="overflow-x-auto max-h-96">
+                            {loading && (
+                                <div className="py-2 text-center text-xs font-semibold text-blue-600 bg-blue-50/80 border-b border-blue-100 flex items-center justify-center gap-2">
+                                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600"></div>
+                                    Syncing purchase records...
+                                </div>
+                            )}
                             <table className="w-full text-xs">
                                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                                     <tr>
@@ -1779,6 +1988,12 @@ export default function Store() {
                         </div>
 
                         <div className="overflow-x-auto max-h-96">
+                            {loading && (
+                                <div className="py-2 text-center text-xs font-semibold text-blue-600 bg-blue-50/80 border-b border-blue-100 flex items-center justify-center gap-2">
+                                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600"></div>
+                                    Syncing issue records...
+                                </div>
+                            )}
                             <table className="w-full text-xs">
                                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                                     <tr>
@@ -1866,6 +2081,12 @@ export default function Store() {
                     </div>
 
                     <div className="bg-white border border-gray-200 rounded-md shadow-2xs overflow-hidden">
+                        {loading && (
+                            <div className="py-2 text-center text-xs font-semibold text-blue-600 bg-blue-50/80 border-b border-blue-100 flex items-center justify-center gap-2">
+                                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600"></div>
+                                Syncing par-level records...
+                            </div>
+                        )}
                         <table className="w-full text-xs">
                             <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                                 <tr>
@@ -1880,8 +2101,8 @@ export default function Store() {
                             </thead>
                             <tbody>
                                 {items.map((item, idx) => {
-                                    const isLow = item.quantity <= item.parLevel;
-                                    const deficit = Math.max(0, item.parLevel - item.quantity);
+                                    const isLow = item.parLevel > 0 && item.quantity <= item.parLevel;
+                                    const deficit = item.parLevel > 0 ? Math.max(0, item.parLevel - item.quantity) : 0;
                                     return (
                                         <tr key={item.itemName + idx} className="border-b border-gray-100 hover:bg-gray-50">
                                             <Td className="font-bold text-gray-900">{item.itemName}</Td>
@@ -1889,12 +2110,18 @@ export default function Store() {
                                             <Td className={`font-bold ${isLow ? "text-red-600 font-extrabold" : "text-gray-900"}`}>
                                                 {item.quantity} {item.unit}
                                             </Td>
-                                            <Td className="text-gray-600">{item.parLevel} {item.unit}</Td>
+                                            <Td className="text-gray-600">
+                                                {item.parLevel > 0 ? `${item.parLevel} ${item.unit}` : <span className="text-gray-400 italic">None</span>}
+                                            </Td>
                                             <Td>
-                                                {deficit > 0 ? (
-                                                    <span className="text-red-700 font-bold">-{deficit} {item.unit}</span>
+                                                {item.parLevel > 0 ? (
+                                                    deficit > 0 ? (
+                                                        <span className="text-red-700 font-bold">-{deficit} {item.unit}</span>
+                                                    ) : (
+                                                        <span className="text-emerald-700 font-semibold">Adequate</span>
+                                                    )
                                                 ) : (
-                                                    <span className="text-emerald-700 font-semibold">Adequate</span>
+                                                    <span className="text-gray-400 font-medium">No Par Set</span>
                                                 )}
                                             </Td>
                                             <Td>
@@ -1913,12 +2140,15 @@ export default function Store() {
                                                 )}
                                             </Td>
                                             <Td right>
-                                                <button
-                                                    onClick={() => openReplenishPO([item])}
-                                                    className="px-2.5 py-1 bg-gray-900 text-white rounded-md text-[10px] font-semibold hover:bg-black transition"
-                                                >
-                                                    Order Item
-                                                </button>
+                                                <div className="flex items-center justify-end gap-1.5">
+                                                    <button
+                                                        onClick={() => openReplenishPO([item])}
+                                                        className="px-2.5 py-1 bg-gray-900 text-white rounded-md text-[10px] font-semibold hover:bg-black transition cursor-pointer"
+                                                    >
+                                                        Order Item
+                                                    </button>
+                                                   
+                                                </div>
                                             </Td>
                                         </tr>
                                     );
@@ -2187,6 +2417,12 @@ export default function Store() {
                     {/* Movement Ledger Table */}
                     <div className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-2xs">
                         <div className="overflow-x-auto">
+                            {loading && (
+                                <div className="py-2 text-center text-xs font-semibold text-blue-600 bg-blue-50/80 border-b border-blue-100 flex items-center justify-center gap-2">
+                                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600"></div>
+                                    Syncing movement ledger...
+                                </div>
+                            )}
                             <table className="w-full text-xs">
                                 <thead className="bg-gray-50 border-b border-gray-200 text-gray-700">
                                     <tr>
@@ -2410,6 +2646,89 @@ export default function Store() {
                             {loadingAdjustment && <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white inline-block mr-1"></div>}
                             Save Adjustment
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* EDIT ITEM MODAL */}
+            {editItemModal.isOpen && (
+                <div className="fixed inset-0 bg-black/40 flex justify-center items-center p-3 z-50">
+                    <div className="bg-white w-full max-w-md border border-gray-200 rounded-md shadow-xl p-5 space-y-4 relative">
+                        <button
+                            onClick={() => setEditItemModal({ isOpen: false, item: null, name: "", category: "", unit: "pcs", parLevel: "" })}
+                            className="absolute top-3.5 right-3.5 text-gray-400 hover:text-gray-700 cursor-pointer"
+                        >
+                            <X size={16} />
+                        </button>
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900">Edit Store Item</h3>
+                            <p className="text-[11px] text-gray-500">Update item name, category, unit, and minimum par-level safety reserve</p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Item Name *</label>
+                                <Input
+                                    value={editItemModal.name}
+                                    onChange={(e) => setEditItemModal({ ...editItemModal, name: e.target.value })}
+                                    placeholder="Item name (e.g. Bath Towel)"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Category *</label>
+                                    <AutoCompleteInput
+                                        value={editItemModal.category}
+                                        onChange={(v) => setEditItemModal({ ...editItemModal, category: v })}
+                                        suggestions={catSuggestions}
+                                        placeholder="Category"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Unit *</label>
+                                    <select
+                                        value={editItemModal.unit}
+                                        onChange={(e) => setEditItemModal({ ...editItemModal, unit: e.target.value })}
+                                        className="w-full p-2 border border-gray-300 rounded-md text-xs bg-white focus:outline-none"
+                                    >
+                                        {unitSuggestions.map((u) => (
+                                            <option key={u} value={u}>{u}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Par Level (Min Safety Reserve)</label>
+                                <Input
+                                    type="number"
+                                    value={editItemModal.parLevel}
+                                    onChange={(e) => setEditItemModal({ ...editItemModal, parLevel: e.target.value })}
+                                    placeholder="e.g. 15 (Set 0 to remove par level)"
+                                />
+                                <span className="text-[10px] text-gray-400 mt-0.5 block">Setting to 0 removes the par-level reorder threshold.</span>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => setEditItemModal({ isOpen: false, item: null, name: "", category: "", unit: "pcs", parLevel: "" })}
+                                className="px-4 py-2 border border-gray-300 rounded-md text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveEditItem}
+                                disabled={loadingEditItem}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {loadingEditItem && <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>}
+                                Save Changes
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

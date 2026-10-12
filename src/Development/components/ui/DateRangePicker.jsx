@@ -21,6 +21,16 @@ const DatePickerWithRange = ({ date, onDateChange, className }) => {
     }
   };
 
+  const formatDateDDMMYYYY = (d) => {
+    if (!d) return "";
+    const dateObj = d instanceof Date ? d : new Date(d);
+    if (isNaN(dateObj.getTime())) return "";
+    const day = String(dateObj.getDate()).padStart(2, "0");
+    const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const year = dateObj.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   return (
     <div className={cn("grid gap-2", className)}>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -37,10 +47,10 @@ const DatePickerWithRange = ({ date, onDateChange, className }) => {
             {date?.from ? (
               date.to ? (
                 <>
-                  {date.from.toLocaleDateString()} - {date.to.toLocaleDateString()}
+                  {formatDateDDMMYYYY(date.from)} - {formatDateDDMMYYYY(date.to)}
                 </>
               ) : (
-                date.from.toLocaleDateString()
+                formatDateDDMMYYYY(date.from)
               )
             ) : (
               <span>Pick a date range</span>
