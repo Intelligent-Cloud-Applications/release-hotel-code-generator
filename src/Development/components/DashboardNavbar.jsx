@@ -88,11 +88,11 @@ const DashboardNavbar = () => {
     if (userData?.userType == 'laundry') {
       const bagCount = getLaundryOrderCount();
       return [
-        { id: "laundry_new_order", tab: "new_order", label: "New Order", hasDropdown: false },
-        { id: "laundry_deliveries", tab: "deliveries", label: "Rooms to Deliver", hasDropdown: false },
-        { id: "laundry_statistics", tab: "statistics", label: "Statistics & Revenue", hasDropdown: false },
-        { id: "laundry_price_sheet", tab: "price_sheet", label: "Price Sheet", hasDropdown: false },
-        { id: "laundry_tracker", tab: "tracker", label: `Bags & Tracker (${bagCount})`, hasDropdown: false },
+        { id: "laundry_new_order", tab: "new_order", label: "New Order (Billing)", hasDropdown: false },
+        { id: "laundry_deliveries", tab: "deliveries", label: "Room Deliveries", hasDropdown: false },
+        { id: "laundry_tracker", tab: "tracker", label: bagCount > 0 ? `Order Tracker (${bagCount})` : "Order Tracker", hasDropdown: false },
+        { id: "laundry_price_sheet", tab: "price_sheet", label: "Rate Sheet & Prices", hasDropdown: false },
+        { id: "laundry_statistics", tab: "statistics", label: "Shift Stats & Revenue", hasDropdown: false },
         { id: "reports", label: "Reports", hasDropdown: false },
       ];
     }
@@ -132,7 +132,7 @@ const DashboardNavbar = () => {
                 let route = `/dashboard/${val}`;
                 if (val === 'housekeeping') route = '/dashboard/housekeeping/room_status_list';
                 if (val === 'frontdesk') route = '/dashboard/frontdesk';
-                if (val === 'admin') route = '/dashboard/admin';
+                if (val === 'admin') route = '/dashboard/admin/room_list';
                 if (val === 'accountant') route = '/dashboard/accounting/bill-posting';
                 if (val === 'laundry') route = '/dashboard/laundry';
                 if (val === 'store') route = '/dashboard/store';

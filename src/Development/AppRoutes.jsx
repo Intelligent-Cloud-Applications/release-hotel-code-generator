@@ -94,6 +94,21 @@ import BillPosting from "./pages/Dashboard/Accounting/BillPosting.jsx";
 import RevenuePosting from "./pages/Dashboard/Accounting/RevenuePosting.jsx";
 import DailyRevenue from "./pages/Dashboard/Accounting/DailyRevenue.jsx";
 import LaundryPage from "./pages/Dashboard/Laundry/index.jsx";
+import { useAuthContext } from "@/Development/context/AuthContext.jsx";
+
+const DashboardIndexRedirect = () => {
+  const { userData } = useAuthContext();
+  const userType = userData?.userType || "frontdesk";
+  const routes = {
+    admin: "/dashboard/admin/room_list",
+    frontdesk: "/dashboard/frontdesk",
+    housekeeping: "/dashboard/housekeeping/room_status_list",
+    accountant: "/dashboard/accounting/bill-posting",
+    laundry: "/dashboard/laundry",
+    store: "/dashboard/store",
+  };
+  return <Navigate to={routes[userType] || "/dashboard/frontdesk"} replace />;
+};
 
 const AppRoutes = () => {
   return (
@@ -132,6 +147,7 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
+        <Route index element={<DashboardIndexRedirect />} />
         <Route
           path="/dashboard/bookings"
           element={
@@ -398,6 +414,7 @@ const AppRoutes = () => {
             </RoleBasedRoute>
           }
         >
+          <Route index element={<Navigate to="/dashboard/housekeeping/room_status_list" replace />} />
           <Route
             path="/dashboard/housekeeping/room_status_list"
             element={<RoomStatusList />}
@@ -417,6 +434,7 @@ const AppRoutes = () => {
             </RoleBasedRoute>
           }
         >
+          <Route index element={<Navigate to="/dashboard/admin/room_list" replace />} />
           <Route path="/dashboard/admin/guest_list" element={<Guests />} />
           <Route path="/dashboard/admin/room_list" element={<Rooms />} />
           <Route path="/dashboard/admin/staff_list" element={<Staffs />} />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "../../../../components/ui/button.js";
-import { Printer, Download, ArrowLeft, X } from "lucide-react";
+import { Printer, Download, ArrowLeft, X, Shirt } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useInstitutionContext } from "../../../../context/InstitutionContext.jsx";
 import { useAuthContext } from "../../../../context/AuthContext.jsx";
@@ -163,16 +163,22 @@ const SplitBill = ({
                   }
 
                   if (service.laundry_charges > 0 && service.order_id) {
+                    let orderItems = Array.isArray(service.items) && service.items.length > 0 ? service.items : null;
                     let foundLaundryOrder = null;
-                    try {
-                      const saved = JSON.parse(localStorage.getItem("hotel_laundry_orders") || "[]");
-                      foundLaundryOrder = saved.find(
-                        (o) => o.orderId === service.order_id || o.token === service.order_id
-                      );
-                    } catch (e) {}
+                    if (!orderItems) {
+                      try {
+                        const saved = JSON.parse(localStorage.getItem("hotel_laundry_orders") || "[]");
+                        foundLaundryOrder = saved.find(
+                          (o) => o.orderId === service.order_id || o.token === service.order_id
+                        );
+                        if (foundLaundryOrder && foundLaundryOrder.items) {
+                          orderItems = foundLaundryOrder.items;
+                        }
+                      } catch (e) {}
+                    }
 
-                    if (foundLaundryOrder && foundLaundryOrder.items && foundLaundryOrder.items.length > 0) {
-                      foundLaundryOrder.items.forEach((lItem) => {
+                    if (orderItems && orderItems.length > 0) {
+                      orderItems.forEach((lItem) => {
                         const careLabel =
                           lItem.careType === "wash_and_press"
                             ? "Wash & Press"
@@ -184,22 +190,22 @@ const SplitBill = ({
                         restaurantItems.push({
                           name: `${lItem.name} [${careLabel}]`,
                           itemName: `${lItem.name} [${careLabel}]`,
-                          price: lItem.unitRate,
-                          quantity: lItem.quantity,
+                          price: lItem.unitRate || lItem.rate || lItem.price || 0,
+                          quantity: Number(lItem.quantity) || 1,
                           type: "laundry",
                           order_id: service.order_id,
                           room_number: roomNumber,
                           date: date,
-                          orderCgst: foundLaundryOrder.cgstAmount,
-                          orderSgst: foundLaundryOrder.sgstAmount,
-                          orderSubtotal: foundLaundryOrder.itemsSubtotal,
-                          orderTotal: foundLaundryOrder.grandTotal,
+                          orderCgst: foundLaundryOrder?.cgstAmount || service.cgstAmount || ((Number(service.laundry_charges) || 0) * 0.025),
+                          orderSgst: foundLaundryOrder?.sgstAmount || service.sgstAmount || ((Number(service.laundry_charges) || 0) * 0.025),
+                          orderSubtotal: foundLaundryOrder?.itemsSubtotal || service.itemsSubtotal || service.laundry_charges,
+                          orderTotal: foundLaundryOrder?.grandTotal || service.totalAmount || service.laundry_charges,
                         });
                       });
                     } else {
                       restaurantItems.push({
-                        name: `Laundry Order ${service.order_id}`,
-                        itemName: `Laundry Order ${service.order_id}`,
+                        name: service.name || `Laundry Order ${service.order_id}`,
+                        itemName: service.name || `Laundry Order ${service.order_id}`,
                         price: service.laundry_charges,
                         quantity: 1,
                         type: "laundry",
@@ -213,6 +219,69 @@ const SplitBill = ({
               });
             });
           }
+        }
+
+        // Always extract Laundry charges and item breakdowns directly from detailedServices
+        if (detailedServices) {
+          Object.keys(detailedServices).forEach((roomNumber) => {
+            Object.keys(detailedServices[roomNumber] || {}).forEach((date) => {
+              (detailedServices[roomNumber][date] || []).forEach((service) => {
+                if (service.laundry_charges > 0 && service.order_id) {
+                  const alreadyAdded = restaurantItems.some(i => i.order_id === service.order_id);
+                  if (!alreadyAdded) {
+                    const orderItems = Array.isArray(service.items) && service.items.length > 0 ? service.items : null;
+                    if (orderItems && orderItems.length > 0) {
+                      orderItems.forEach((lItem) => {
+                        const careLabel =
+                          lItem.careType === "wash_and_press"
+                            ? "Wash & Iron"
+                            : lItem.careType === "press_only"
+                            ? "Iron"
+                            : lItem.careType === "dry_clean"
+                            ? "Dry Clean"
+                            : lItem.careType === "wash_only"
+                            ? "Wash"
+                            : "Care";
+                        restaurantItems.push({
+                          name: `${lItem.name} [${careLabel}]`,
+                          itemName: `${lItem.name} [${careLabel}]`,
+                          price: Number(lItem.rate || lItem.unitRate || lItem.price || 0),
+                          quantity: Number(lItem.quantity) || 1,
+                          type: "laundry",
+                          category: lItem.category || "Laundry",
+                          sac: "996312",
+                          order_id: service.order_id,
+                          room_number: roomNumber,
+                          date: date,
+                          orderCgst: service.cgstAmount !== undefined ? Number(service.cgstAmount) : ((Number(service.laundry_charges) || 0) * 0.025),
+                          orderSgst: service.sgstAmount !== undefined ? Number(service.sgstAmount) : ((Number(service.laundry_charges) || 0) * 0.025),
+                          orderSubtotal: service.itemsSubtotal !== undefined ? Number(service.itemsSubtotal) : service.laundry_charges,
+                          orderTotal: service.totalAmount !== undefined ? Number(service.totalAmount) : service.laundry_charges,
+                        });
+                      });
+                    } else {
+                      restaurantItems.push({
+                        name: service.name || `Laundry Service #${service.order_id}`,
+                        itemName: service.name || `Laundry Service #${service.order_id}`,
+                        price: Number(service.laundry_charges) || 0,
+                        quantity: 1,
+                        type: "laundry",
+                        category: "Laundry",
+                        sac: "996312",
+                        order_id: service.order_id,
+                        room_number: roomNumber,
+                        date: date,
+                        orderCgst: service.cgstAmount !== undefined ? Number(service.cgstAmount) : ((Number(service.laundry_charges) || 0) * 0.025),
+                        orderSgst: service.sgstAmount !== undefined ? Number(service.sgstAmount) : ((Number(service.laundry_charges) || 0) * 0.025),
+                        orderSubtotal: service.itemsSubtotal !== undefined ? Number(service.itemsSubtotal) : service.laundry_charges,
+                        orderTotal: service.totalAmount !== undefined ? Number(service.totalAmount) : service.laundry_charges,
+                      });
+                    }
+                  }
+                }
+              });
+            });
+          });
         }
 
         console.log("Restaurant Items Count:", restaurantItems.length);
@@ -235,6 +304,7 @@ const SplitBill = ({
           // Create separate bill for each order
           const restaurantBills = Object.keys(billsByOrder).map(orderId => {
             const orderItems = billsByOrder[orderId];
+            const isLaundryOrder = orderItems.some(item => item.type === "laundry");
             const orderSubtotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
             let calculatedCgst = 0;
@@ -242,8 +312,12 @@ const SplitBill = ({
             let calculatedServiceTax = 0;
             let calculatedTotal = orderSubtotal;
 
-            // Use tax info from the API response we already fetched
-            if (responseData && responseData.orders) {
+            if (isLaundryOrder) {
+              const firstL = orderItems[0];
+              calculatedCgst = firstL.orderCgst !== undefined ? Number(firstL.orderCgst) : ((orderSubtotal * 2.5) / 100);
+              calculatedSgst = firstL.orderSgst !== undefined ? Number(firstL.orderSgst) : ((orderSubtotal * 2.5) / 100);
+              calculatedTotal = firstL.orderTotal !== undefined ? Number(firstL.orderTotal) : Math.round(orderSubtotal + calculatedCgst + calculatedSgst);
+            } else if (responseData && responseData.orders) {
               // Find the specific order data for this orderId
               const orderData = responseData.orders.find(order => order.orderId === orderId);
               if (orderData) {
@@ -255,7 +329,7 @@ const SplitBill = ({
               } else {
                 // Fallback to proportional distribution if order not found
                 const totalSubtotal = responseData.totalAmount - responseData.totalCGST - responseData.totalSGST - responseData.totalServiceTax;
-                const proportion = orderSubtotal / totalSubtotal;
+                const proportion = totalSubtotal > 0 ? (orderSubtotal / totalSubtotal) : 0;
                 calculatedCgst = responseData.totalCGST * proportion;
                 calculatedSgst = responseData.totalSGST * proportion;
                 calculatedServiceTax = responseData.totalServiceTax * proportion;
@@ -264,7 +338,7 @@ const SplitBill = ({
             } else if (responseData && responseData.totalCGST !== undefined) {
               // Distribute tax proportionally based on subtotal
               const totalSubtotal = responseData.totalAmount - responseData.totalCGST - responseData.totalSGST - responseData.totalServiceTax;
-              const proportion = orderSubtotal / totalSubtotal;
+              const proportion = totalSubtotal > 0 ? (orderSubtotal / totalSubtotal) : 0;
               calculatedCgst = responseData.totalCGST * proportion;
               calculatedSgst = responseData.totalSGST * proportion;
               calculatedServiceTax = responseData.totalServiceTax * proportion;
@@ -285,6 +359,8 @@ const SplitBill = ({
 
             return {
               orderId: orderId,
+              orderType: isLaundryOrder ? "laundry" : "restaurant",
+              billTitle: isLaundryOrder ? "LAUNDRY SERVICE BILL" : "RESTAURANT ORDER",
               items: orderItems,
               subtotal: orderSubtotal,
               cgst: calculatedCgst,
@@ -1026,10 +1102,11 @@ const SplitBill = ({
                <div className="bill-section flex-1">
                  
                  {restaurantBillsData.map((restaurantBill, billIndex) => (
-                   <div key={restaurantBill.orderId} className="mb-2 border border-gray-300 rounded p-2">
-                     <div className="flex justify-between text-center mb-1">
-                       <h3 className="text-sm font-bold text-green-600">
-                         ORDER #{restaurantBill.orderId}
+                   <div key={restaurantBill.orderId} className={`mb-3 border rounded p-3 ${restaurantBill.orderType === "laundry" ? "border-blue-300 bg-blue-50/20" : "border-gray-300"}`}>
+                     <div className="flex justify-between items-center mb-1.5">
+                       <h3 className={`text-sm font-bold flex items-center gap-1.5 ${restaurantBill.orderType === "laundry" ? "text-blue-700" : "text-green-600"}`}>
+                         {restaurantBill.orderType === "laundry" && <Shirt className="w-4 h-4 text-blue-600" />}
+                         {restaurantBill.orderType === "laundry" ? `LAUNDRY BILL #${restaurantBill.orderId}` : `ORDER #${restaurantBill.orderId}`}
                        </h3>
                        <div className="mt-1">
                          <PrintBill
@@ -1049,8 +1126,13 @@ const SplitBill = ({
                      {/* Restaurant Bill Header */}
                      <div className="text-center mb-2 border-b pb-1">
                        <h1 className="hotel-name text-sm font-bold">
-                         {institutionData?.companyName || "Restaurant Name"}
+                         {institutionData?.companyName || (restaurantBill.orderType === "laundry" ? "Hotel Laundry Services" : "Restaurant Name")}
                        </h1>
+                       {restaurantBill.orderType === "laundry" && (
+                         <div className="text-[10.5px] font-bold text-blue-800 tracking-wide uppercase mt-0.5">
+                           TAX INVOICE — GUEST LAUNDRY SERVICES (SAC 996312)
+                         </div>
+                       )}
                        <p className="text-xs text-gray-600">
                          {institutionData?.contactDetails.address || "Restaurant Address"}
                        </p>

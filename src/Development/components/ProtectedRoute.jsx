@@ -22,14 +22,17 @@ const ProtectedRoute = ({ children }) => {
   }
 
   // If authenticated and trying to access /dashboard, redirect based on user type
-  if (location.pathname === "/dashboard") {
+  if (location.pathname === "/dashboard" || location.pathname === "/dashboard/") {
     const userTypeRoutes = {
       admin: "/dashboard/admin/room_list",
       frontdesk: "/dashboard/frontdesk",
       housekeeping: "/dashboard/housekeeping/room_status_list",
+      accountant: "/dashboard/accounting/bill-posting",
+      laundry: "/dashboard/laundry",
+      store: "/dashboard/store",
     };
 
-    const redirectPath = userTypeRoutes[userData.userType] || "/dashboard";
+    const redirectPath = userTypeRoutes[userData.userType] || "/dashboard/frontdesk";
     return <Navigate to={redirectPath} replace />;
   }
 

@@ -153,26 +153,48 @@ const ReportGenerator = () => {
   // Robust date helpers
   const toDateObj = (val) => {
     if (!val) return null;
-    if (val instanceof Date) return val;
+    if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
     if (typeof val === "number") return new Date(val > 1e10 ? val : val * 1000);
-    if (typeof val === "string" && val.includes("T")) {
-      const d = new Date(val);
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (!trimmed) return null;
+      // Numeric string timestamp
+      if (/^\d{10,13}$/.test(trimmed)) {
+        const num = Number(trimmed);
+        return new Date(num > 1e10 ? num : num * 1000);
+      }
+      // ISO strings or strings containing 'T'
+      if (trimmed.includes("T")) {
+        const d = new Date(trimmed);
+        if (!isNaN(d.getTime())) return d;
+      }
+      // Format YYYY-MM-DD or YYYY/MM/DD
+      if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(trimmed)) {
+        const parts = trimmed.split(/[-/]/);
+        const y = Number(parts[0]);
+        const m = Number(parts[1]) - 1;
+        const d = Number(parts[2].slice(0, 2));
+        const dt = new Date(y, m, d);
+        if (!isNaN(dt.getTime())) return dt;
+      }
+      // Format DD-MM-YYYY or DD/MM/YYYY or MM/DD/YYYY
+      if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(trimmed)) {
+        const [p1, p2, p3] = trimmed.split(/[-/]/).map(Number);
+        let day = p1;
+        let month = p2;
+        // In Indian context, DD/MM/YYYY is standard.
+        // If second number > 12, format is MM/DD/YYYY
+        if (p2 > 12) {
+          day = p2;
+          month = p1;
+        }
+        const dt = new Date(p3, month - 1, day);
+        if (!isNaN(dt.getTime())) return dt;
+      }
+      const d = new Date(trimmed);
       return isNaN(d.getTime()) ? null : d;
     }
-    if (typeof val === "string" && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(val)) {
-      const [a, b, y] = val.split("/").map(Number);
-      const isDMY = a > 12;
-      const d = isDMY ? a : b;
-      const m = isDMY ? b : a;
-      const dt = new Date(y, m - 1, d);
-      return isNaN(dt.getTime()) ? null : dt;
-    }
-    if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      const d = new Date(val);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? null : d;
+    return null;
   };
 
   const toYMD = (dateLike) => {
@@ -887,14 +909,35 @@ const ReportGenerator = () => {
       try {
         if (selectedReport === "stock_inventory" || selectedReport === "stock_issues" || selectedReport === "stock_purchases") {
           const instId = institutionData?.institutionId || defaultInstitutionId;
-          const { body } = await get({
-            apiName: "frontdesk",
-            path: `/stock?institutionId=${instId}`,
-          }).response;
-          const res = await body.json();
-          if (res?.success && Array.isArray(res.stockHistory)) {
-            setStockHistory(res.stockHistory);
-          }
+          let allStock = [];
+          let lastEvaluatedKey = null;
+          let page = 0;
+          const MAX_PAGES = 30;
+
+          do {
+            let query = `institutionId=${encodeURIComponent(instId)}&limit=500`;
+            if (lastEvaluatedKey) {
+              const keyStr = typeof lastEvaluatedKey === "object"
+                ? JSON.stringify(lastEvaluatedKey)
+                : String(lastEvaluatedKey);
+              query += `&exclusiveStartKey=${encodeURIComponent(keyStr)}`;
+            }
+            const { body } = await get({
+              apiName: "frontdesk",
+              path: `/stock?${query}`,
+            }).response;
+            const res = await body.json();
+            if (res?.success && Array.isArray(res.stockHistory)) {
+              allStock = allStock.concat(res.stockHistory);
+              lastEvaluatedKey = res.lastEvaluatedKey || null;
+              if (res.stockHistory.length < 500 || !lastEvaluatedKey) break;
+            } else {
+              break;
+            }
+            page++;
+          } while (lastEvaluatedKey && page < MAX_PAGES);
+
+          setStockHistory(allStock);
           return;
         }
 
@@ -1012,42 +1055,40 @@ const ReportGenerator = () => {
           data = processRestaurantData(restaurantOrders);
           break;
         case "settlement": {
-          // Only guests who checked out today
-          const today = new Date();
-          const start = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            today.getDate(),
-            0,
-            0,
-            0,
-            0
-          ).getTime();
-          const end = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            today.getDate(),
-            23,
-            59,
-            59,
-            999
-          ).getTime();
-          const todaysCheckedOut = (bookings || []).filter((b) => {
-            const co =
-              typeof b.checkout_date === "string"
-                ? new Date(b.checkout_date).getTime()
-                : Number(b.checkout_date);
+          const hasDateFilter = Boolean(dateRange?.from);
+          const checkedOutBookings = (bookings || []).filter((b) => {
             const status = String(b.status || "").toLowerCase();
-            return (
-              Number.isFinite(co) &&
-              co >= start &&
-              co <= end &&
-              (status === "checked-out" ||
-                status === "checkedout" ||
-                status === "checked_out")
+            const isCheckedOut = (
+              status === "checked-out" ||
+              status === "checkedout" ||
+              status === "checked_out"
             );
+            if (!isCheckedOut) return false;
+
+            if (!hasDateFilter) {
+              // Default to today if no date filter specified
+              const today = new Date();
+              const start = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                0, 0, 0, 0
+              ).getTime();
+              const end = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                23, 59, 59, 999
+              ).getTime();
+              const co =
+                typeof b.checkout_date === "string"
+                  ? new Date(b.checkout_date).getTime()
+                  : Number(b.checkout_date);
+              return Number.isFinite(co) && co >= start && co <= end;
+            }
+            return true;
           });
-          data = todaysCheckedOut.map((booking) => {
+          data = checkedOutBookings.map((booking) => {
             const roomCharges = Object.values(
               booking.room_charges || {}
             ).reduce((sum, charge) => sum + charge, 0);
@@ -1100,6 +1141,7 @@ const ReportGenerator = () => {
               guest_name: guestName || "N/A",
               room_number: Object.keys(booking.room_charges || {})[0] || "N/A",
               checkout_date: booking.checkout_date || null,
+              date: booking.checkout_date || null,
               status: booking.status || "Checked-out",
               advance_payment:
                 booking.advance_payment || booking.partial_payment_amount || 0,
@@ -1123,37 +1165,49 @@ const ReportGenerator = () => {
       }
     }
 
-    // Apply date filter if date range is selected (skip for rooms & companies UI lists)
+    // Apply date filter if date range is selected (skip for rooms, companies, and current stock inventory snapshot)
     if (
-      dateRange.from &&
-      dateRange.to &&
+      dateRange?.from &&
       selectedReport !== "rooms" &&
-      selectedReport !== "companies"
+      selectedReport !== "companies" &&
+      selectedReport !== "stock_inventory"
     ) {
+      const fromDate = new Date(
+        dateRange.from.getFullYear(),
+        dateRange.from.getMonth(),
+        dateRange.from.getDate(),
+        0, 0, 0, 0
+      );
+      const toObj = dateRange.to || dateRange.from;
+      const toDate = new Date(
+        toObj.getFullYear(),
+        toObj.getMonth(),
+        toObj.getDate(),
+        23, 59, 59, 999
+      );
+
       data = data.filter((item) => {
         const itemDateRaw =
           item.date ||
-          item.created_at ||
+          item.billDate ||
+          item.bill_date ||
+          item.checkout_date ||
           item.checkin_date ||
-          item.booking_date;
+          item.created_at ||
+          item.createdAt ||
+          item.booking_date ||
+          item.orderDate ||
+          item.order_date ||
+          item.purchaseDate ||
+          item.issueDate ||
+          item.dateEpoch ||
+          item.timestamp ||
+          item.billHeader?.billDate;
+
         const itemDateObj = toDateObj(itemDateRaw);
         if (!itemDateObj) return false;
-        const itemDateOnly = new Date(
-          itemDateObj.getFullYear(),
-          itemDateObj.getMonth(),
-          itemDateObj.getDate()
-        );
-        const fromDate = new Date(
-          dateRange.from.getFullYear(),
-          dateRange.from.getMonth(),
-          dateRange.from.getDate()
-        );
-        const toDate = new Date(
-          dateRange.to.getFullYear(),
-          dateRange.to.getMonth(),
-          dateRange.to.getDate()
-        );
-        return itemDateOnly >= fromDate && itemDateOnly <= toDate;
+        const itemTime = itemDateObj.getTime();
+        return itemTime >= fromDate.getTime() && itemTime <= toDate.getTime();
       });
     }
 
