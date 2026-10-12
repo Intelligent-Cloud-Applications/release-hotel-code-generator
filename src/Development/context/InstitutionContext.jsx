@@ -30,11 +30,29 @@ export const InstitutionProvider = ({ children }) => {
 
       const data = await response.body.json();
       console.log("Institution data fetched:", data);
-      if (template === "template1") {
-        setInstitutionData(data.template1);
-      } else if (template === "template2") {
-        setInstitutionData(data.template2);
-      }
+
+      const currentTpl = (template === "template1" ? data?.template1 : data?.template2) || {};
+      const fallbackTpl = (template === "template1" ? data?.template2 : data?.template1) || {};
+
+      const resolvedData = {
+        ...fallbackTpl,
+        ...currentTpl,
+        companyName: currentTpl.companyName || fallbackTpl.companyName || data?.companyName || data?.name || "",
+        contactDetails: {
+          ...(fallbackTpl.contactDetails || {}),
+          ...(currentTpl.contactDetails || {}),
+        },
+        taxNumber: currentTpl.taxNumber || fallbackTpl.taxNumber || data?.taxNumber || "",
+        taxType: currentTpl.taxType || fallbackTpl.taxType || data?.taxType || "GST",
+        taxPercent:
+          currentTpl.taxPercent !== undefined && currentTpl.taxPercent !== null
+            ? currentTpl.taxPercent
+            : fallbackTpl.taxPercent !== undefined && fallbackTpl.taxPercent !== null
+            ? fallbackTpl.taxPercent
+            : "18",
+      };
+
+      setInstitutionData(resolvedData);
     } catch (error) {
       console.log("Error fetching institution data:", error);
       console.error("Full error details:", error);
@@ -54,22 +72,50 @@ export const InstitutionProvider = ({ children }) => {
       }).response;
       const existingData = await res.body.json();
       console.log("Existing institution data:", existingData);
-      let updatedData = {};
 
-      if (template === "template1") {
-        updatedData = {
-          ...existingData,
-          template1: dataToSave,
-        };
-      } else if (template === "template2") {
-        updatedData = {
-          ...existingData,
-          template2: dataToSave,
-        };
-      }
-      console.log("Updated data: ", updatedData);
+      // Core settings that must stay identical across all templates
+      const coreSettings = {
+        companyName: dataToSave.companyName || "",
+        name: dataToSave.name || dataToSave.companyName || "",
+        contactDetails: {
+          ...(dataToSave.contactDetails || {}),
+        },
+        taxNumber: dataToSave.taxNumber || "",
+        taxType: dataToSave.taxType || "GST",
+        taxPercent: dataToSave.taxPercent || "18",
+      };
 
-      console.log("Merged institution data to be sent to backend database:", updatedData);
+      let updatedData = {
+        ...existingData,
+        ...coreSettings,
+        template1: {
+          ...(existingData?.template1 || {}),
+          ...(template === "template1" ? dataToSave : {}),
+          ...coreSettings,
+        },
+        template2: {
+          ...(existingData?.template2 || {}),
+          ...(template === "template2" ? dataToSave : {}),
+          ...coreSettings,
+        },
+      };
+
+      // Also sync to any other template keys present in the database (e.g. template3, template4)
+      Object.keys(existingData || {}).forEach((key) => {
+        if (
+          key.startsWith("template") &&
+          key !== "template1" &&
+          key !== "template2" &&
+          typeof existingData[key] === "object" &&
+          existingData[key] !== null
+        ) {
+          updatedData[key] = {
+            ...existingData[key],
+            ...coreSettings,
+          };
+        }
+      });
+      console.log("Updated data synced to all templates: ", updatedData);
 
       const restOperation = await put({
         apiName: "common",
