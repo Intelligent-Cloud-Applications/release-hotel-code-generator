@@ -1312,39 +1312,10 @@ const DayEnd = () => {
   } = useAppContext();
 
   useEffect(() => {
-    const checkinsToday = bookings.filter((b) => {
-      const rawCi = getCheckInFromBooking(b);
-      let ci = new Date(
-        rawCi.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
-      );
-      const now = new Date();
-      ci.setHours(0, 0, 0, 0);
-      now.setHours(0, 0, 0, 0);
-      return ci.getTime() === now.getTime();
-    });
-
-    const checkingsFromBills = bills.filter((bill) => {
-      const ci = new Date(
-        bill.bill.bookingDetails.checkIn.toLocaleString("en-US", {
-          timeZone: "Asia/Kolkata",
-        })
-      );
-      const now = new Date();
-      if (!ci) return false;
-      ci.setHours(0, 0, 0, 0);
-      now.setHours(0, 0, 0, 0);
-      return ci.getTime() === now.getTime();
-    });
-
-    console.log(checkingsFromBills);
-
-    console.log(checkinsToday);
+    // Keep checkins calculation if needed or clean up
   }, [bills, bookings]);
 
   const { withLoading, isKeyLoading } = useLoading();
-  useEffect(() => {
-    listExpenses();
-  }, []);
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -1388,12 +1359,12 @@ const DayEnd = () => {
   };
 
   const handleAutoProcessDayEnd = React.useCallback(
-    async (dateToProcess) => {
+    async (targetDate) => {
       try {
         // Show processing notification
         setStatus({
           type: "info",
-          message: `Automatic day-end processing for ${dateToProcess.toLocaleDateString(
+          message: `Automatic day-end processing for ${targetDate.toLocaleDateString(
             "en-US",
             {
               weekday: "long",
@@ -1412,22 +1383,21 @@ const DayEnd = () => {
           rooms,
           guests,
           expenses,
-          dateToProcess,
+          targetDate,
           institutionId
         );
 
         // Set the data temporarily for processing
         setDayEndData(autoData);
-        setDateToProcess(dateToProcess);
+        setDateToProcess(targetDate);
 
         // Process the day-end
-        const dateForAPI = formatDateForAPI(dateToProcess);
-        await processDayEndInternal(dateForAPI);
+        await handleDailyEnd();
 
         // Show success notification
         setStatus({
           type: "success",
-          message: `Automatic day-end completed successfully for ${dateToProcess.toLocaleDateString(
+          message: `Automatic day-end completed successfully for ${targetDate.toLocaleDateString(
             "en-US",
             {
               weekday: "long",
@@ -1441,13 +1411,12 @@ const DayEnd = () => {
 
         // Set today's day-end as closed
         setTodayDayEndClosed(true);
-
-        // Page will reload after processDayEndInternal completes
       } catch (error) {
+        console.error("Auto day-end error:", error);
         // Show error notification
         setStatus({
           type: "error",
-          message: `Automatic day-end failed for ${dateToProcess.toLocaleDateString(
+          message: `Automatic day-end failed for ${targetDate.toLocaleDateString(
             "en-US",
             {
               month: "short",
@@ -1459,17 +1428,30 @@ const DayEnd = () => {
       }
     },
     [
-      processdayEnd,
       bookings,
       bills,
       rooms,
       guests,
       expenses,
       institutionId,
-      dayEndData,
-      dateToProcess,
+      handleDailyEnd,
     ]
   );
+
+  const handleAutoProcessRef = React.useRef(handleAutoProcessDayEnd);
+  useEffect(() => {
+    handleAutoProcessRef.current = handleAutoProcessDayEnd;
+  }, [handleAutoProcessDayEnd]);
+
+  const recentDateReportRef = React.useRef(recentDateReport);
+  useEffect(() => {
+    recentDateReportRef.current = recentDateReport;
+  }, [recentDateReport]);
+
+  const lastProcessedDateRef = React.useRef(lastProcessedDate);
+  useEffect(() => {
+    lastProcessedDateRef.current = lastProcessedDate;
+  }, [lastProcessedDate]);
 
   // Auto day-end process at 11:59:30 PM or 12:00 AM Indian time
   useEffect(() => {
@@ -1488,12 +1470,12 @@ const DayEnd = () => {
 
       // Always use today's date for processing
       const todayStr = formatDateForAPI(indianTime);
-      if (lastProcessedDate === todayStr) {
+      if (lastProcessedDateRef.current === todayStr) {
         return;
       }
 
       // For midnight processing, check if recent date report doesn't have dayEndStatus: true
-      if (recentDateReport && recentDateReport.dayEndStatus) {
+      if (recentDateReportRef.current && recentDateReportRef.current.dayEndStatus) {
         return; // Already processed
       }
 
@@ -1501,7 +1483,9 @@ const DayEnd = () => {
 
       // Auto-trigger day-end for today
       setTimeout(() => {
-        handleAutoProcessDayEnd(indianTime);
+        if (handleAutoProcessRef.current) {
+          handleAutoProcessRef.current(indianTime);
+        }
       }, 2000);
     };
 
@@ -1510,47 +1494,35 @@ const DayEnd = () => {
       checkAutoProcessing();
     }, 5000);
 
-    // Initial check when component mounts
-    checkAutoProcessing();
-
     return () => clearInterval(interval);
-  }, [recentDateReport, lastProcessedDate, handleAutoProcessDayEnd]);
+  }, []);
 
   // -------------- End of auto day-end processing logic --------------
 
-  // Recalculate snapshot when date or data changes
+  // Recalculate snapshot synchronously/locally when date or data changes
   useEffect(() => {
-    const run = async () => {
-      if (!dateToProcess || !showCloseButton) {
-        setDayEndData(null);
-        return;
-      }
-      setDataLoading(true);
-      try {
-        const data = await withLoading(
-          "calculate-day-end-data",
-          () =>
-            calculateDayEndData(
-              bookings,
-              bills,
-              rooms,
-              guests,
-              expenses,
-              dateToProcess,
-              institutionId
-            ),
-          "DATA_LOADING",
-          "overlay"
-        );
-        setDayEndData(data);
-      } catch (e) {
-        console.error("Error calculating day end:", e);
-        setDayEndData(null);
-      } finally {
-        setDataLoading(false);
-      }
-    };
-    run();
+    if (!dateToProcess || !showCloseButton) {
+      setDayEndData(null);
+      return;
+    }
+    setDataLoading(true);
+    try {
+      const data = calculateDayEndData(
+        bookings,
+        bills,
+        rooms,
+        guests,
+        expenses,
+        dateToProcess,
+        institutionId
+      );
+      setDayEndData(data);
+    } catch (e) {
+      console.error("Error calculating day end:", e);
+      setDayEndData(null);
+    } finally {
+      setDataLoading(false);
+    }
   }, [
     dateToProcess,
     showCloseButton,
@@ -1788,7 +1760,6 @@ const DayEnd = () => {
 
   const BookingsModal = React.useMemo(() => {
     const data = dayEndData?.details?.newBookings || [];
-    console.log("data", data);
 
     return (
       <div className="space-y-4">
@@ -2082,8 +2053,6 @@ const DayEnd = () => {
   }, [roomRevenueData, roomRevenuePagination, dayEndData?.roomRevenue]);
 
   const CheckOutsModal = React.useMemo(() => {
-    console.log("Checkout: ", checkOutsData);
-
     return (
       <div className="space-y-4">
         {checkOutsData.length > 0 ? (
