@@ -50,12 +50,30 @@ export const AppContextProvider = ({ children }) => {
       console.log("Response received:", response);
 
       const data = await response.body.json();
-      console.log("Institution data fetched:", data);
-      if (template === "template1") {
-        setInstitutionData(data.template1);
-      } else if (template === "template2") {
-        setInstitutionData(data.template2);
-      }
+      console.log("Institution data fetched in AppContext:", data);
+
+      const currentTpl = (template === "template1" ? data?.template1 : data?.template2) || {};
+      const fallbackTpl = (template === "template1" ? data?.template2 : data?.template1) || {};
+
+      const resolvedData = {
+        ...fallbackTpl,
+        ...currentTpl,
+        companyName: currentTpl.companyName || fallbackTpl.companyName || data?.companyName || data?.name || "",
+        contactDetails: {
+          ...(fallbackTpl.contactDetails || {}),
+          ...(currentTpl.contactDetails || {}),
+        },
+        taxNumber: currentTpl.taxNumber || fallbackTpl.taxNumber || data?.taxNumber || "",
+        taxType: currentTpl.taxType || fallbackTpl.taxType || data?.taxType || "GST",
+        taxPercent:
+          currentTpl.taxPercent !== undefined && currentTpl.taxPercent !== null
+            ? currentTpl.taxPercent
+            : fallbackTpl.taxPercent !== undefined && fallbackTpl.taxPercent !== null
+            ? fallbackTpl.taxPercent
+            : "18",
+      };
+
+      setInstitutionData(resolvedData);
     } catch (error) {
       console.log("Error fetching institution data:", error);
       console.error("Full error details:", error);
