@@ -93,6 +93,7 @@ import AccountingLayout from "./layouts/AccountingLayout.jsx";
 import BillPosting from "./pages/Dashboard/Accounting/BillPosting.jsx";
 import RevenuePosting from "./pages/Dashboard/Accounting/RevenuePosting.jsx";
 import DailyRevenue from "./pages/Dashboard/Accounting/DailyRevenue.jsx";
+import LaundryPage from "./pages/Dashboard/Laundry/index.jsx";
 
 const AppRoutes = () => {
   return (
@@ -301,7 +302,7 @@ const AppRoutes = () => {
         <Route
           path="/dashboard/reports"
           element={
-            <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
+            <RoleBasedRoute allowedRoles={["admin", "frontdesk", "laundry", "store"]}>
               {product === "dashboard-booking" ? (
                 <ReportGenerator />
               ) : (
@@ -329,8 +330,22 @@ const AppRoutes = () => {
         <Route
           path="/dashboard/store"
           element={
-            <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
+            <RoleBasedRoute allowedRoles={["admin", "frontdesk", "store"]}>
               {product === "dashboard-booking" ? <Store /> : <SubscribeNow />}
+            </RoleBasedRoute>
+          }
+        />
+
+        {/* Laundry Management & Granular Billing */}
+        <Route
+          path="/dashboard/laundry"
+          element={
+            <RoleBasedRoute allowedRoles={["laundry", "admin"]}>
+              {product === "dashboard-booking" ? (
+                <LaundryPage />
+              ) : (
+                <SubscribeNow />
+              )}
             </RoleBasedRoute>
           }
         />

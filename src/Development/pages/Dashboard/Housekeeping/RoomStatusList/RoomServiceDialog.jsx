@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { ScrollArea } from "@/Development/components/ui/scroll-area.js";
 import { useAppContext } from "@/Development/context/AppContext.jsx";
+import LaundryManager from "@/Development/pages/Dashboard/Laundry/LaundryManager.jsx";
 
 const CURRENT_DATE = new Date().toISOString().split('T')[0];
 const CURRENT_DATETIME = new Date().toISOString().replace('T', ' ').split('.')[0];
@@ -96,6 +97,7 @@ const RoomServicesAndComplementaryDialog = ({ roomNumber, booking = {} }) => {
   });
   const [newComplementary, setNewComplementary] = useState([]);
   const [newCompFields, setNewCompFields] = useState({ name: "", amount: "" });
+  const [isLaundryModalOpen, setIsLaundryModalOpen] = useState(false);
 
   // Add new service
   function handleAddService() {
@@ -199,7 +201,8 @@ const RoomServicesAndComplementaryDialog = ({ roomNumber, booking = {} }) => {
   const allComplementaryDates = Object.keys(allPrevComplementary).sort((a, b) => new Date(b) - new Date(a));
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild disabled={booking.status !== 'Checked-in'}>
         <Button 
           variant="filled" 
@@ -256,11 +259,20 @@ const RoomServicesAndComplementaryDialog = ({ roomNumber, booking = {} }) => {
 
               {/* Services Section */}
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between py-3">
                   <CardTitle className="flex items-center gap-2">
                     <Coffee className="h-5 w-5" />
                     Room Services
                   </CardTitle>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsLaundryModalOpen(true)}
+                    className="text-xs flex items-center gap-1.5 border-purple-200 text-purple-700 hover:bg-purple-50"
+                  >
+                    <Shirt className="w-3.5 h-3.5" /> Granular Laundry / Tag
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Add Services Form */}
@@ -505,6 +517,27 @@ const RoomServicesAndComplementaryDialog = ({ roomNumber, booking = {} }) => {
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Granular Laundry Billing & Barcode Modal */}
+    {isLaundryModalOpen && (
+      <Dialog open={isLaundryModalOpen} onOpenChange={setIsLaundryModalOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-2 sm:p-6">
+          <LaundryManager
+            initialRoomNumber={roomNumber}
+            onOrderCreated={(order) => {
+              if (order?.grandTotal) {
+                setNewServiceFields((prev) => ({
+                  ...prev,
+                  laundry_charges: String(order.grandTotal),
+                }));
+              }
+              setIsLaundryModalOpen(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+    )}
+  </>
   );
 };
 

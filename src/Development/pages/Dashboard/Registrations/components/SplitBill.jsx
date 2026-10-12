@@ -161,6 +161,54 @@ const SplitBill = ({
                     });
                     totalFoodCharges += service.food_charges;
                   }
+
+                  if (service.laundry_charges > 0 && service.order_id) {
+                    let foundLaundryOrder = null;
+                    try {
+                      const saved = JSON.parse(localStorage.getItem("hotel_laundry_orders") || "[]");
+                      foundLaundryOrder = saved.find(
+                        (o) => o.orderId === service.order_id || o.token === service.order_id
+                      );
+                    } catch (e) {}
+
+                    if (foundLaundryOrder && foundLaundryOrder.items && foundLaundryOrder.items.length > 0) {
+                      foundLaundryOrder.items.forEach((lItem) => {
+                        const careLabel =
+                          lItem.careType === "wash_and_press"
+                            ? "Wash & Press"
+                            : lItem.careType === "press_only"
+                            ? "Iron Only"
+                            : lItem.careType === "dry_clean"
+                            ? "Dry Clean"
+                            : "Care";
+                        restaurantItems.push({
+                          name: `${lItem.name} [${careLabel}]`,
+                          itemName: `${lItem.name} [${careLabel}]`,
+                          price: lItem.unitRate,
+                          quantity: lItem.quantity,
+                          type: "laundry",
+                          order_id: service.order_id,
+                          room_number: roomNumber,
+                          date: date,
+                          orderCgst: foundLaundryOrder.cgstAmount,
+                          orderSgst: foundLaundryOrder.sgstAmount,
+                          orderSubtotal: foundLaundryOrder.itemsSubtotal,
+                          orderTotal: foundLaundryOrder.grandTotal,
+                        });
+                      });
+                    } else {
+                      restaurantItems.push({
+                        name: `Laundry Order ${service.order_id}`,
+                        itemName: `Laundry Order ${service.order_id}`,
+                        price: service.laundry_charges,
+                        quantity: 1,
+                        type: "laundry",
+                        order_id: service.order_id,
+                        room_number: roomNumber,
+                        date: date,
+                      });
+                    }
+                  }
                 });
               });
             });
