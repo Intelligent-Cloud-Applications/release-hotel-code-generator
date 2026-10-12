@@ -59,7 +59,7 @@ const HotelLoader = ({ message = "Loading your hotel experience..." }) => {
       </div>
 
       {/* CSS for custom animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes progress {
           0% { width: 0%; }
           50% { width: 60%; }

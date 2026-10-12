@@ -30,9 +30,10 @@ const RoleBasedRoute = ({ children, allowedRoles = [] }) => {
       housekeeping: "/dashboard/housekeeping/room_status_list",
       accountant: "/dashboard/accounting/bill-posting",
       laundry: "/dashboard/laundry",
+      store: "/dashboard/store",
     };
 
-    const redirectPath = userTypeRoutes[userData.userType] || "/dashboard";
+    const redirectPath = userTypeRoutes[userData.userType] || "/dashboard/frontdesk";
     return <Navigate to={redirectPath} replace />;
   }
 

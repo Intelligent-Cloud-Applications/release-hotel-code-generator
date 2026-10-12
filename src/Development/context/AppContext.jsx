@@ -106,17 +106,72 @@ export const AppContextProvider = ({ children }) => {
     }
   }
 
+  // Helper for phase-by-phase 500-item batch pagination
+  async function fetchPagedItems({
+    apiName,
+    path,
+    queryParams = {},
+    dataKey,
+    batchSize = 500,
+    maxPages = 30,
+  }) {
+    let allItems = [];
+    let lastEvaluatedKey = null;
+    let page = 0;
+
+    do {
+      const pageQueryParams = {
+        ...queryParams,
+        limit: String(batchSize),
+      };
+      if (lastEvaluatedKey) {
+        pageQueryParams.exclusiveStartKey =
+          typeof lastEvaluatedKey === "object"
+            ? JSON.stringify(lastEvaluatedKey)
+            : String(lastEvaluatedKey);
+      }
+
+      const { body } = await get({
+        apiName,
+        path,
+        options: {
+          queryParams: pageQueryParams,
+        },
+      }).response;
+
+      const data = await body.json();
+      const chunk = (dataKey ? data[dataKey] : data) || [];
+      const list = Array.isArray(chunk)
+        ? chunk
+        : (chunk.list && Array.isArray(chunk.list))
+        ? chunk.list
+        : [];
+
+      allItems = allItems.concat(list);
+      lastEvaluatedKey = data.lastEvaluatedKey || null;
+      page++;
+
+      if (!lastEvaluatedKey || list.length < batchSize) {
+        break;
+      }
+    } while (lastEvaluatedKey && page < maxPages);
+
+    return allItems;
+  }
+
   // Rooms Section
   async function fetchRooms() {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "common",
-        path: `/rooms?institutionId=${institutionId}`,
-      }).response;
-      const data = await body.json();
-      setRooms(data.rooms || []);
+        path: "/rooms",
+        queryParams: { institutionId },
+        dataKey: "rooms",
+      });
+      setRooms(items);
+      return items;
     } catch (error) {
       console.error("Error fetching rooms:", error);
       setError("Failed to fetch rooms");
@@ -281,12 +336,14 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "common",
-        path: `/rate-plans?institutionId=${institutionId}`,
-      }).response;
-      const data = await body.json();
-      setRatePlans(data.ratePlans || []);
+        path: "/rate-plans",
+        queryParams: { institutionId },
+        dataKey: "ratePlans",
+      });
+      setRatePlans(items);
+      return items;
     } catch (error) {
       console.error("Error fetching rate plans:", error);
       setError("Failed to fetch rate plans");
@@ -567,16 +624,13 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "frontdesk",
-        path: `/reservations`,
-        options: {
-          queryParams: { institutionId: institutionId },
-        },
-      }).response;
-      const data = await body.json();
-      const rawReservations = data.reservations || [];
-      const enriched = rawReservations.map(enrichReservation);
+        path: "/reservations",
+        queryParams: { institutionId },
+        dataKey: "reservations",
+      });
+      const enriched = items.map(enrichReservation);
       setBookings(enriched);
       return enriched;
     } catch (error) {
@@ -762,15 +816,14 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "frontdesk",
-        path: `/guests`,
-        options: {
-          queryParams: { institutionId: institutionId },
-        },
-      }).response;
-      const data = await body.json();
-      setGuests(data.guests || []);
+        path: "/guests",
+        queryParams: { institutionId },
+        dataKey: "guests",
+      });
+      setGuests(items);
+      return items;
     } catch (error) {
       console.error("Error fetching guests:", error);
       setError("Failed to fetch guests");
@@ -842,15 +895,14 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "admin",
-        path: `/staff`,
-        options: {
-          queryParams: { institutionId: institutionId },
-        },
-      }).response;
-      const data = await body.json();
-      setStaffs(data.staffs || []);
+        path: "/staff",
+        queryParams: { institutionId },
+        dataKey: "staffs",
+      });
+      setStaffs(items);
+      return items;
     } catch (error) {
       console.error("Error fetching staffs:", error);
       setError("Failed to fetch staffs");
@@ -942,15 +994,14 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "common",
-        path: `/payments/list`,
-        options: {
-          queryParams: { institutionId: institutionId },
-        },
-      }).response;
-      const data = await body.json();
-      setPayments(data.payments || []);
+        path: "/payments/list",
+        queryParams: { institutionId },
+        dataKey: "payments",
+      });
+      setPayments(items);
+      return items;
     } catch (error) {
       console.error("Error fetching payments:", error);
       setError("Failed to fetch payments");
@@ -1268,16 +1319,14 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "common",
         path: "/report",
-        options: {
-          queryParams: { institutionId: institutionId },
-        },
-      }).response;
-      const data = await body.json();
-      setReports(data.data.list);
-      return { success: true, data };
+        queryParams: { institutionId },
+        dataKey: "data",
+      });
+      setReports(items);
+      return { success: true, data: { list: items } };
     } catch (error) {
       console.error("Error fetching all reports:", error);
       setError("Failed to fetch all reports");
@@ -1457,14 +1506,14 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "frontdesk",
-        path: "/company/" + institutionId,
-        options: {},
-      }).response;
-      const data = await body.json();
-      setCompanies(data.companies);
-      return data.companies;
+        path: `/company/${institutionId}`,
+        queryParams: {},
+        dataKey: "companies",
+      });
+      setCompanies(items);
+      return items;
     } catch (error) {
       console.log(error);
       setError("Failed to get companies");
@@ -1529,14 +1578,14 @@ export const AppContextProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const { body } = await get({
+      const items = await fetchPagedItems({
         apiName: "restaurant",
         path: `/admin/list-orders/${institutionId}?type=cafe`,
-        options: {},
-      }).response;
-      const data = await body.json();
-      setRestaurantOrders(data || []);
-      return data || [];
+        queryParams: {},
+        dataKey: null,
+      });
+      setRestaurantOrders(items);
+      return items;
     } catch (error) {
       console.error("Error fetching restaurant orders:", error);
       setError("Failed to fetch restaurant orders");

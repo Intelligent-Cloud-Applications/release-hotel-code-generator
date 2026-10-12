@@ -21,6 +21,10 @@ import {
     Building2,
     CheckCircle2,
     ChevronDown,
+    History,
+    ArrowLeft,
+    Download,
+    Filter,
 } from "lucide-react";
 import { get, post } from "aws-amplify/api";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -84,7 +88,7 @@ export default function Store() {
     const { userData } = useAuthContext();
     const institutionId = userData?.institutionId || defaultInstitutionId;
 
-    // Active Section Tab: "inventory" | "purchase_section" | "issue_section" | "par_levels"
+    // Active Section Tab: "inventory" | "purchase_section" | "issue_section" | "history_section" | "par_levels"
     const [activeTab, setActiveTab] = useState("inventory");
 
     const [stockHistory, setStockHistory] = useState([]);
@@ -95,11 +99,18 @@ export default function Store() {
     const [issueSearch, setIssueSearch] = useState("");
     const [issueDeptFilter, setIssueDeptFilter] = useState("ALL");
 
+    // History Section Filters & Pagination
+    const [historySearch, setHistorySearch] = useState("");
+    const [historyActionFilter, setHistoryActionFilter] = useState("all");
+    const [historyDateFrom, setHistoryDateFrom] = useState("");
+    const [historyDateTo, setHistoryDateTo] = useState("");
+    const [historyPage, setHistoryPage] = useState(1);
+    const [historyPageSize, setHistoryPageSize] = useState(50);
+
     // Inline Add Item Toggle (no modal)
     const [showInlineAddItem, setShowInlineAddItem] = useState(false);
 
-    // Modals reserved only for secondary inspections (History / Adjustment)
-    const [showHistory, setShowHistory] = useState(false);
+    // Adjustment Modal
     const [showAdjustment, setShowAdjustment] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
 
@@ -158,17 +169,38 @@ export default function Store() {
         if (!institutionId) return;
         try {
             setLoading(true);
-            const { body } = await get({
-                apiName: "frontdesk",
-                path: `/stock?institutionId=${institutionId}`,
-            }).response;
-            const response = await body.json();
+            let allItems = [];
+            let lastEvaluatedKey = null;
+            let page = 0;
+            const MAX_PAGES = 30; // Protect against infinite loops (up to 15,000 items)
 
-            if (response?.success && Array.isArray(response.stockHistory)) {
-                setStockHistory(response.stockHistory);
-            } else {
-                setStockHistory([]);
-            }
+            do {
+                let query = `institutionId=${encodeURIComponent(institutionId)}&limit=500`;
+                if (lastEvaluatedKey) {
+                    const keyStr = typeof lastEvaluatedKey === "object"
+                        ? JSON.stringify(lastEvaluatedKey)
+                        : String(lastEvaluatedKey);
+                    query += `&exclusiveStartKey=${encodeURIComponent(keyStr)}`;
+                }
+                const { body } = await get({
+                    apiName: "frontdesk",
+                    path: `/stock?${query}`,
+                }).response;
+                const response = await body.json();
+
+                if (response?.success && Array.isArray(response.stockHistory)) {
+                    allItems = allItems.concat(response.stockHistory);
+                    lastEvaluatedKey = response.lastEvaluatedKey || null;
+                    if (response.stockHistory.length < 500 || !lastEvaluatedKey) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+                page++;
+            } while (lastEvaluatedKey && page < MAX_PAGES);
+
+            setStockHistory(allItems);
         } catch (error) {
             console.error("Error fetching stock history from cloud DB:", error);
             setStockHistory([]);
@@ -336,6 +368,461 @@ export default function Store() {
     const replenishmentItems = useMemo(() => {
         return items.filter((item) => item.quantity <= item.parLevel);
     }, [items]);
+
+    /* ----------------------- ITEM MOVEMENT LEDGER (NO MODAL) ------------------------ */
+
+    const itemLedgerData = useMemo(() => {
+        let logs = [...stockHistory];
+
+        // Filter by selectedItem if selected
+        if (selectedItem) {
+            logs = logs.filter(
+                (log) =>
+                    (log.itemName || "").trim().toLowerCase() === (selectedItem.itemName || "").trim().toLowerCase()
+            );
+        }
+
+        // Sort ascending to calculate running balance accurately
+        const ascLogs = [...logs].sort((a, b) => (a.dateEpoch || 0) - (b.dateEpoch || 0));
+        let runningBal = 0;
+        const enrichedWithBalance = ascLogs.map((log) => {
+            const q = Number(
+                log.actionType === "issue_entry" ||
+                log.actionType === "distributed" ||
+                log.actionType === "wastage" ||
+                log.actionType === "adjustment" ||
+                log.actionType === "return"
+                    ? log.adjustmentQuantity
+                    : log.quantity
+            ) || 0;
+
+            if (log.actionType === "add" || log.actionType === "purchase-entry" || log.actionType === "return") {
+                runningBal += q;
+            } else if (log.actionType === "issue_entry" || log.actionType === "distributed" || log.actionType === "wastage") {
+                runningBal = Math.max(0, runningBal - q);
+            } else if (log.actionType === "adjustment") {
+                runningBal = q;
+            }
+
+            return {
+                ...log,
+                effectiveQty: q,
+                balanceAfter: runningBal,
+            };
+        });
+
+        // Now sort descending (newest first)
+        let descLogs = enrichedWithBalance.sort((a, b) => (b.dateEpoch || 0) - (a.dateEpoch || 0));
+
+        // Filter by action
+        if (historyActionFilter !== "all") {
+            descLogs = descLogs.filter((log) => {
+                if (historyActionFilter === "purchase") return log.actionType === "purchase-entry" || log.actionType === "add";
+                if (historyActionFilter === "issue") return log.actionType === "issue_entry" || log.actionType === "distributed";
+                if (historyActionFilter === "return") return log.actionType === "return";
+                if (historyActionFilter === "adjustment") return log.actionType === "adjustment" || log.actionType === "wastage";
+                return true;
+            });
+        }
+
+        // Filter by search
+        if (historySearch.trim()) {
+            const s = historySearch.toLowerCase();
+            descLogs = descLogs.filter((log) =>
+                (log.itemName || "").toLowerCase().includes(s) ||
+                (log.department || "").toLowerCase().includes(s) ||
+                (log.vendorName || "").toLowerCase().includes(s) ||
+                (log.billNo || "").toLowerCase().includes(s) ||
+                (log.grnNo || "").toLowerCase().includes(s) ||
+                (log.description || "").toLowerCase().includes(s)
+            );
+        }
+
+        // Filter by date
+        if (historyDateFrom) {
+            const fromTime = new Date(historyDateFrom).setHours(0, 0, 0, 0);
+            descLogs = descLogs.filter((log) => (log.dateEpoch || 0) >= fromTime);
+        }
+        if (historyDateTo) {
+            const toTime = new Date(historyDateTo).setHours(23, 59, 59, 999);
+            descLogs = descLogs.filter((log) => (log.dateEpoch || 0) <= toTime);
+        }
+
+        return descLogs;
+    }, [stockHistory, selectedItem, historyActionFilter, historySearch, historyDateFrom, historyDateTo]);
+
+    const totalHistoryPages = useMemo(() => {
+        if (historyPageSize === "all") return 1;
+        return Math.max(1, Math.ceil(itemLedgerData.length / Number(historyPageSize)));
+    }, [itemLedgerData.length, historyPageSize]);
+
+    const paginatedHistoryData = useMemo(() => {
+        if (historyPageSize === "all") return itemLedgerData;
+        const start = (historyPage - 1) * Number(historyPageSize);
+        return itemLedgerData.slice(start, start + Number(historyPageSize));
+    }, [itemLedgerData, historyPage, historyPageSize]);
+
+    const exportLedgerToCSV = () => {
+        if (!itemLedgerData || itemLedgerData.length === 0) {
+            alert("No ledger records to export");
+            return;
+        }
+        const headers = [
+            "Date",
+            "Item Name",
+            "Category",
+            "Movement Type",
+            "Quantity Change",
+            "Unit",
+            "Running Balance",
+            "Department / Vendor",
+            "Reference / Bill No",
+            "Rate / Price",
+            "Total Amount",
+            "Remarks / Description",
+        ];
+        const rows = itemLedgerData.map((log) => [
+            `"${new Date(log.dateEpoch).toLocaleString("en-IN").replace(/"/g, '""')}"`,
+            `"${(log.itemName || "").replace(/"/g, '""')}"`,
+            `"${(log.category || "").replace(/"/g, '""')}"`,
+            `"${(log.actionType || "").toUpperCase()}"`,
+            log.effectiveQty,
+            `"${log.unit || ""}"`,
+            log.balanceAfter,
+            `"${(log.department || log.vendorName || "").replace(/"/g, '""')}"`,
+            `"${(log.billNo || log.grnNo || "").replace(/"/g, '""')}"`,
+            log.price || 0,
+            log.price ? ((Number(log.quantity) || 0) * (Number(log.price) || 0)).toFixed(2) : 0,
+            `"${(log.description || "").replace(/"/g, '""')}"`,
+        ]);
+        const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const slug = selectedItem?.itemName ? selectedItem.itemName.replace(/\s+/g, "_") : "store_all_items";
+        link.href = url;
+        link.setAttribute("download", `${slug}_movement_ledger_${new Date().toISOString().split("T")[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const printLedger = () => {
+        if (!itemLedgerData || itemLedgerData.length === 0) {
+            alert("No ledger records to print");
+            return;
+        }
+
+        const printWin = window.open("", "_blank", "width=1100,height=800");
+        if (!printWin) {
+            alert("Popup blocked! Please allow popups for this site to print the ledger.");
+            return;
+        }
+
+        const title = selectedItem?.itemName
+            ? `Stock Movement Ledger - ${selectedItem.itemName}`
+            : "Master Store Movement Ledger";
+        const generatedAt = new Date().toLocaleString("en-IN");
+        const dateRangeText = (historyDateFrom || historyDateTo)
+            ? `Period: ${historyDateFrom || "Start"} to ${historyDateTo || "Present"}`
+            : "Period: All Recorded History";
+
+        const rowsHtml = itemLedgerData
+            .map((log, idx) => {
+                const dateStr = log.dateEpoch ? new Date(log.dateEpoch).toLocaleDateString("en-IN") : "-";
+                const isPositive = log.effectiveQty > 0;
+                const qtyBadge = isPositive
+                    ? `<span style="color:#047857;font-weight:700;">+${log.effectiveQty}</span>`
+                    : `<span style="color:#b91c1c;font-weight:700;">${log.effectiveQty}</span>`;
+                const amount = log.price ? ((Number(log.quantity) || 0) * (Number(log.price) || 0)).toFixed(2) : "-";
+                const party = log.department || log.vendorName || "-";
+                const refNo = log.billNo || log.grnNo || "-";
+
+                return `
+                <tr>
+                    <td style="text-align:center;">${idx + 1}</td>
+                    <td>${dateStr}</td>
+                    <td><strong>${escapeHtml(log.itemName || "-")}</strong></td>
+                    <td>${escapeHtml(log.category || "-")}</td>
+                    <td style="text-align:center;text-transform:uppercase;font-size:10px;font-weight:600;">${escapeHtml(log.actionType || "-")}</td>
+                    <td style="text-align:right;">${qtyBadge} ${escapeHtml(log.unit || "")}</td>
+                    <td style="text-align:right;font-weight:700;">${log.balanceAfter ?? "-"}</td>
+                    <td>${escapeHtml(party)}</td>
+                    <td>${escapeHtml(refNo)}</td>
+                    <td style="text-align:right;">${log.price ? "₹" + Number(log.price).toFixed(2) : "-"}</td>
+                    <td style="text-align:right;font-weight:600;">${amount !== "-" ? "₹" + amount : "-"}</td>
+                    <td style="font-size:10px;color:#555;">${escapeHtml(log.description || "-")}</td>
+                </tr>
+            `;
+            })
+            .join("");
+
+        function escapeHtml(text) {
+            return String(text || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        const summaryKpiHtml = selectedItem
+            ? `
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Current Stock</div>
+                    <div class="kpi-value">${selectedItem.quantity} <span style="font-size:11px;font-weight:normal;color:#666;">${selectedItem.unit}</span></div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Par / Safety Level</div>
+                    <div class="kpi-value">${selectedItem.parLevel || 0} <span style="font-size:11px;font-weight:normal;color:#666;">${selectedItem.unit}</span></div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Total Purchased (Inward)</div>
+                    <div class="kpi-value" style="color:#047857;">${selectedItem.totalPurchased || 0} <span style="font-size:11px;font-weight:normal;color:#666;">${selectedItem.unit}</span></div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Total Issued (Outward)</div>
+                    <div class="kpi-value" style="color:#1d4ed8;">${selectedItem.totalIssued || 0} <span style="font-size:11px;font-weight:normal;color:#666;">${selectedItem.unit}</span></div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Total Records</div>
+                    <div class="kpi-value">${itemLedgerData.length}</div>
+                </div>
+            </div>
+        `
+            : `
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Scope</div>
+                    <div class="kpi-value">All Items Master</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Total Audit Trail Records</div>
+                    <div class="kpi-value">${itemLedgerData.length}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Action Filter</div>
+                    <div class="kpi-value" style="text-transform:uppercase;font-size:12px;">${historyActionFilter}</div>
+                </div>
+            </div>
+        `;
+
+        const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 8mm;
+        }
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #111827;
+            background: #fff;
+            margin: 0;
+            padding: 16px;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #111827;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+        .header-title h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #111827;
+        }
+        .header-title .subtitle {
+            margin-top: 3px;
+            font-size: 12px;
+            color: #4b5563;
+            font-weight: 600;
+        }
+        .header-meta {
+            text-align: right;
+            font-size: 10px;
+            color: #4b5563;
+            line-height: 1.4;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .kpi-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            padding: 6px 10px;
+        }
+        .kpi-label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #6b7280;
+            letter-spacing: 0.4px;
+        }
+        .kpi-value {
+            font-size: 13px;
+            font-weight: 800;
+            color: #111827;
+            margin-top: 2px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin-bottom: 16px;
+        }
+        th, td {
+            border: 1px solid #d1d5db;
+            padding: 5px 6px;
+            vertical-align: middle;
+        }
+        th {
+            background: #f3f4f6;
+            color: #1f2937;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 9px;
+            letter-spacing: 0.3px;
+            text-align: left;
+        }
+        tr:nth-child(even) td {
+            background: #fafafa;
+        }
+        .signatures {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 32px;
+            padding-top: 10px;
+            page-break-inside: avoid;
+        }
+        .sig-block {
+            text-align: center;
+            width: 28%;
+            border-top: 1px dashed #4b5563;
+            padding-top: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #374151;
+        }
+        .print-btn-bar {
+            margin-bottom: 12px;
+            display: flex;
+            gap: 8px;
+        }
+        .print-btn {
+            background: #111827;
+            color: #fff;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .close-btn {
+            background: #e5e7eb;
+            color: #111827;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        @media print {
+            .print-btn-bar {
+                display: none !important;
+            }
+            body {
+                padding: 0 !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-btn-bar">
+        <button class="print-btn" onclick="window.print()">Print Document</button>
+        <button class="close-btn" onclick="window.close()">Close</button>
+    </div>
+
+    <div class="header">
+        <div class="header-title">
+            <h1>${escapeHtml(title)}</h1>
+            <div class="subtitle">Store Department &bull; Stock Movement & Audit Trail</div>
+        </div>
+        <div class="header-meta">
+            <div><strong>Generated:</strong> ${generatedAt}</div>
+            <div><strong>${escapeHtml(dateRangeText)}</strong></div>
+            <div><strong>Total Entries:</strong> ${itemLedgerData.length}</div>
+        </div>
+    </div>
+
+    ${summaryKpiHtml}
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:24px;text-align:center;">#</th>
+                <th style="width:70px;">Date</th>
+                <th>Item Name</th>
+                <th>Category</th>
+                <th style="width:65px;text-align:center;">Action</th>
+                <th style="width:75px;text-align:right;">Qty Change</th>
+                <th style="width:75px;text-align:right;">Run. Bal</th>
+                <th>Dept / Vendor</th>
+                <th>Ref / Bill</th>
+                <th style="width:65px;text-align:right;">Rate</th>
+                <th style="width:75px;text-align:right;">Amount</th>
+                <th style="width:120px;">Remarks</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${rowsHtml}
+        </tbody>
+    </table>
+
+    <div class="signatures">
+        <div class="sig-block">Prepared By (Store Keeper)</div>
+        <div class="sig-block">Verified By (Auditor / Accounts)</div>
+        <div class="sig-block">Authorized Signatory (Manager)</div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 300);
+        };
+    </script>
+</body>
+</html>
+        `;
+
+        printWin.document.open();
+        printWin.document.write(html);
+        printWin.document.close();
+    };
 
     /* ----------------------- ACTION HANDLERS ------------------------ */
 
@@ -679,6 +1166,16 @@ export default function Store() {
                         <ArrowUpFromLine size={13} /> Issue & Consumption (Section)
                     </button>
                     <button
+                        onClick={() => setActiveTab("history_section")}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 ${
+                            activeTab === "history_section"
+                                ? "bg-white text-gray-900 shadow-2xs border border-gray-200"
+                                : "text-gray-600 hover:text-gray-900"
+                        }`}
+                    >
+                        <History size={13} /> Item History & Movement Ledger
+                    </button>
+                    <button
                         onClick={() => setActiveTab("par_levels")}
                         className={`px-3 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 ${
                             activeTab === "par_levels"
@@ -880,12 +1377,17 @@ export default function Store() {
                                                         <button
                                                             onClick={() => {
                                                                 setSelectedItem(item);
-                                                                setShowHistory(true);
+                                                                setHistorySearch("");
+                                                                setHistoryActionFilter("all");
+                                                                setHistoryDateFrom("");
+                                                                setHistoryDateTo("");
+                                                                setHistoryPage(1);
+                                                                setActiveTab("history_section");
                                                             }}
                                                             className="px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 rounded-md font-bold text-[10px] flex items-center gap-1 transition"
-                                                            title="History"
+                                                            title="View Item Movement Ledger"
                                                         >
-                                                            <Eye size={11} /> History
+                                                            <History size={11} /> History
                                                         </button>
                                                     </div>
                                                 </Td>
@@ -1428,14 +1930,448 @@ export default function Store() {
             )}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* SECONDARY MODALS (History and Adjustment)                        */}
+            {/* SECTION 5: ITEM MOVEMENT LEDGER & AUDIT TRAIL (FULL SECTION)     */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {activeTab === "history_section" && (
+                <div className="space-y-3.5">
+                    {/* Header Strip with Back Button & Item Selector */}
+                    <div className="bg-white border border-gray-200 rounded-md p-3.5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setActiveTab("inventory")}
+                                className="px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-md text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                                title="Return to Store Inventory"
+                            >
+                                <ArrowLeft size={14} /> Back to Inventory
+                            </button>
+                            <div>
+                                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                                    <History size={16} className="text-gray-700" />
+                                    {selectedItem ? `${selectedItem.itemName} Movement Ledger` : "Master Store Movement Ledger"}
+                                </h2>
+                                <p className="text-[11px] text-gray-500">
+                                    {selectedItem
+                                        ? `Category: ${selectedItem.category} • Unit: ${selectedItem.unit} • Current Stock: ${selectedItem.quantity} ${selectedItem.unit}`
+                                        : "Complete chronological audit trail of all store purchases, issues, returns, and adjustments"}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Top controls: Item Switcher + Export + Print */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-300 rounded-md px-2 py-1 text-xs">
+                                <span className="text-[10px] font-bold uppercase text-gray-500">Item:</span>
+                                <select
+                                    value={selectedItem ? `${selectedItem.itemName}_${selectedItem.unit}_${selectedItem.category}` : "ALL"}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === "ALL") {
+                                            setSelectedItem(null);
+                                        } else {
+                                            const found = items.find((it) => `${it.itemName}_${it.unit}_${it.category}` === val);
+                                            if (found) setSelectedItem(found);
+                                        }
+                                        setHistoryPage(1);
+                                    }}
+                                    className="bg-transparent text-xs font-bold text-gray-800 focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[240px] truncate"
+                                >
+                                    <option value="ALL">All Store Items (Master Store Ledger)</option>
+                                    {items.map((it, idx) => (
+                                        <option key={idx} value={`${it.itemName}_${it.unit}_${it.category}`}>
+                                            {it.itemName} ({it.quantity} {it.unit} in stock)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <button
+                                onClick={exportLedgerToCSV}
+                                className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-md text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                                title="Export Ledger to CSV"
+                            >
+                                <Download size={13} /> Export CSV
+                            </button>
+
+                            <button
+                                onClick={printLedger}
+                                className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-md text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                                title="Print Ledger (A4 Landscape Statement)"
+                            >
+                                <Printer size={13} /> Print Ledger
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* KPI Metric Summary Cards */}
+                    {selectedItem ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Current Balance</div>
+                                <div className="text-base font-bold text-gray-900 mt-0.5">
+                                    {selectedItem.quantity} <span className="text-xs font-normal text-gray-500">{selectedItem.unit}</span>
+                                </div>
+                                <div className="mt-1">
+                                    {selectedItem.quantity === 0 ? (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800">OUT OF STOCK</span>
+                                    ) : selectedItem.quantity <= selectedItem.parLevel ? (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800">LOW STOCK</span>
+                                    ) : (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800">HEALTHY</span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Par-Level Threshold</div>
+                                <div className="text-base font-bold text-gray-900 mt-0.5">
+                                    {selectedItem.parLevel} <span className="text-xs font-normal text-gray-500">{selectedItem.unit}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1">Minimum safety reserve</div>
+                            </div>
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Total Inward Purchased</div>
+                                <div className="text-base font-bold text-emerald-700 mt-0.5">
+                                    {selectedItem.totalPurchased || 0} <span className="text-xs font-normal text-gray-500">{selectedItem.unit}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1">Cumulative purchases</div>
+                            </div>
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Total Outward Issued</div>
+                                <div className="text-base font-bold text-blue-700 mt-0.5">
+                                    {selectedItem.totalIssued || 0} <span className="text-xs font-normal text-gray-500">{selectedItem.unit}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1">Issued to departments</div>
+                            </div>
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Movement Records</div>
+                                <div className="text-base font-bold text-gray-900 mt-0.5">
+                                    {itemLedgerData.length} <span className="text-xs font-normal text-gray-500">entries</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1">Total audit trail entries</div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Total Inventory Items</div>
+                                <div className="text-base font-bold text-gray-900 mt-0.5">{items.length} items</div>
+                                <div className="text-[10px] text-gray-400 mt-1">Active items in master</div>
+                            </div>
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Total Purchase Entries</div>
+                                <div className="text-base font-bold text-emerald-700 mt-0.5">
+                                    {stockHistory.filter((l) => l.actionType === "purchase-entry" || l.actionType === "add").length}
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1">Inward GRN receipts</div>
+                            </div>
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Department Issue Logs</div>
+                                <div className="text-base font-bold text-blue-700 mt-0.5">
+                                    {stockHistory.filter((l) => l.actionType === "issue_entry" || l.actionType === "distributed").length}
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1">Outward consumptions</div>
+                            </div>
+                            <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Total Movement Logs</div>
+                                <div className="text-base font-bold text-gray-900 mt-0.5">{stockHistory.length} logs</div>
+                                <div className="text-[10px] text-gray-400 mt-1">Historical ledger entries</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Filter and Search Bar */}
+                    <div className="bg-white border border-gray-200 rounded-md p-3 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+                        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+                            {/* Search */}
+                            <div className="relative flex-1 min-w-[180px] max-w-sm">
+                                <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search vendor, department, bill no, GRN, notes..."
+                                    value={historySearch}
+                                    onChange={(e) => {
+                                        setHistorySearch(e.target.value);
+                                        setHistoryPage(1);
+                                    }}
+                                    className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md text-xs bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                />
+                                {historySearch && (
+                                    <button
+                                        onClick={() => {
+                                            setHistorySearch("");
+                                            setHistoryPage(1);
+                                        }}
+                                        className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Movement Type Filter */}
+                            <select
+                                value={historyActionFilter}
+                                onChange={(e) => {
+                                    setHistoryActionFilter(e.target.value);
+                                    setHistoryPage(1);
+                                }}
+                                className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs bg-white text-gray-700 focus:outline-none cursor-pointer"
+                            >
+                                <option value="all">All Movements (In & Out)</option>
+                                <option value="purchase">Purchases (Stock In)</option>
+                                <option value="issue">Department Issues (Stock Out)</option>
+                                <option value="return">Store Returns (Stock In)</option>
+                                <option value="adjustment">Adjustments & Wastage</option>
+                            </select>
+
+                            {/* Date Range Filters */}
+                            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                                <Calendar size={13} className="text-gray-400" />
+                                <input
+                                    type="date"
+                                    value={historyDateFrom}
+                                    onChange={(e) => {
+                                        setHistoryDateFrom(e.target.value);
+                                        setHistoryPage(1);
+                                    }}
+                                    className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:outline-none text-gray-700"
+                                    title="From Date"
+                                />
+                                <span>to</span>
+                                <input
+                                    type="date"
+                                    value={historyDateTo}
+                                    onChange={(e) => {
+                                        setHistoryDateTo(e.target.value);
+                                        setHistoryPage(1);
+                                    }}
+                                    className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:outline-none text-gray-700"
+                                    title="To Date"
+                                />
+                            </div>
+
+                            {(historySearch || historyActionFilter !== "all" || historyDateFrom || historyDateTo) && (
+                                <button
+                                    onClick={() => {
+                                        setHistorySearch("");
+                                        setHistoryActionFilter("all");
+                                        setHistoryDateFrom("");
+                                        setHistoryDateTo("");
+                                        setHistoryPage(1);
+                                    }}
+                                    className="px-2 py-1 text-[11px] font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1 border border-gray-300 rounded-md hover:bg-gray-50 transition cursor-pointer"
+                                >
+                                    <RotateCcw size={11} /> Reset
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Page Size Selector */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                            <span>Rows:</span>
+                            <select
+                                value={historyPageSize}
+                                onChange={(e) => {
+                                    setHistoryPageSize(e.target.value === "all" ? "all" : Number(e.target.value));
+                                    setHistoryPage(1);
+                                }}
+                                className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white text-gray-700 cursor-pointer"
+                            >
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="all">All ({itemLedgerData.length})</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Movement Ledger Table */}
+                    <div className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-2xs">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                                <thead className="bg-gray-50 border-b border-gray-200 text-gray-700">
+                                    <tr>
+                                        <Th>Date & Time</Th>
+                                        <Th>Item & Category</Th>
+                                        <Th>Movement Type</Th>
+                                        <Th right>Qty Change</Th>
+                                        <Th right>Balance After</Th>
+                                        <Th>Department / Vendor</Th>
+                                        <Th>Reference / Bill</Th>
+                                        <Th right>Rate / Cost</Th>
+                                        <Th>Remarks / Reason</Th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {paginatedHistoryData.map((log, index) => {
+                                        const isPurchase = log.actionType === "purchase-entry" || log.actionType === "add";
+                                        const isIssue = log.actionType === "issue_entry" || log.actionType === "distributed";
+                                        const isReturn = log.actionType === "return";
+                                        const isWastage = log.actionType === "wastage";
+                                        const isAdjustment = log.actionType === "adjustment";
+
+                                        return (
+                                            <tr key={(log.dateEpoch || "") + index} className="hover:bg-gray-50/80 transition">
+                                                <Td className="whitespace-nowrap font-medium text-gray-700">
+                                                    {log.dateEpoch ? new Date(log.dateEpoch).toLocaleString("en-IN") : "—"}
+                                                </Td>
+                                                <Td>
+                                                    <div className="font-bold text-gray-900">{log.itemName || "—"}</div>
+                                                    <div className="text-[10px] text-gray-400">{log.category || "General"}</div>
+                                                </Td>
+                                                <Td>
+                                                    {isPurchase && (
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            PURCHASE (IN)
+                                                        </span>
+                                                    )}
+                                                    {isIssue && (
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                                            ISSUE (OUT)
+                                                        </span>
+                                                    )}
+                                                    {isReturn && (
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                                            RETURN (IN)
+                                                        </span>
+                                                    )}
+                                                    {isAdjustment && (
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                            ADJUSTMENT
+                                                        </span>
+                                                    )}
+                                                    {isWastage && (
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                                            WASTE (OUT)
+                                                        </span>
+                                                    )}
+                                                    {!isPurchase && !isIssue && !isReturn && !isAdjustment && !isWastage && (
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">
+                                                            {(log.actionType || "LOG").toUpperCase()}
+                                                        </span>
+                                                    )}
+                                                </Td>
+                                                <Td right className="font-bold whitespace-nowrap">
+                                                    {isPurchase || isReturn ? (
+                                                        <span className="text-emerald-700">+{log.effectiveQty} {log.unit}</span>
+                                                    ) : isIssue || isWastage ? (
+                                                        <span className="text-rose-700">-{log.effectiveQty} {log.unit}</span>
+                                                    ) : (
+                                                        <span className="text-gray-900">{log.effectiveQty} {log.unit}</span>
+                                                    )}
+                                                </Td>
+                                                <Td right className="font-bold text-gray-900 whitespace-nowrap">
+                                                    {log.balanceAfter} <span className="text-[10px] font-normal text-gray-500">{log.unit}</span>
+                                                </Td>
+                                                <Td>
+                                                    {isPurchase ? (
+                                                        <span className="font-medium text-gray-800">{log.vendorName || "—"}</span>
+                                                    ) : (
+                                                        <span className="font-semibold text-blue-700">
+                                                            {(log.department || "General").toUpperCase()}
+                                                        </span>
+                                                    )}
+                                                </Td>
+                                                <Td className="whitespace-nowrap text-gray-600">
+                                                    {isPurchase ? (
+                                                        <span>Bill: {log.billNo || "—"} {log.grnNo ? `(GRN: ${log.grnNo})` : ""}</span>
+                                                    ) : log.issueDate ? (
+                                                        <span>Date: {new Date(log.issueDate).toLocaleDateString("en-IN")}</span>
+                                                    ) : (
+                                                        <span>—</span>
+                                                    )}
+                                                </Td>
+                                                <Td right className="whitespace-nowrap text-gray-700">
+                                                    {log.price && Number(log.price) > 0 ? (
+                                                        <div>
+                                                            <div className="font-medium">₹{Number(log.price).toFixed(2)}</div>
+                                                            <div className="text-[10px] text-gray-400">
+                                                                Total: ₹{((Number(log.quantity) || 0) * (Number(log.price) || 0)).toFixed(2)}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span>—</span>
+                                                    )}
+                                                </Td>
+                                                <Td className="text-gray-600 max-w-xs truncate">
+                                                    {log.description || "—"}
+                                                </Td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {itemLedgerData.length === 0 && (
+                                        <tr>
+                                            <td colSpan="9" className="py-12 text-center text-gray-400">
+                                                No movement records found for the selected criteria.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination Footer */}
+                        {itemLedgerData.length > 0 && historyPageSize !== "all" && (
+                            <div className="bg-gray-50 border-t border-gray-200 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-600">
+                                <div>
+                                    Showing{" "}
+                                    <span className="font-bold text-gray-900">
+                                        {Math.min((historyPage - 1) * Number(historyPageSize) + 1, itemLedgerData.length)}
+                                    </span>{" "}
+                                    to{" "}
+                                    <span className="font-bold text-gray-900">
+                                        {Math.min(historyPage * Number(historyPageSize), itemLedgerData.length)}
+                                    </span>{" "}
+                                    of <span className="font-bold text-gray-900">{itemLedgerData.length}</span> total records
+                                </div>
+
+                                <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                                    <button
+                                        onClick={() => setHistoryPage(1)}
+                                        disabled={historyPage === 1}
+                                        className="px-2 py-1 border border-gray-300 rounded-md bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition cursor-pointer"
+                                    >
+                                        First
+                                    </button>
+                                    <button
+                                        onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                                        disabled={historyPage === 1}
+                                        className="px-2.5 py-1 border border-gray-300 rounded-md bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition cursor-pointer"
+                                    >
+                                        Prev
+                                    </button>
+                                    <span className="px-2 font-semibold text-gray-800">
+                                        Page {historyPage} of {totalHistoryPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setHistoryPage((p) => Math.min(totalHistoryPages, p + 1))}
+                                        disabled={historyPage === totalHistoryPages}
+                                        className="px-2.5 py-1 border border-gray-300 rounded-md bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition cursor-pointer"
+                                    >
+                                        Next
+                                    </button>
+                                    <button
+                                        onClick={() => setHistoryPage(totalHistoryPages)}
+                                        disabled={historyPage === totalHistoryPages}
+                                        className="px-2 py-1 border border-gray-300 rounded-md bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs transition cursor-pointer"
+                                    >
+                                        Last
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* SECONDARY MODAL (Adjustment Only)                                  */}
             {/* ═════════════════════════════════════════════════════════════════ */}
 
             {/* ADJUSTMENT MODAL */}
             {showAdjustment && selectedItem && (
                 <div className="fixed inset-0 bg-black/40 flex justify-center items-center p-3 z-50">
                     <div className="bg-white w-full max-w-sm border border-gray-200 rounded-md shadow-xl p-4 space-y-3 relative">
-                        <button onClick={() => setShowAdjustment(false)} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700">
+                        <button onClick={() => setShowAdjustment(false)} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 cursor-pointer">
                             <X size={16} />
                         </button>
                         <h3 className="text-xs font-bold text-gray-900">Adjust Stock for {selectedItem.itemName}</h3>
@@ -1469,73 +2405,11 @@ export default function Store() {
                         <button
                             onClick={submitAdjustment}
                             disabled={loadingAdjustment}
-                            className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2 rounded-md transition disabled:opacity-50"
+                            className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2 rounded-md transition disabled:opacity-50 cursor-pointer"
                         >
                             {loadingAdjustment && <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white inline-block mr-1"></div>}
                             Save Adjustment
                         </button>
-                    </div>
-                </div>
-            )}
-
-            {/* HISTORY MODAL */}
-            {showHistory && selectedItem && (
-                <div className="fixed inset-0 bg-black/40 flex justify-center items-center p-3 z-50">
-                    <div className="bg-white w-full max-w-2xl border border-gray-200 rounded-md shadow-xl p-4 space-y-3 relative max-h-[85vh] flex flex-col">
-                        <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                            <h3 className="text-xs font-bold text-gray-900">
-                                {selectedItem.itemName} Movement Ledger
-                            </h3>
-                            <button onClick={() => setShowHistory(false)} className="text-gray-400 hover:text-gray-700">
-                                <X size={16} />
-                            </button>
-                        </div>
-
-                        <div className="overflow-y-auto flex-1">
-                            <table className="w-full text-xs">
-                                <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <Th>Date</Th>
-                                        <Th>Action</Th>
-                                        <Th>Qty</Th>
-                                        <Th>Details / Department</Th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {stockHistory
-                                        .filter((log) => log.itemName === selectedItem.itemName)
-                                        .sort((a, b) => (b.dateEpoch || 0) - (a.dateEpoch || 0))
-                                        .map((log, index) => (
-                                            <tr key={(log.dateEpoch || "") + index} className="border-b border-gray-100 hover:bg-gray-50">
-                                                <Td>{new Date(log.dateEpoch).toLocaleString("en-IN")}</Td>
-                                                <Td>
-                                                    <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-800">
-                                                        {(log.actionType || "").toUpperCase()}
-                                                    </span>
-                                                </Td>
-                                                <Td className="font-bold">
-                                                    {log.actionType === "wastage" ||
-                                                    log.actionType === "adjustment" ||
-                                                    log.actionType === "return" ||
-                                                    log.actionType === "issue_entry"
-                                                        ? log.adjustmentQuantity
-                                                        : log.quantity}{" "}
-                                                    {log.unit}
-                                                </Td>
-                                                <Td>
-                                                    {log.actionType === "purchase-entry"
-                                                        ? `Purchase from ${log.vendorName || "Vendor"} (Bill: ${log.billNo || "—"})`
-                                                        : log.actionType === "issue_entry"
-                                                        ? `Issued to ${log.department || "Dept"} on ${
-                                                              log.issueDate ? new Date(log.issueDate).toLocaleDateString("en-IN") : ""
-                                                          }`
-                                                        : log.description || "—"}
-                                                </Td>
-                                            </tr>
-                                        ))}
-                                </tbody>
-                            </table>
-                        </div>
                     </div>
                 </div>
             )}

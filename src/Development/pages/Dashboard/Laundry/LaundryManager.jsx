@@ -6,7 +6,6 @@ import { useAuthContext } from "@/Development/context/AuthContext.jsx";
 import { Button } from "@/Development/components/ui/button.js";
 import { Input } from "@/Development/components/ui/input.js";
 import { Label } from "@/Development/components/ui/label.js";
-import { Card, CardContent, CardHeader, CardTitle } from "@/Development/components/ui/card.js";
 import { Badge } from "@/Development/components/ui/badge.js";
 import {
   Dialog,
@@ -34,44 +33,32 @@ import {
   Trash2,
   Clock,
   CheckCircle2,
-  AlertCircle,
-  ArrowRight,
-  DollarSign,
-  Building2,
-  SlidersHorizontal,
-  Package,
-  Layers,
-  FileText,
-  User,
-  Phone,
-  Receipt,
-  RotateCcw,
-  Database,
-  Save,
   Truck,
-  TrendingUp,
   Bed,
   Calendar,
   Waves,
-  Eye,
-  Check,
-  MapPin,
+  Receipt,
+  RotateCcw,
+  Save,
+  FileText,
   X,
   CreditCard,
   Banknote,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   getLaundryCatalog,
   getServiceSpeeds,
+  fetchLaundryCatalogBackend,
   saveLaundryConfigToBackend,
   resetLaundryCatalogToDefault,
   generateLaundryToken,
   calculateLaundryTotals,
   createLaundryOrderBackend,
+  fetchLaundryOrdersBackend,
   updateLaundryStatusBackend,
   markDeliveryDeliveredBackend,
-  CARE_TYPES,
   LAUNDRY_SAC_CODE,
 } from "./laundryCatalog.js";
 import {
@@ -83,7 +70,42 @@ import {
   getLaundryA4BillHTML,
 } from "./PrintLaundryA4.jsx";
 
-const STORAGE_ORDERS_KEY = "hotel_laundry_orders";
+/* ---------------------------------------------------------------------------
+   Layout constant: the page fills the screen below your app header.
+   If your header is taller/shorter, change this one number (px).
+--------------------------------------------------------------------------- */
+const APP_CHROME_HEIGHT = 84;
+
+/* One calm palette: neutral surfaces, a single blue accent.
+   Care types get a small tint only where they need to be told apart. */
+const CARE_UI = {
+  wash_only: { label: "Wash", Icon: Waves, chip: "bg-cyan-50 text-cyan-800 border-cyan-200" },
+  wash_and_press: { label: "Wash + Iron", Icon: Sparkles, chip: "bg-blue-50 text-blue-800 border-blue-200" },
+  press_only: { label: "Iron", Icon: Flame, chip: "bg-amber-50 text-amber-800 border-amber-200" },
+  dry_clean: { label: "Dry clean", Icon: ShieldCheck, chip: "bg-purple-50 text-purple-800 border-purple-200" },
+};
+const CARE_IDS = Object.keys(CARE_UI);
+const careOf = (item) => (CARE_UI[item?.careType] ? item.careType : "wash_and_press");
+
+const TABS = [
+  { id: "new_order", label: "New order" },
+  { id: "deliveries", label: "Deliveries" },
+  { id: "tracker", label: "Tracker" },
+  { id: "statistics", label: "Statistics" },
+  { id: "price_sheet", label: "Rates" },
+];
+
+const emptyBatchRow = (category = "Men") => ({
+  name: "",
+  category,
+  wash_only: "",
+  wash_and_press: "",
+  press_only: "",
+  dry_clean: "",
+});
+const initialBatch = () => [emptyBatchRow("Men"), emptyBatchRow("Women"), emptyBatchRow("Kids")];
+
+const ymd = (d = new Date()) => d.toISOString().split("T")[0];
 
 /**
  * Robust room number resolution helper
@@ -92,71 +114,90 @@ const STORAGE_ORDERS_KEY = "hotel_laundry_orders";
 export const getDisplayRoomNumber = (booking, roomsList = []) => {
   if (!booking) return "";
 
-  // 1. Direct room_number fields on booking
-  if (booking.room_number) {
-    return Array.isArray(booking.room_number)
-      ? booking.room_number.join(", ")
-      : String(booking.room_number);
-  }
-  if (booking.roomNumber) {
-    return Array.isArray(booking.roomNumber)
-      ? booking.roomNumber.join(", ")
-      : String(booking.roomNumber);
-  }
-  if (booking.room_numbers) {
-    return Array.isArray(booking.room_numbers)
-      ? booking.room_numbers.join(", ")
-      : String(booking.room_numbers);
-  }
-  if (booking.allocated_room) {
-    return String(booking.allocated_room);
-  }
+  const joinIf = (v) => (Array.isArray(v) ? v.join(", ") : String(v));
+  if (booking.room_number) return joinIf(booking.room_number);
+  if (booking.roomNumber) return joinIf(booking.roomNumber);
+  if (booking.room_numbers) return joinIf(booking.room_numbers);
+  if (booking.allocated_room) return String(booking.allocated_room);
 
-  // 2. Look up in rooms list using booking.room_id
-  const rawRoomId = Array.isArray(booking.room_id)
-    ? booking.room_id[0]
-    : booking.room_id;
+  const rawRoomId = Array.isArray(booking.room_id) ? booking.room_id[0] : booking.room_id;
   if (rawRoomId && roomsList && roomsList.length > 0) {
     const matched = roomsList.find(
       (r) =>
-        String(r.room_id || r.id || "").toLowerCase() ===
-          String(rawRoomId).toLowerCase() ||
-        String(r.room_number || r.number || "").toLowerCase() ===
-          String(rawRoomId).toLowerCase()
+        String(r.room_id || r.id || "").toLowerCase() === String(rawRoomId).toLowerCase() ||
+        String(r.room_number || r.number || "").toLowerCase() === String(rawRoomId).toLowerCase()
     );
     if (matched) {
       return String(matched.room_number || matched.number || matched.room_name || rawRoomId);
     }
   }
 
-  // 3. Check rooms array inside booking
-  if (Array.isArray(booking.rooms) && booking.rooms.length > 0) {
-    const first = booking.rooms[0];
-    if (typeof first === "object") {
-      return String(first.room_number || first.number || first.room_id || "");
+  const fromList = (arr) => {
+    if (Array.isArray(arr) && arr.length > 0) {
+      const first = arr[0];
+      return typeof first === "object"
+        ? String(first.room_number || first.number || first.room_id || "")
+        : String(first);
     }
-    return String(first);
-  }
-
-  // 4. Check rooms_config array
-  if (Array.isArray(booking.rooms_config) && booking.rooms_config.length > 0) {
-    const first = booking.rooms_config[0];
-    if (typeof first === "object") {
-      return String(first.room_number || first.number || first.room_id || "");
-    }
-    return String(first);
-  }
+    return null;
+  };
+  const a = fromList(booking.rooms);
+  if (a !== null) return a;
+  const b = fromList(booking.rooms_config);
+  if (b !== null) return b;
 
   return rawRoomId ? String(rawRoomId) : "";
 };
 
-export default function LaundryManager({
-  initialRoomNumber = null,
-  onOrderCreated = null,
-}) {
+/* Small shared pieces ------------------------------------------------------ */
+const Panel = ({ className = "", children }) => (
+  <div className={`bg-white border border-gray-200 rounded-lg ${className}`}>{children}</div>
+);
+
+const Segmented = ({ value, onChange, options }) => (
+  <div
+    className="grid gap-0.5 bg-gray-100 p-0.5 rounded-md"
+    style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+  >
+    {options.map((o) => (
+      <button
+        key={o.id}
+        type="button"
+        onClick={() => onChange(o.id)}
+        className={`px-3 py-1.5 rounded text-[12px] font-semibold transition-colors ${
+          value === o.id ? "bg-white text-blue-700 shadow-sm" : "text-gray-600 hover:text-gray-900"
+        }`}
+      >
+        {o.label}
+      </button>
+    ))}
+  </div>
+);
+
+const CareChip = ({ careType, qty }) => {
+  const ui = CARE_UI[careType] || CARE_UI.wash_and_press;
+  return (
+    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold ${ui.chip}`}>
+      {qty ? `${qty} ` : ""}
+      {ui.label}
+    </span>
+  );
+};
+
+const paymentBadge = (ord) => {
+  if (ord.paymentStatus === "POSTED_TO_ROOM_BILL")
+    return { text: "Posted to room bill", cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+  if (ord.paymentStatus === "HELD_ON_ROOM")
+    return { text: "Held on room", cls: "bg-amber-50 text-amber-900 border-amber-300" };
+  return { text: ord.paymentMethod || "Paid", cls: "bg-gray-100 text-gray-800 border-gray-200" };
+};
+
+export default function LaundryManager({ initialRoomNumber = null, onOrderCreated = null }) {
   const {
     bookings = [],
     rooms = [],
+    guests = [],
+    fetchGuests,
     updateBookingServices,
     addExpense,
   } = useAppContext();
@@ -165,14 +206,10 @@ export default function LaundryManager({
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
-
-  // Active view: 'new_order' | 'deliveries' | 'statistics' | 'price_sheet' | 'tracker'
   const [activeTab, setActiveTab] = useState(() => tabFromUrl || "new_order");
 
   useEffect(() => {
-    if (tabFromUrl && tabFromUrl !== activeTab) {
-      setActiveTab(tabFromUrl);
-    }
+    if (tabFromUrl && tabFromUrl !== activeTab) setActiveTab(tabFromUrl);
   }, [tabFromUrl]);
 
   const handleTabChange = (newTab) => {
@@ -180,66 +217,98 @@ export default function LaundryManager({
     setSearchParams({ tab: newTab });
   };
 
-  // Dynamic Garment catalog & speeds loaded from Backend Database
+  /* Catalog & speeds ------------------------------------------------------- */
   const [catalog, setCatalog] = useState(() => getLaundryCatalog(institutionData));
   const [serviceSpeeds, setServiceSpeeds] = useState(() => getServiceSpeeds(institutionData));
   const [catalogCategory, setCatalogCategory] = useState("All");
   const [searchGarment, setSearchGarment] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
-  // Modal to add new custom garment dynamically
-  const [newGarmentModalOpen, setNewGarmentModalOpen] = useState(false);
-  const [newGarmentData, setNewGarmentData] = useState({
-    name: "",
-    category: "Men",
-    wash_only: "",
-    wash_and_press: "",
-    press_only: "",
-    dry_clean: "",
-  });
+  const [showBatchAddSection, setShowBatchAddSection] = useState(false);
+  const [batchGarments, setBatchGarments] = useState(initialBatch);
 
-  // Receipt / Bill Preview Dialog State
+  const handleAddBatchRow = () => setBatchGarments((p) => [...p, emptyBatchRow()]);
+  const handleUpdateBatchRow = (index, field, value) =>
+    setBatchGarments((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  const handleRemoveBatchRow = (index) =>
+    setBatchGarments((prev) => (prev.length <= 1 ? [emptyBatchRow()] : prev.filter((_, i) => i !== index)));
+
+  const handleSaveBatchGarments = async () => {
+    const validRows = batchGarments.filter((r) => r.name && r.name.trim().length > 0);
+    if (validRows.length === 0) {
+      toast.error("Enter at least one garment name");
+      return;
+    }
+    setIsSavingConfig(true);
+    try {
+      const newEntries = validRows.map((r, i) => ({
+        id: `custom_${r.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${Date.now()}_${i}`,
+        name: r.name.trim(),
+        category: r.category || "Men",
+        rates: {
+          wash_only: Math.max(0, Number(r.wash_only) || 0),
+          wash_and_press: Math.max(0, Number(r.wash_and_press) || 0),
+          press_only: Math.max(0, Number(r.press_only) || 0),
+          dry_clean: Math.max(0, Number(r.dry_clean) || 0),
+        },
+      }));
+      const updatedCatalog = [...newEntries, ...catalog];
+      setCatalog(updatedCatalog);
+      try {
+        localStorage.setItem("hotel_laundry_catalog_cache", JSON.stringify(updatedCatalog));
+      } catch (e) {}
+      setBatchGarments(initialBatch());
+      setShowBatchAddSection(false);
+      await saveLaundryConfigToBackend({
+        catalog: updatedCatalog,
+        serviceSpeeds,
+        institutionData,
+        updateInstitutionData,
+      });
+      toast.success(`Added ${newEntries.length} garments and saved`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not save garments");
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  const [editSpeedsModalOpen, setEditSpeedsModalOpen] = useState(false);
+  const [customExtraCharge, setCustomExtraCharge] = useState(0);
+
   const [previewOrder, setPreviewOrder] = useState(null);
-  const [paperSize, setPaperSize] = useState("80"); // '80' | '58'
-  const [previewDocType, setPreviewDocType] = useState("a4"); // 'a4' | 'thermal'
+  const [paperSize, setPaperSize] = useState("80");
+  const [previewDocType, setPreviewDocType] = useState("a4");
 
-  // Sync catalog whenever institutionData changes from backend
   useEffect(() => {
-    if (institutionData?.laundryConfig?.catalog) {
+    if (institutionData?.laundryConfig?.catalog && Array.isArray(institutionData.laundryConfig.catalog)) {
       setCatalog(institutionData.laundryConfig.catalog);
     }
-    if (institutionData?.laundryConfig?.serviceSpeeds) {
+    if (
+      institutionData?.laundryConfig?.serviceSpeeds &&
+      Array.isArray(institutionData.laundryConfig.serviceSpeeds)
+    ) {
       setServiceSpeeds(institutionData.laundryConfig.serviceSpeeds);
     }
   }, [institutionData]);
 
-  // Order creation form state
-  const [collectionSource, setCollectionSource] = useState(
-    initialRoomNumber ? "room_pickup" : "room_pickup"
-  );
+  /* Order form state ------------------------------------------------------- */
+  const [collectionSource, setCollectionSource] = useState("room_pickup");
   const [selectedBookingId, setSelectedBookingId] = useState("");
-  const [selectedRoomNumber, setSelectedRoomNumber] = useState(
-    initialRoomNumber || ""
-  );
+  const [selectedRoomNumber, setSelectedRoomNumber] = useState(initialRoomNumber || "");
   const [guestName, setGuestName] = useState("");
   const [guestMobile, setGuestMobile] = useState("");
   const [serviceSpeed, setServiceSpeed] = useState("normal");
   const [token, setToken] = useState(generateLaundryToken());
   const [basket, setBasket] = useState([]);
-  const [itemNoteInput, setItemNoteInput] = useState("");
 
-  // Delivery Target Date & Time state
   const getInitialDeliveryDate = (speed) => {
     const d = new Date();
-    if (speed === "normal") {
-      d.setDate(d.getDate() + 1); // Tomorrow
-    }
-    return d.toISOString().split("T")[0];
+    if (speed === "normal") d.setDate(d.getDate() + 1);
+    return ymd(d);
   };
-
-  const [deliveryDate, setDeliveryDate] = useState(() =>
-    getInitialDeliveryDate("normal")
-  );
+  const [deliveryDate, setDeliveryDate] = useState(() => getInitialDeliveryDate("normal"));
   const [deliveryTime, setDeliveryTime] = useState("18:00");
 
   const handleServiceSpeedChange = (speedId) => {
@@ -248,355 +317,250 @@ export default function LaundryManager({
     if (speedId === "urgent") {
       const now = new Date();
       now.setHours(now.getHours() + 4);
-      const hrs = String(now.getHours()).padStart(2, "0");
-      const mins = String(now.getMinutes()).padStart(2, "0");
-      setDeliveryTime(`${hrs}:${mins}`);
+      setDeliveryTime(
+        `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+      );
     } else {
       setDeliveryTime("18:00");
     }
   };
 
-  // Barcode search / filter in tracker
   const [barcodeQuery, setBarcodeQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
-
-  // Delivery filter for 'deliveries' tab: 'pending' | 'delivered' | 'held' | 'all'
   const [deliveryFilter, setDeliveryFilter] = useState("pending");
 
-  // Date filter for 'statistics' tab
-  const currentDateStr = new Date().toISOString().split("T")[0];
+  const currentDateStr = ymd();
   const [statsDateFilter, setStatsDateFilter] = useState(currentDateStr);
+  const currentInstitutionId = institutionData?.institutionid || institutionData?.institutionId;
 
-  // Load persistent orders
-  const [allOrders, setAllOrders] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_ORDERS_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
+  const resolveGuestDetails = (bk) => {
+    if (!bk) return { name: "", phone: "" };
+    let name =
+      bk.guest_name || bk.booking_name || bk.full_name || bk.name ||
+      bk.primary_guest_name || bk.primary_guest || bk.customerName || "";
+    let phone = bk.mobile_number || bk.mobile || bk.phone || bk.guest_phone || "";
+
+    if (!name && bk.guest_details) {
+      name = bk.guest_details.full_name || bk.guest_details.name || bk.guest_details.guest_name || "";
+      phone = phone || bk.guest_details.phone || bk.guest_details.mobile || "";
     }
-  });
 
-  const persistOrders = (updatedList) => {
-    setAllOrders(updatedList);
+    const guestId = bk.guest_id || bk.guestId || bk.guest_details?.guest_id;
+    if (guestId && Array.isArray(guests) && guests.length > 0) {
+      const g = guests.find((item) => String(item.guest_id || item.id || item._id) === String(guestId));
+      if (g) {
+        if (!name) name = g.full_name || g.name || g.guest_name || "";
+        if (!phone) phone = g.mobile_number || g.phone || g.mobile || "";
+      }
+    }
+
+    if (!name && Array.isArray(bk.guest_list) && bk.guest_list.length > 0) {
+      const firstG = bk.guest_list[0];
+      name = firstG.name || firstG.full_name || firstG.guest_name || "";
+      phone = phone || firstG.mobile || firstG.phone || "";
+    }
+    return { name: (name || "").trim(), phone: (phone || "").trim() };
+  };
+
+  /* Orders ----------------------------------------------------------------- */
+  const [allOrders, setAllOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const loadLaundryOrders = async () => {
+    setLoadingOrders(true);
     try {
-      localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(updatedList));
-    } catch (e) {
-      console.warn("Storage write error:", e);
+      const catalogData = await fetchLaundryCatalogBackend(currentInstitutionId);
+      if (catalogData) {
+        if (Array.isArray(catalogData.catalog) && catalogData.catalog.length > 0) {
+          setCatalog(catalogData.catalog);
+          try {
+            localStorage.setItem("hotel_laundry_catalog_cache", JSON.stringify(catalogData.catalog));
+          } catch (e) {}
+        }
+        if (Array.isArray(catalogData.serviceSpeeds) && catalogData.serviceSpeeds.length > 0) {
+          setServiceSpeeds(catalogData.serviceSpeeds);
+          try {
+            localStorage.setItem("hotel_laundry_speeds_cache", JSON.stringify(catalogData.serviceSpeeds));
+          } catch (e) {}
+        }
+      }
+      const remoteOrders = await fetchLaundryOrdersBackend(currentInstitutionId);
+      if (Array.isArray(remoteOrders)) setAllOrders(remoteOrders);
+    } catch (err) {
+      console.warn("Failed loading laundry data from backend:", err);
+    } finally {
+      setLoadingOrders(false);
     }
   };
 
-  // Find checked-in bookings for room selection
-  const checkedInBookings = useMemo(() => {
-    return (bookings || []).filter(
-      (b) =>
-        b.status === "Checked-in" ||
-        b.status === "confirmed" ||
-        b.reservation_status === "Checked-in"
-    );
-  }, [bookings]);
-
-  // When room is selected or initialRoomNumber provided, auto-populate details
   useEffect(() => {
-    if (initialRoomNumber) {
-      const found = checkedInBookings.find((b) => {
-        const displayNum = getDisplayRoomNumber(b, rooms);
-        return (
-          String(displayNum) === String(initialRoomNumber) ||
-          String(b.room_id) === String(initialRoomNumber)
-        );
-      });
-      if (found) {
-        setSelectedBookingId(found.booking_id);
-        const resolvedNum =
-          getDisplayRoomNumber(found, rooms) || initialRoomNumber;
-        setSelectedRoomNumber(resolvedNum);
-        setGuestName(found.guest_name || found.booking_name || found.full_name || found.name || found.primary_guest_name || found.primary_guest || found.customerName || "");
-        setGuestMobile(found.mobile_number || found.mobile || found.guest_phone || "");
-        setCollectionSource("room_pickup");
-      } else {
-        setSelectedRoomNumber(initialRoomNumber);
-        setCollectionSource("room_pickup");
-      }
+    loadLaundryOrders();
+    if (typeof fetchGuests === "function" && (!guests || guests.length === 0)) fetchGuests();
+  }, [currentInstitutionId]);
+
+  const persistOrders = (updatedList) => setAllOrders(updatedList);
+
+  const checkedInBookings = useMemo(
+    () =>
+      (bookings || []).filter(
+        (b) => b.status === "Checked-in" || b.status === "confirmed" || b.reservation_status === "Checked-in"
+      ),
+    [bookings]
+  );
+
+  useEffect(() => {
+    if (!initialRoomNumber) return;
+    const found = checkedInBookings.find((b) => {
+      const displayNum = getDisplayRoomNumber(b, rooms);
+      return String(displayNum) === String(initialRoomNumber) || String(b.room_id) === String(initialRoomNumber);
+    });
+    if (found) {
+      setSelectedBookingId(found.booking_id);
+      setSelectedRoomNumber(getDisplayRoomNumber(found, rooms) || initialRoomNumber);
+      const gInfo = resolveGuestDetails(found);
+      setGuestName(gInfo.name);
+      setGuestMobile(gInfo.phone);
+    } else {
+      setSelectedRoomNumber(initialRoomNumber);
     }
-  }, [initialRoomNumber, checkedInBookings, rooms]);
+    setCollectionSource("room_pickup");
+  }, [initialRoomNumber, checkedInBookings, rooms, guests]);
 
   const handleBookingSelect = (bId) => {
     setSelectedBookingId(bId);
     const bk = checkedInBookings.find((b) => b.booking_id === bId);
     if (bk) {
-      const roomNum = getDisplayRoomNumber(bk, rooms);
-      setSelectedRoomNumber(roomNum);
-      setGuestName(bk.guest_name || bk.booking_name || bk.full_name || bk.name || bk.primary_guest_name || bk.primary_guest || bk.customerName || "");
-      setGuestMobile(bk.mobile_number || bk.mobile || bk.guest_phone || "");
+      setSelectedRoomNumber(getDisplayRoomNumber(bk, rooms));
+      const gInfo = resolveGuestDetails(bk);
+      setGuestName(gInfo.name);
+      setGuestMobile(gInfo.phone);
     }
   };
 
-  // Compute live shift metrics for top header & statistics tab
-  const {
-    todaySales,
-    todayGarments,
-    todayOrdersCount,
-    washOnlySales,
-    washOnlyPcs,
-    washAndPressSales,
-    washAndPressPcs,
-    pressSales,
-    pressPcs,
-    dryCleanSales,
-    dryCleanPcs,
-    expressSurchargesTotal,
-    totalTaxCollected,
-    folioSales,
-    posSales,
-    pendingDeliveries,
-    deliveredTodayList,
-    heldOnRoomOrders,
-    roomsToDeliverSet,
-    dailyStatsMap,
-  } = useMemo(() => {
-    let sales = 0;
-    let garments = 0;
-    let ordersCount = 0;
-    let wOnlySales = 0;
-    let wOnlyPcs = 0;
-    let wpSales = 0;
-    let wpPcs = 0;
-    let pSales = 0;
-    let pPcs = 0;
-    let dcSales = 0;
-    let dcPcs = 0;
-    let surcharge = 0;
-    let tax = 0;
-    let folio = 0;
-    let pos = 0;
-    const pendingList = [];
-    const deliveredList = [];
-    const heldList = [];
-    const roomsSet = new Set();
-    const dailyMap = {};
+  /* Statistics: one pass, grouped by day ----------------------------------- */
+  const { dailyStatsMap, pendingDeliveries, deliveredTodayList, heldOnRoomOrders, roomsToDeliver } =
+    useMemo(() => {
+      const dailyMap = {};
+      const pending = [];
+      const deliveredToday = [];
+      const held = [];
+      const roomsSet = new Set();
 
-    (allOrders || []).forEach((order) => {
-      const orderDate = order.createdAt ? order.createdAt.split("T")[0] : "";
-      const isToday = orderDate === currentDateStr;
-      const grandTotal = Number(order.grandTotal || order.totalAmount || 0);
-      const isDelivered =
-        order.delivery_status === "delivered_to_room" ||
-        order.status === "Delivered" ||
-        order.status === "delivered";
-      const isHeld = order.paymentStatus === "HELD_ON_ROOM";
+      (allOrders || []).forEach((order) => {
+        const orderDate = order.createdAt ? order.createdAt.split("T")[0] : "";
+        const grandTotal = Number(order.grandTotal || order.totalAmount || 0);
+        const isDelivered =
+          order.delivery_status === "delivered_to_room" ||
+          order.status === "Delivered" ||
+          order.status === "delivered";
 
-      // Grouping by Date for "which day how much all statistics"
-      if (orderDate) {
-        if (!dailyMap[orderDate]) {
-          dailyMap[orderDate] = {
-            date: orderDate,
-            totalSales: 0,
-            ordersCount: 0,
-            garmentsCount: 0,
-            washOnlySales: 0,
-            washAndPressSales: 0,
-            pressSales: 0,
-            dryCleanSales: 0,
-            folioSales: 0,
-            posSales: 0,
-          };
-        }
-        dailyMap[orderDate].totalSales += grandTotal;
-        dailyMap[orderDate].ordersCount += 1;
-        dailyMap[orderDate].garmentsCount += Number(order.totalGarments || 0);
-        if (
-          order.settlementType === "ROOM_FOLIO" ||
-          order.paymentMethod === "ROOM_FOLIO"
-        ) {
-          dailyMap[orderDate].folioSales += grandTotal;
-        } else {
-          dailyMap[orderDate].posSales += grandTotal;
-        }
-
-        (order.items || []).forEach((item) => {
-          const qty = Number(item.quantity) || 1;
-          const rate = Number(item.unitRate || item.rate || 0);
-          const amt = Number(item.total || rate * qty);
-          if (item.careType === "wash_only") {
-            dailyMap[orderDate].washOnlySales += amt;
-          } else if (item.careType === "press_only") {
-            dailyMap[orderDate].pressSales += amt;
-          } else if (item.careType === "dry_clean") {
-            dailyMap[orderDate].dryCleanSales += amt;
-          } else {
-            dailyMap[orderDate].washAndPressSales += amt;
+        if (orderDate) {
+          if (!dailyMap[orderDate]) {
+            dailyMap[orderDate] = {
+              date: orderDate,
+              total: 0,
+              orders: 0,
+              garments: 0,
+              folio: 0,
+              pos: 0,
+              care: Object.fromEntries(CARE_IDS.map((c) => [c, { amt: 0, pcs: 0 }])),
+            };
           }
-        });
-      }
+          const day = dailyMap[orderDate];
+          day.total += grandTotal;
+          day.orders += 1;
+          day.garments += Number(order.totalGarments || 0);
+          if (order.settlementType === "ROOM_FOLIO" || order.paymentMethod === "ROOM_FOLIO") day.folio += grandTotal;
+          else day.pos += grandTotal;
 
-      if (isToday) {
-        sales += grandTotal;
-        garments += Number(order.totalGarments || 0);
-        ordersCount += 1;
-        surcharge += Number(order.surchargeAmount || 0);
-        tax += Number(order.cgstAmount || 0) + Number(order.sgstAmount || 0);
-
-        if (
-          order.settlementType === "ROOM_FOLIO" ||
-          order.paymentMethod === "ROOM_FOLIO"
-        ) {
-          folio += grandTotal;
-        } else {
-          pos += grandTotal;
+          (order.items || []).forEach((item) => {
+            const qty = Number(item.quantity) || 1;
+            const rate = Number(item.unitRate || item.rate || 0);
+            const amt = Number(item.total || rate * qty);
+            const c = day.care[careOf(item)];
+            c.amt += amt;
+            c.pcs += qty;
+          });
+          if (orderDate === currentDateStr && isDelivered) deliveredToday.push(order);
         }
 
-        (order.items || []).forEach((item) => {
-          const qty = Number(item.quantity) || 1;
-          const rate = Number(item.unitRate || item.rate || 0);
-          const amt = Number(item.total || rate * qty);
-
-          if (item.careType === "wash_only") {
-            wOnlySales += amt;
-            wOnlyPcs += qty;
-          } else if (item.careType === "press_only") {
-            pSales += amt;
-            pPcs += qty;
-          } else if (item.careType === "dry_clean") {
-            dcSales += amt;
-            dcPcs += qty;
-          } else {
-            wpSales += amt;
-            wpPcs += qty;
-          }
-        });
-
-        if (isDelivered) {
-          deliveredList.push(order);
+        if (order.paymentStatus === "HELD_ON_ROOM") held.push(order);
+        if (!isDelivered) {
+          pending.push(order);
+          const rNum = String(order.roomNumber || "");
+          if (rNum && rNum !== "Walk-In") roomsSet.add(rNum);
         }
-      }
+      });
 
-      if (isHeld) {
-        heldList.push(order);
-      }
+      return {
+        dailyStatsMap: dailyMap,
+        pendingDeliveries: pending,
+        deliveredTodayList: deliveredToday,
+        heldOnRoomOrders: held,
+        roomsToDeliver: Array.from(roomsSet),
+      };
+    }, [allOrders, currentDateStr]);
 
-      if (!isDelivered) {
-        pendingList.push(order);
-        const rNum = String(order.roomNumber || "");
-        if (rNum && rNum !== "Walk-In") {
-          roomsSet.add(rNum);
-        }
-      }
-    });
+  const todayStats = dailyStatsMap[currentDateStr];
+  const todaySales = todayStats?.total || 0;
+  const todayGarments = todayStats?.garments || 0;
 
-    return {
-      todaySales: sales,
-      todayGarments: garments,
-      todayOrdersCount: ordersCount,
-      washOnlySales: wOnlySales,
-      washOnlyPcs: wOnlyPcs,
-      washAndPressSales: wpSales,
-      washAndPressPcs: wpPcs,
-      pressSales: pSales,
-      pressPcs: pPcs,
-      dryCleanSales: dcSales,
-      dryCleanPcs: dcPcs,
-      expressSurchargesTotal: surcharge,
-      totalTaxCollected: tax,
-      folioSales: folio,
-      posSales: pos,
-      pendingDeliveries: pendingList,
-      deliveredTodayList: deliveredList,
-      heldOnRoomOrders: heldList,
-      roomsToDeliverSet: Array.from(roomsSet),
-      dailyStatsMap: dailyMap,
-    };
-  }, [allOrders, currentDateStr]);
+  const filteredGarments = useMemo(
+    () =>
+      catalog.filter((g) => {
+        const cat = g.category === "Male" ? "Men" : g.category === "Ladies" ? "Women" : g.category;
+        const matchCat = catalogCategory === "All" || cat === catalogCategory;
+        const matchSearch = !searchGarment || g.name.toLowerCase().includes(searchGarment.toLowerCase());
+        return matchCat && matchSearch;
+      }),
+    [catalog, catalogCategory, searchGarment]
+  );
 
-  // Filtered garments in catalog
-  const filteredGarments = useMemo(() => {
-    return catalog.filter((g) => {
-      const matchCat =
-        catalogCategory === "All" ||
-        (catalogCategory === "Men" && (g.category === "Men" || g.category === "Male")) ||
-        (catalogCategory === "Women" && (g.category === "Women" || g.category === "Ladies")) ||
-        (catalogCategory === "Kids" && g.category === "Kids") ||
-        (catalogCategory === "Linen" && g.category === "Linen");
-
-      const matchSearch =
-        !searchGarment ||
-        g.name.toLowerCase().includes(searchGarment.toLowerCase());
-      return matchCat && matchSearch;
-    });
-  }, [catalog, catalogCategory, searchGarment]);
-
-  // Add garment to basket
+  /* Basket ----------------------------------------------------------------- */
   const handleAddToBasket = (garment, careType) => {
     const unitRate = garment.rates?.[careType] || 0;
     if (unitRate <= 0) {
-      toast.warning(`${garment.name} does not offer ${careType.replace("_", " ")}.`);
+      toast.warning(`${garment.name} has no ${CARE_UI[careType].label.toLowerCase()} rate.`);
       return;
     }
-
-    const existingIndex = basket.findIndex(
-      (item) => item.garmentId === garment.id && item.careType === careType
-    );
-
-    if (existingIndex > -1) {
-      const updated = [...basket];
-      updated[existingIndex].quantity += 1;
-      setBasket(updated);
-      toast.info(`Increased ${garment.name} (${careType.replace("_", " ")}) to ${updated[existingIndex].quantity}`);
-    } else {
-      setBasket([
-        ...basket,
+    setBasket((prev) => {
+      const idx = prev.findIndex((i) => i.garmentId === garment.id && i.careType === careType);
+      if (idx > -1) return prev.map((i, n) => (n === idx ? { ...i, quantity: i.quantity + 1 } : i));
+      return [
+        ...prev,
         {
           id: `${garment.id}_${careType}_${Date.now()}`,
           garmentId: garment.id,
           name: garment.name,
           category: garment.category,
-          careType: careType,
-          unitRate: unitRate,
+          careType,
+          unitRate,
           quantity: 1,
-          notes: itemNoteInput || "",
+          notes: "",
         },
-      ]);
-      setItemNoteInput("");
-      toast.success(`Added ${garment.name} (${careType.replace("_", " ")})`);
-    }
+      ];
+    });
   };
 
-  const updateBasketQuantity = (index, delta) => {
-    const updated = [...basket];
-    const newQty = updated[index].quantity + delta;
-    if (newQty <= 0) {
-      updated.splice(index, 1);
-    } else {
-      updated[index].quantity = newQty;
-    }
-    setBasket(updated);
-  };
+  const updateBasketQuantity = (index, delta) =>
+    setBasket((prev) =>
+      prev
+        .map((it, i) => (i === index ? { ...it, quantity: it.quantity + delta } : it))
+        .filter((it) => it.quantity > 0)
+    );
+  const removeBasketItem = (index) => setBasket((prev) => prev.filter((_, i) => i !== index));
 
-  const removeBasketItem = (index) => {
-    const updated = [...basket];
-    updated.splice(index, 1);
-    setBasket(updated);
-  };
-
-  // Calculated totals
   const cgstRate = Number(institutionData?.cgst ?? 2.5);
   const sgstRate = Number(institutionData?.sgst ?? 2.5);
-  const totals = useMemo(() => {
-    return calculateLaundryTotals(
-      basket,
-      serviceSpeed,
-      cgstRate,
-      sgstRate,
-      serviceSpeeds
-    );
-  }, [basket, serviceSpeed, cgstRate, sgstRate, serviceSpeeds]);
+  const totals = useMemo(
+    () => calculateLaundryTotals(basket, serviceSpeed, cgstRate, sgstRate, serviceSpeeds, customExtraCharge),
+    [basket, serviceSpeed, cgstRate, sgstRate, serviceSpeeds, customExtraCharge]
+  );
 
-  // Reset order creation
   const handleResetOrder = () => {
     setBasket([]);
     setToken(generateLaundryToken());
-    setItemNoteInput("");
+    setCustomExtraCharge(0);
     if (!initialRoomNumber) {
       setSelectedBookingId("");
       setSelectedRoomNumber("");
@@ -605,47 +569,34 @@ export default function LaundryManager({
     }
   };
 
-  // Build standard order record
   const buildOrderPayload = (mode) => {
-    const speedObj =
-      serviceSpeeds.find((s) => s.id === serviceSpeed) || serviceSpeeds[0];
-
-    const isRoom =
-      collectionSource !== "walk_in" && selectedRoomNumber;
-
+    const speedObj = serviceSpeeds.find((s) => s.id === serviceSpeed) || serviceSpeeds[0];
+    const isRoom = collectionSource !== "walk_in" && selectedRoomNumber;
     return {
       orderId: token,
-      token: token,
+      token,
       roomNumber: isRoom ? selectedRoomNumber : "Walk-In",
       bookingId: isRoom ? selectedBookingId : null,
       guestName: guestName || (isRoom ? `Room ${selectedRoomNumber} Guest` : "Walk-In Guest"),
       guestMobile: guestMobile || "",
-      collectionSource: collectionSource,
+      collectionSource,
       deliveryDateTime: `${deliveryDate} ${deliveryTime}`,
       items: basket,
       totalGarments: totals.totalGarments,
-      serviceSpeed: serviceSpeed,
+      serviceSpeed,
       serviceSpeedLabel: speedObj.label,
       surchargePercent: totals.surchargePercent,
       surchargeAmount: totals.surchargeAmount,
+      extraAmount: totals.extraAmount || 0,
+      flatExtraAmount: totals.flatExtraAmount || 0,
       itemsSubtotal: totals.itemsSubtotal,
       taxableAmount: totals.taxableAmount,
       cgstAmount: totals.cgstAmount,
       sgstAmount: totals.sgstAmount,
       grandTotal: totals.grandTotal,
       settlementType: mode === "ROOM_FOLIO" ? "ROOM_FOLIO" : "DIRECT",
-      paymentMethod:
-        mode === "ROOM_FOLIO"
-          ? "ROOM_FOLIO"
-          : mode === "HELD_ON_ROOM"
-          ? "HELD_ON_ROOM"
-          : mode || "CASH",
-      paymentStatus:
-        mode === "ROOM_FOLIO"
-          ? "POSTED_TO_ROOM_BILL"
-          : mode === "HELD_ON_ROOM"
-          ? "HELD_ON_ROOM"
-          : "PAID",
+      paymentMethod: mode === "ROOM_FOLIO" ? "ROOM_FOLIO" : mode === "HELD_ON_ROOM" ? "HELD_ON_ROOM" : mode || "CASH",
+      paymentStatus: mode === "ROOM_FOLIO" ? "POSTED_TO_ROOM_BILL" : mode === "HELD_ON_ROOM" ? "HELD_ON_ROOM" : "PAID",
       status: "Received",
       delivery_status: "pending_delivery",
       createdAt: new Date().toISOString(),
@@ -653,175 +604,166 @@ export default function LaundryManager({
     };
   };
 
-  // 1. Post Directly to Hotel Room Bill (Hotel Folio)
-  const handleSettleToRoomFolio = async () => {
-    if (basket.length === 0) {
-      toast.error("Please add at least one garment to the order.");
-      return;
+  const finishOrder = async (orderData) => {
+    try {
+      await createLaundryOrderBackend(orderData, currentInstitutionId);
+    } catch (backendErr) {
+      console.warn("Backend save skipped:", backendErr);
     }
-    if (!selectedRoomNumber) {
-      toast.error("Please select a hotel room to charge this order.");
-      return;
-    }
+    persistOrders([orderData, ...allOrders]);
+    if (typeof onOrderCreated === "function") onOrderCreated(orderData);
+    setPreviewOrder(orderData);
+    handleResetOrder();
+  };
 
-    const orderData = buildOrderPayload("ROOM_FOLIO");
-    const currentDate = new Date().toISOString().split("T")[0];
+  const resolveRoomGuest = (fallbackLabel) => {
+    const foundBooking = bookings.find((b) => b.booking_id === selectedBookingId);
+    const gInfo = resolveGuestDetails(foundBooking);
+    return {
+      foundBooking,
+      name: guestName || gInfo.name || (selectedRoomNumber ? `Room ${selectedRoomNumber} Guest` : fallbackLabel),
+      phone: guestMobile || gInfo.phone || "",
+    };
+  };
+
+  // 1. Post directly to hotel room bill
+  const handleSettleToRoomFolio = async () => {
+    if (basket.length === 0) return toast.error("Add at least one garment.");
+    if (!selectedRoomNumber) return toast.error("Select a room to charge.");
+
+    const { foundBooking, name, phone } = resolveRoomGuest("In-House Guest");
+    const orderData = {
+      ...buildOrderPayload("ROOM_FOLIO"),
+      booking_id: selectedBookingId,
+      bookingId: selectedBookingId,
+      guestName: name,
+      guestPhone: phone,
+      guestMobile: phone,
+      roomNumber: selectedRoomNumber,
+      totalAmount: totals.grandTotal,
+      settlementType: "room_folio",
+      turnaroundSpeed: serviceSpeed,
+      institutionId: currentInstitutionId,
+    };
+    const currentDate = ymd();
 
     try {
       if (selectedBookingId) {
-        const foundBooking = bookings.find((b) => b.booking_id === selectedBookingId);
-        const institutionId = foundBooking?.institutionId || institutionData?.institutionid;
-
-        const newLaundryServiceEntry = {
+        const institutionId = foundBooking?.institutionId || currentInstitutionId;
+        const entry = {
           food_charges: 0,
           laundry_charges: totals.grandTotal,
           minibar_charges: 0,
           extra_bed_charges: 0,
           manual_charges: 0,
           order_id: token,
+          service_id: token,
+          service_type: "laundry",
+          name: `Laundry: ${totals.totalGarments} pcs`,
+          token,
+          guestName: name,
+          roomNumber: selectedRoomNumber,
+          items: basket,
+          cgstAmount: totals.cgstAmount,
+          sgstAmount: totals.sgstAmount,
+          itemsSubtotal: totals.itemsSubtotal,
           notes: `Laundry: ${totals.totalGarments} pcs (${orderData.serviceSpeedLabel})`,
+          totalAmount: totals.grandTotal,
+          created_at: Date.now(),
         };
-
-        const servicesToSend = {};
-        servicesToSend[selectedRoomNumber] = {
-          [currentDate]: [newLaundryServiceEntry],
-        };
-
         await updateBookingServices(selectedBookingId, {
           booking_id: selectedBookingId,
-          institutionId: institutionId,
-          services: servicesToSend,
+          institutionId,
+          services: { [selectedRoomNumber]: { [currentDate]: [entry] } },
         });
-
-        toast.success(`✓ Posted ₹${totals.grandTotal} laundry bill directly to Room ${selectedRoomNumber} hotel bill!`);
+        toast.success(`Posted ₹${totals.grandTotal} to Room ${selectedRoomNumber} (${name})`);
       }
-
-      try {
-        await createLaundryOrderBackend(orderData);
-      } catch (backendErr) {
-        console.warn("Dedicated laundry backend save skipped/fallback:", backendErr);
-      }
-
-      const updatedOrders = [orderData, ...allOrders];
-      persistOrders(updatedOrders);
-
-      if (typeof onOrderCreated === "function") {
-        onOrderCreated(orderData);
-      }
-
-      setPreviewOrder(orderData);
-      handleResetOrder();
+      await finishOrder(orderData);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to post laundry charges to room folio");
+      toast.error("Could not post to room bill");
     }
   };
 
-  // 2. Hold on Hotel Room (Settlement Pending)
+  // 2. Hold on room (settle later)
   const handleHoldOnRoom = async () => {
-    if (basket.length === 0) {
-      toast.error("Please add at least one garment to the order.");
-      return;
-    }
-    if (!selectedRoomNumber) {
-      toast.error("Please select a hotel room to hold charges against.");
-      return;
-    }
+    if (basket.length === 0) return toast.error("Add at least one garment.");
+    if (!selectedRoomNumber) return toast.error("Select a room to hold against.");
 
-    const orderData = buildOrderPayload("HELD_ON_ROOM");
-
+    const { name, phone } = resolveRoomGuest("In-House Guest");
+    const orderData = {
+      ...buildOrderPayload("HELD_ON_ROOM"),
+      booking_id: selectedBookingId,
+      bookingId: selectedBookingId,
+      guestName: name,
+      guestPhone: phone,
+      guestMobile: phone,
+      roomNumber: selectedRoomNumber,
+      totalAmount: totals.grandTotal,
+      settlementType: "room_folio",
+      turnaroundSpeed: serviceSpeed,
+      institutionId: currentInstitutionId,
+    };
     try {
-      try {
-        await createLaundryOrderBackend(orderData);
-      } catch (backendErr) {
-        console.warn("Backend save skipped:", backendErr);
-      }
-
-      const updatedOrders = [orderData, ...allOrders];
-      persistOrders(updatedOrders);
-
-      toast.info(`⏱ Order ${token} held against Room ${selectedRoomNumber}. Can settle upon delivery in cash or post to room folio.`);
-
-      if (typeof onOrderCreated === "function") {
-        onOrderCreated(orderData);
-      }
-
-      setPreviewOrder(orderData);
-      handleResetOrder();
+      toast.info(`Order ${token} held for Room ${selectedRoomNumber}`);
+      await finishOrder(orderData);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to create held order");
+      toast.error("Could not hold order");
     }
   };
 
-  // 3. Direct POS Settlement (Cash / UPI / Card)
+  // 3. Direct POS settlement
   const handleDirectPOSSettle = async (payMethod = "CASH") => {
-    if (basket.length === 0) {
-      toast.error("Please add at least one garment to the order.");
-      return;
-    }
-    if (collectionSource === "walk_in" && !guestName.trim()) {
-      toast.error("Please enter the guest's name for direct billing.");
-      return;
-    }
+    if (basket.length === 0) return toast.error("Add at least one garment.");
+    if (collectionSource === "walk_in" && !guestName.trim()) return toast.error("Enter the guest name.");
 
-    const orderData = buildOrderPayload(payMethod);
-    const currentDate = new Date().toISOString().split("T")[0];
+    const { name, phone } = resolveRoomGuest("Walk-In Guest");
+    const resolvedName = selectedRoomNumber ? name : guestName || "Walk-In Guest";
+    const orderData = {
+      ...buildOrderPayload(payMethod),
+      booking_id: selectedBookingId || null,
+      bookingId: selectedBookingId || null,
+      guestName: resolvedName,
+      guestPhone: phone,
+      guestMobile: phone,
+      roomNumber: selectedRoomNumber || "Walk-In",
+      totalAmount: totals.grandTotal,
+      settlementType: "direct",
+      turnaroundSpeed: serviceSpeed,
+      institutionId: currentInstitutionId,
+    };
 
     try {
       if (typeof addExpense === "function") {
         try {
           await addExpense({
-            date: currentDate,
+            date: ymd(),
             expense: 0,
             received: totals.grandTotal,
             name: `Laundry Service - ${token}`,
-            description: `${totals.totalGarments} Garments [${payMethod}] - ${guestName || "Guest"}`,
+            description: `${totals.totalGarments} Garments [${payMethod}] - ${resolvedName}`,
           });
         } catch (e) {
           console.warn("Cash drawer recording skipped:", e);
         }
       }
-
-      try {
-        await createLaundryOrderBackend(orderData);
-      } catch (backendErr) {
-        console.warn("Backend save skipped:", backendErr);
-      }
-
-      const updatedOrders = [orderData, ...allOrders];
-      persistOrders(updatedOrders);
-
-      toast.success(`✓ Settled ₹${totals.grandTotal} via ${payMethod} & recorded in database!`);
-
-      if (typeof onOrderCreated === "function") {
-        onOrderCreated(orderData);
-      }
-
-      setPreviewOrder(orderData);
-      handleResetOrder();
+      toast.success(`Settled ₹${totals.grandTotal} via ${payMethod}`);
+      await finishOrder(orderData);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to process direct settlement");
+      toast.error("Could not complete payment");
     }
   };
 
-  // Convert a Held Order into Cash Settlement (Releases Room Hold)
   const handleReleaseHoldToCash = async (orderToRelease, payMethod = "CASH") => {
-    const updated = allOrders.map((o) => {
-      if (o.orderId === orderToRelease.orderId || o.token === orderToRelease.token) {
-        return {
-          ...o,
-          paymentStatus: "PAID",
-          paymentMethod: payMethod,
-          settlementType: "DIRECT",
-        };
-      }
-      return o;
-    });
-
-    persistOrders(updated);
-
+    persistOrders(
+      allOrders.map((o) =>
+        o.orderId === orderToRelease.orderId || o.token === orderToRelease.token
+          ? { ...o, paymentStatus: "PAID", paymentMethod: payMethod, settlementType: "DIRECT" }
+          : o
+      )
+    );
     if (typeof addExpense === "function") {
       try {
         await addExpense({
@@ -833,224 +775,186 @@ export default function LaundryManager({
         });
       } catch (e) {}
     }
-
     try {
-      await updateLaundryStatusBackend(orderToRelease.orderId || orderToRelease.token, {
-        paymentStatus: "PAID",
-        paymentMethod: payMethod,
-      });
+      await updateLaundryStatusBackend(
+        orderToRelease.orderId || orderToRelease.token,
+        { paymentStatus: "PAID", paymentMethod: payMethod },
+        currentInstitutionId
+      );
     } catch (e) {}
-
-    toast.success(`✓ Room ${orderToRelease.roomNumber} hold released! Settled ₹${orderToRelease.grandTotal} via ${payMethod}.`);
+    toast.success(`Room ${orderToRelease.roomNumber} hold released. ₹${orderToRelease.grandTotal} paid via ${payMethod}`);
   };
 
-  // Convert a Held Order into Room Folio Post (Adds to Hotel Bill)
   const handleConvertHoldToRoomFolio = async (orderToPost) => {
-    if (!orderToPost.bookingId) {
-      toast.error("Cannot post to hotel bill: Missing booking reference for this room.");
-      return;
-    }
+    const bId = orderToPost.bookingId || orderToPost.booking_id;
+    if (!bId) return toast.error("Missing booking reference for this room.");
+
+    const foundBooking = bookings.find((b) => b.booking_id === bId);
+    const gInfo = resolveGuestDetails(foundBooking);
+    const name =
+      orderToPost.guestName ||
+      gInfo.name ||
+      (orderToPost.roomNumber ? `Room ${orderToPost.roomNumber} Guest` : "In-House Guest");
 
     try {
-      const newLaundryServiceEntry = {
+      const chargeAmt = Number(orderToPost.grandTotal || orderToPost.totalAmount || 0);
+      const entry = {
         food_charges: 0,
-        laundry_charges: Number(orderToPost.grandTotal || 0),
+        laundry_charges: chargeAmt,
         minibar_charges: 0,
         extra_bed_charges: 0,
         manual_charges: 0,
-        order_id: orderToPost.token,
-        notes: `Laundry: ${orderToPost.totalGarments} pcs (Released from hold)`,
+        order_id: orderToPost.token || orderToPost.orderId,
+        service_id: orderToPost.token || orderToPost.orderId,
+        service_type: "laundry",
+        name: `Laundry: ${orderToPost.totalGarments || 1} pcs`,
+        guestName: name,
+        roomNumber: orderToPost.roomNumber,
+        items: orderToPost.items || [],
+        cgstAmount: orderToPost.cgstAmount || Math.round(chargeAmt * 0.025),
+        sgstAmount: orderToPost.sgstAmount || Math.round(chargeAmt * 0.025),
+        itemsSubtotal: orderToPost.itemsSubtotal || orderToPost.subtotal || chargeAmt,
+        notes: `Laundry: ${orderToPost.totalGarments || 1} pcs (Released from hold)`,
+        totalAmount: chargeAmt,
+        created_at: Date.now(),
       };
-
-      const servicesToSend = {};
-      servicesToSend[orderToPost.roomNumber] = {
-        [currentDateStr]: [newLaundryServiceEntry],
-      };
-
-      await updateBookingServices(orderToPost.bookingId, {
-        booking_id: orderToPost.bookingId,
-        institutionId: institutionData?.institutionid,
-        services: servicesToSend,
+      await updateBookingServices(bId, {
+        booking_id: bId,
+        institutionId: currentInstitutionId,
+        services: { [orderToPost.roomNumber]: { [currentDateStr]: [entry] } },
       });
 
-      const updated = allOrders.map((o) => {
-        if (o.orderId === orderToPost.orderId || o.token === orderToPost.token) {
-          return {
-            ...o,
-            paymentStatus: "POSTED_TO_ROOM_BILL",
-            settlementType: "ROOM_FOLIO",
-            paymentMethod: "ROOM_FOLIO",
-          };
-        }
-        return o;
-      });
-
-      persistOrders(updated);
-
+      persistOrders(
+        allOrders.map((o) =>
+          o.orderId === orderToPost.orderId || o.token === orderToPost.token
+            ? {
+                ...o,
+                paymentStatus: "POSTED_TO_ROOM_BILL",
+                settlementType: "ROOM_FOLIO",
+                paymentMethod: "ROOM_FOLIO",
+                guestName: name,
+              }
+            : o
+        )
+      );
       try {
-        await updateLaundryStatusBackend(orderToPost.orderId || orderToPost.token, {
-          paymentStatus: "POSTED_TO_ROOM_BILL",
-          settlementType: "ROOM_FOLIO",
-        });
+        await updateLaundryStatusBackend(
+          orderToPost.orderId || orderToPost.token,
+          { paymentStatus: "POSTED_TO_ROOM_BILL", settlementType: "ROOM_FOLIO", guestName: name },
+          currentInstitutionId
+        );
       } catch (e) {}
-
-      toast.success(`✓ Added ₹${orderToPost.grandTotal} to Room ${orderToPost.roomNumber} Hotel Bill!`);
+      toast.success(`Added ₹${chargeAmt} to Room ${orderToPost.roomNumber} bill`);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to post charges to room bill");
+      toast.error("Could not post to room bill");
     }
   };
 
-  // One-click mark delivered to room
   const handleMarkDeliveredToRoom = async (orderToDeliver) => {
-    const updated = allOrders.map((o) => {
-      const isMatch =
-        o.orderId === orderToDeliver.orderId ||
-        o.token === orderToDeliver.token;
-      if (isMatch) {
-        return {
-          ...o,
-          status: "Delivered",
-          delivery_status: "delivered_to_room",
-          delivered_to_room: true,
-          delivered_at: new Date().toISOString(),
-          delivered_by: userData?.userName || userData?.name || "Laundry Staff",
-        };
-      }
-      return o;
-    });
-
-    persistOrders(updated);
-
+    const by = userData?.userName || userData?.name || "Laundry Staff";
+    persistOrders(
+      allOrders.map((o) =>
+        o.orderId === orderToDeliver.orderId || o.token === orderToDeliver.token
+          ? {
+              ...o,
+              status: "Delivered",
+              delivery_status: "delivered_to_room",
+              delivered_to_room: true,
+              delivered_at: new Date().toISOString(),
+              delivered_by: by,
+            }
+          : o
+      )
+    );
     try {
-      await markDeliveryDeliveredBackend(orderToDeliver.orderId || orderToDeliver.token, {
-        delivered_by: userData?.userName || userData?.name || "Laundry Staff",
-      });
-      await updateLaundryStatusBackend(orderToDeliver.orderId || orderToDeliver.token, {
-        status: "delivered",
-        delivery_status: "delivered_to_room",
-        delivered_by: userData?.userName || "Laundry Staff",
-      });
+      const id = orderToDeliver.orderId || orderToDeliver.token;
+      await markDeliveryDeliveredBackend(id, { delivered_by: by });
+      await updateLaundryStatusBackend(
+        id,
+        { status: "delivered", delivery_status: "delivered_to_room", delivered_by: by },
+        currentInstitutionId
+      );
     } catch (e) {
       console.warn("Backend deliver status skipped:", e);
     }
-
-    toast.success(`✓ Clean garments delivered to Room ${orderToDeliver.roomNumber}!`);
+    toast.success(`Delivered to Room ${orderToDeliver.roomNumber}`);
   };
 
-  // Update order workflow status in Tracker
   const handleUpdateOrderStatus = (orderId, newStatus) => {
-    const updated = allOrders.map((o) =>
-      o.orderId === orderId ? { ...o, status: newStatus, updatedAt: new Date().toISOString() } : o
+    persistOrders(
+      allOrders.map((o) =>
+        o.orderId === orderId ? { ...o, status: newStatus, updatedAt: new Date().toISOString() } : o
+      )
     );
-    persistOrders(updated);
     try {
-      updateLaundryStatusBackend(orderId, { status: newStatus });
+      updateLaundryStatusBackend(orderId, { status: newStatus }, currentInstitutionId);
     } catch (e) {}
-    toast.success(`Order ${orderId} updated to "${newStatus}"`);
-    if (selectedOrderDetails?.orderId === orderId) {
-      setSelectedOrderDetails({ ...selectedOrderDetails, status: newStatus });
+    toast.success(`Order ${orderId} is now "${newStatus}"`);
+  };
+
+  /* Rates ------------------------------------------------------------------ */
+  const handlePriceChange = (garmentId, careType, newPrice) =>
+    setCatalog((prev) =>
+      prev.map((g) =>
+        g.id === garmentId
+          ? { ...g, rates: { ...g.rates, [careType]: Math.max(0, Number(newPrice) || 0) } }
+          : g
+      )
+    );
+
+  const handleSpeedSurchargeChange = async (speedId, newSurcharge, newFlat = null) => {
+    const updated = serviceSpeeds.map((s) =>
+      s.id === speedId
+        ? {
+            ...s,
+            surchargePercent: Math.max(0, Number(newSurcharge) || 0),
+            ...(newFlat !== null ? { flatExtraAmount: Math.max(0, Number(newFlat) || 0) } : {}),
+          }
+        : s
+    );
+    setServiceSpeeds(updated);
+    try {
+      localStorage.setItem("hotel_laundry_speeds_cache", JSON.stringify(updated));
+    } catch (e) {}
+    try {
+      await saveLaundryConfigToBackend({ catalog, serviceSpeeds: updated, institutionData, updateInstitutionData });
+    } catch (e) {
+      console.warn("Autosave speeds error:", e);
     }
   };
 
-  // Price Sheet updates
-  const handlePriceChange = (garmentId, careType, newPrice) => {
-    const updated = catalog.map((g) => {
-      if (g.id === garmentId) {
-        return {
-          ...g,
-          rates: {
-            ...g.rates,
-            [careType]: Math.max(0, Number(newPrice) || 0),
-          },
-        };
-      }
-      return g;
-    });
-    setCatalog(updated);
-  };
-
-  const handleSpeedSurchargeChange = (speedId, newSurcharge) => {
-    const updated = serviceSpeeds.map((s) => {
-      if (s.id === speedId) {
-        return {
-          ...s,
-          surchargePercent: Math.max(0, Number(newSurcharge) || 0),
-        };
-      }
-      return s;
-    });
-    setServiceSpeeds(updated);
-  };
-
-  const handleDeleteGarment = (garmentId) => {
+  const handleDeleteGarment = async (garmentId) => {
     const updated = catalog.filter((g) => g.id !== garmentId);
     setCatalog(updated);
-    toast.info("Garment removed from catalog. Click 'Save to Database' to persist.");
-  };
-
-  const handleAddNewGarment = () => {
-    if (!newGarmentData.name.trim()) {
-      toast.error("Please enter a garment name");
-      return;
+    toast.info("Garment removed.");
+    try {
+      await saveLaundryConfigToBackend({ catalog: updated, serviceSpeeds, institutionData, updateInstitutionData });
+    } catch (e) {
+      console.warn("Autosave catalog error:", e);
     }
-    const newId = `custom_${newGarmentData.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${Date.now()}`;
-    const newEntry = {
-      id: newId,
-      name: newGarmentData.name.trim(),
-      category: newGarmentData.category || "Men",
-      rates: {
-        wash_only: Number(newGarmentData.wash_only) || 0,
-        wash_and_press: Number(newGarmentData.wash_and_press) || 0,
-        press_only: Number(newGarmentData.press_only) || 0,
-        dry_clean: Number(newGarmentData.dry_clean) || 0,
-      },
-    };
-
-    setCatalog([newEntry, ...catalog]);
-    setNewGarmentData({
-      name: "",
-      category: "Men",
-      wash_only: "",
-      wash_and_press: "",
-      press_only: "",
-      dry_clean: "",
-    });
-    setNewGarmentModalOpen(false);
-    toast.success(`Added ${newEntry.name}! Remember to click 'Save to Database'.`);
   };
 
   const handleSaveToBackendDatabase = async () => {
     setIsSavingConfig(true);
     try {
-      const ok = await saveLaundryConfigToBackend({
-        catalog,
-        serviceSpeeds,
-        institutionData,
-        updateInstitutionData,
-      });
-      if (ok) {
-        toast.success("All garment rates saved to cloud database!");
-      } else {
-        toast.warning("Saved locally in cache.");
-      }
+      const ok = await saveLaundryConfigToBackend({ catalog, serviceSpeeds, institutionData, updateInstitutionData });
+      ok ? toast.success("Rates saved") : toast.warning("Saved on this device only.");
     } catch (err) {
       console.error(err);
-      toast.error("Failed to save configuration to database");
+      toast.error("Could not save rates");
     } finally {
       setIsSavingConfig(false);
     }
   };
 
   const handleResetCatalog = async () => {
+    if (!window.confirm("Remove every garment and rate from the catalog?")) return;
     setIsSavingConfig(true);
     try {
-      const defaults = await resetLaundryCatalogToDefault(
-        institutionData,
-        updateInstitutionData
-      );
+      const defaults = await resetLaundryCatalogToDefault(institutionData, updateInstitutionData);
       setCatalog(defaults);
-      toast.info("Laundry prices reset to Indian standard benchmarks.");
+      toast.info("Catalog cleared.");
     } catch (err) {
       console.error(err);
     } finally {
@@ -1058,822 +962,537 @@ export default function LaundryManager({
     }
   };
 
-  // Barcode / Ticket Lookup in Tracker
-  const filteredTrackerOrders = useMemo(() => {
-    return allOrders.filter((ord) => {
-      const q = barcodeQuery.trim().toLowerCase();
-      const matchQuery =
-        !q ||
-        (ord.token && ord.token.toLowerCase().includes(q)) ||
-        (ord.roomNumber && String(ord.roomNumber).toLowerCase().includes(q)) ||
-        (ord.guestName && ord.guestName.toLowerCase().includes(q));
+  const filteredTrackerOrders = useMemo(
+    () =>
+      allOrders.filter((ord) => {
+        const q = barcodeQuery.trim().toLowerCase();
+        const matchQuery =
+          !q ||
+          (ord.token && ord.token.toLowerCase().includes(q)) ||
+          (ord.roomNumber && String(ord.roomNumber).toLowerCase().includes(q)) ||
+          (ord.guestName && ord.guestName.toLowerCase().includes(q));
+        const matchStatus =
+          statusFilter === "all" || (ord.status || "Received").toLowerCase() === statusFilter.toLowerCase();
+        return matchQuery && matchStatus;
+      }),
+    [allOrders, barcodeQuery, statusFilter]
+  );
 
-      const matchStatus =
-        statusFilter === "all" ||
-        ord.status.toLowerCase() === statusFilter.toLowerCase();
+  const printA4 = (order) => printLaundryA4Bill({ order, institutionData });
+  const printSlip = (order) => printLaundryThermalSlip({ order, institutionData, paperSize });
+  const previewCurrent = () => buildOrderPayload(selectedRoomNumber ? "ROOM_FOLIO" : "CASH");
 
-      return matchQuery && matchStatus;
-    });
-  }, [allOrders, barcodeQuery, statusFilter]);
+  const speedExtraLabel = (sp) => {
+    const p = Number(sp.surchargePercent) > 0;
+    const f = Number(sp.flatExtraAmount) > 0;
+    if (p && f) return `+${sp.surchargePercent}% +₹${sp.flatExtraAmount}`;
+    if (p) return `+${sp.surchargePercent}%`;
+    if (f) return `+₹${sp.flatExtraAmount}`;
+    return "No extra";
+  };
 
+  const inRoomMode = collectionSource !== "walk_in" && selectedRoomNumber;
+
+  /* ======================================================================== */
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-2 sm:p-4 space-y-3 font-sans text-gray-900">
-      {/* =========================================================================
-          SLEEK COMPACT TOP PERFORMANCE TOOLBAR
-          (Replaced duplicate below heading with a single-line high-efficiency toolbar)
-         ========================================================================= */}
-      <div className="bg-white border border-gray-200 rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
-        {/* Quick Shift KPI Badges */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <div className="bg-blue-600 text-white font-black px-2.5 py-1 rounded-lg flex items-center gap-1">
-            <Shirt className="w-3.5 h-3.5" />
-            <span>Laundry</span>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1 flex items-center gap-1 text-[11px] font-bold text-blue-900">
-            <span>Today's Sales:</span>
-            <strong className="text-gray-950 font-black">₹{todaySales.toFixed(0)}</strong>
-            <span className="text-[10px] text-gray-500 font-normal">({todayGarments} pcs)</span>
-          </div>
-
-          <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-2 py-1 flex items-center gap-1 text-[11px] text-cyan-900">
-            <Waves className="w-3 h-3 text-cyan-600" />
-            <span>Wash:</span>
-            <strong>₹{washOnlySales.toFixed(0)}</strong>
-          </div>
-
-          <div className="bg-sky-50 border border-sky-200 rounded-lg px-2 py-1 flex items-center gap-1 text-[11px] text-sky-900">
-            <Sparkles className="w-3 h-3 text-sky-600" />
-            <span>Wash & Iron:</span>
-            <strong>₹{washAndPressSales.toFixed(0)}</strong>
-          </div>
-
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 flex items-center gap-1 text-[11px] text-amber-900">
-            <Flame className="w-3 h-3 text-amber-600" />
-            <span>Iron:</span>
-            <strong>₹{pressSales.toFixed(0)}</strong>
-          </div>
-
-          <div className="bg-purple-50 border border-purple-200 rounded-lg px-2 py-1 flex items-center gap-1 text-[11px] text-purple-900">
-            <ShieldCheck className="w-3 h-3 text-purple-600" />
-            <span>Dry Clean:</span>
-            <strong>₹{dryCleanSales.toFixed(0)}</strong>
-          </div>
-
-          {pendingDeliveries.length > 0 && (
-            <button
-              onClick={() => handleTabChange("deliveries")}
-              className="bg-orange-50 border border-orange-300 rounded-lg px-2.5 py-1 flex items-center gap-1.5 text-[11px] font-bold text-orange-900 hover:bg-orange-100 transition-colors"
-            >
-              <Truck className="w-3.5 h-3.5 text-orange-600" />
-              <span>Deliver to Rooms:</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-orange-600 text-white text-[10px]">
-                {pendingDeliveries.length}
-              </span>
-            </button>
-          )}
-
-          {heldOnRoomOrders.length > 0 && (
-            <button
-              onClick={() => handleTabChange("deliveries")}
-              className="bg-amber-100 border border-amber-300 rounded-lg px-2 py-1 flex items-center gap-1 text-[11px] font-bold text-amber-900 hover:bg-amber-200"
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-700" />
-              <span>Held on Room:</span>
-              <strong>{heldOnRoomOrders.length}</strong>
-            </button>
+    <div
+      className="w-full max-w-[1600px] mx-auto p-2 flex flex-col gap-2 font-sans text-gray-900 text-xs"
+      style={{ height: `calc(100vh - ${APP_CHROME_HEIGHT}px)` }}
+    >
+      {/* ---------------------------- SLIM STATUS BAR ---------------------------- */}
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg">
+        <div className="flex items-center gap-5 text-[12px] text-gray-600">
+          <span className="flex items-center gap-1.5 font-semibold text-gray-900 text-sm">
+            <Shirt className="w-4 h-4 text-blue-600" /> Laundry
+          </span>
+          <span>
+            Today <strong className="text-gray-900 text-sm">₹{todaySales.toFixed(0)}</strong>
+            <span className="text-gray-400"> · {todayGarments} pcs</span>
+          </span>
+          <button type="button" onClick={() => handleTabChange("deliveries")} className="hover:text-blue-700">
+            To deliver <strong className="text-gray-900 text-sm">{pendingDeliveries.length}</strong>
+          </button>
+          <button type="button" onClick={() => handleTabChange("deliveries")} className="hover:text-blue-700">
+            On hold <strong className="text-gray-900 text-sm">{heldOnRoomOrders.length}</strong>
+          </button>
+          {loadingOrders && (
+            <span className="flex items-center gap-1 text-blue-600">
+              <RotateCcw className="w-3 h-3 animate-spin" /> Syncing
+            </span>
           )}
         </div>
-
-        {/* Paper Size / Print Mode Selector */}
-        <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200">
-          <span className="px-1.5 text-gray-500 font-medium text-[11px]">Print Mode:</span>
-          <button
-            onClick={() => {
-              setPreviewDocType("a4");
-            }}
-            className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
-              previewDocType === "a4"
-                ? "bg-blue-600 text-white shadow-xs"
-                : "text-gray-600 hover:text-black"
-            }`}
-          >
-            A4 Bill
-          </button>
-          <button
-            onClick={() => {
-              setPreviewDocType("thermal");
-              setPaperSize("80");
-            }}
-            className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
-              previewDocType === "thermal" && paperSize === "80"
-                ? "bg-black text-white shadow-xs"
-                : "text-gray-600 hover:text-black"
-            }`}
-          >
-            80mm
-          </button>
-          <button
-            onClick={() => {
-              setPreviewDocType("thermal");
-              setPaperSize("58");
-            }}
-            className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
-              previewDocType === "thermal" && paperSize === "58"
-                ? "bg-black text-white shadow-xs"
-                : "text-gray-600 hover:text-black"
-            }`}
-          >
-            58mm
-          </button>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-gray-500">Print as</span>
+          <div className="w-56">
+            <Segmented
+              value={previewDocType === "a4" ? "a4" : paperSize}
+              onChange={(v) => {
+                if (v === "a4") setPreviewDocType("a4");
+                else {
+                  setPreviewDocType("thermal");
+                  setPaperSize(v);
+                }
+              }}
+              options={[
+                { id: "a4", label: "A4" },
+                { id: "80", label: "80mm" },
+                { id: "58", label: "58mm" },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
-      {/* =========================================================================
-          VIEW 1: NEW ORDER WORKSPACE (COMPACT & SIMPLE POS UI)
-          LEFT: Compact Square Garment Cards with 4 Care Pricing Options
-          RIGHT: Compact Order Details, Collection, Delivery, Settlement & A4/Thermal Print
-         ========================================================================= */}
+      {/* ----------------------------- NEW ORDER ---------------------------- */}
       {activeTab === "new_order" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5" style={{height: "calc(100vh - 155px)"}}>
-          {/* -------------------------------------------------------------
-              LEFT COLUMN: SQUARE SHAPE GARMENT CARDS (lg:col-span-7)
-             ------------------------------------------------------------- */}
-          <div className="lg:col-span-7 flex flex-col gap-2 overflow-hidden">
-            {/* Filter toolbar: Category pills & Search */}
-            <div className="bg-white border border-gray-200 rounded-lg p-1.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-              {/* Category Pills (Men, Ladies, Kids, Linen) */}
-              <div className="flex items-center gap-1 overflow-x-auto">
-                {["All", "Men", "Women", "Kids", "Linen"].map((cat) => (
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2">
+          {/* LEFT: garments */}
+          <Panel className="lg:col-span-7 flex flex-col min-h-0 p-2 gap-2">
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
+              <Segmented
+                value={catalogCategory}
+                onChange={setCatalogCategory}
+                options={[
+                  { id: "All", label: "All" },
+                  { id: "Men", label: "Men" },
+                  { id: "Women", label: "Ladies" },
+                  { id: "Kids", label: "Kids" },
+                  { id: "Linen", label: "Linen" },
+                ]}
+              />
+              <div className="flex items-center gap-1.5">
+                <div className="relative w-44">
+                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                  <Input
+                    value={searchGarment}
+                    onChange={(e) => setSearchGarment(e.target.value)}
+                    placeholder="Search garment"
+                    className="!h-7 pl-7 pr-6 text-xs"
+                  />
+                  {searchGarment && (
+                    <button
+                      onClick={() => setSearchGarment("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    handleTabChange("price_sheet");
+                    setShowBatchAddSection(true);
+                  }}
+                  className="!h-7 text-[11px] font-semibold"
+                >
+                  <Plus className="w-3 h-3 mr-1" /> Add garments
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {filteredGarments.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center text-gray-500">
+                  <Shirt className="w-8 !h-8 text-gray-300 mb-2" />
+                  <p className="font-semibold text-gray-800">
+                    {catalog.length === 0 ? "No garments yet" : "No garments match"}
+                  </p>
+                  <p className="text-[11px] max-w-xs mt-1 mb-3">
+                    {catalog.length === 0
+                      ? "Add garments with their wash, iron and dry clean rates to start taking orders."
+                      : "Try a different search or category."}
+                  </p>
+                  {catalog.length === 0 ? (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        handleTabChange("price_sheet");
+                        setShowBatchAddSection(true);
+                      }}
+                      className="!h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Plus className="w-3 h-3 mr-1" /> Add garments
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSearchGarment("");
+                        setCatalogCategory("All");
+                      }}
+                      className="!h-7 text-xs"
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-2.5 content-start" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
+                  {filteredGarments.map((garment) => {
+                    const qtyFor = (care) =>
+                      basket
+                        .filter((b) => b.garmentId === garment.id && b.careType === care)
+                        .reduce((s, b) => s + b.quantity, 0);
+                    const total = CARE_IDS.reduce((s, c) => s + qtyFor(c), 0);
+                    return (
+                      <div
+                        key={garment.id}
+                        className={`rounded-lg border p-2.5 bg-white ${
+                          total > 0 ? "border-blue-400 ring-1 ring-blue-200" : "border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1.5">
+                          <h4 className="font-semibold text-xs truncate" title={garment.name}>
+                            {garment.name}
+                          </h4>
+                          <span className="text-[10px] text-gray-500 shrink-0">
+                            {garment.category === "Women" ? "Ladies" : garment.category}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          {CARE_IDS.map((care) => {
+                            const ui = CARE_UI[care];
+                            const q = qtyFor(care);
+                            const rate = garment.rates?.[care] || 0;
+                            return (
+                              <button
+                                key={care}
+                                type="button"
+                                disabled={rate <= 0}
+                                onClick={() => handleAddToBasket(garment, care)}
+                                className={`relative rounded border px-1 py-1.5 text-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                                  q > 0
+                                    ? "border-blue-500 bg-blue-50"
+                                    : "border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-300"
+                                }`}
+                                title={ui.label}
+                              >
+                                <div className="text-[10px] text-gray-500 leading-tight">{ui.label}</div>
+                                <div className="text-[12px] font-bold leading-tight">₹{rate}</div>
+                                {q > 0 && (
+                                  <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
+                                    {q}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </Panel>
+
+          {/* RIGHT: order & settlement (fixed layout, only the item list scrolls) */}
+          <Panel className="lg:col-span-5 flex flex-col min-h-0 overflow-hidden">
+            {/* header */}
+            <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-100">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <Receipt className="w-4 h-4 text-blue-600" /> Order
+                <span className="font-mono text-[11px] text-gray-500">#{token}</span>
+              </div>
+              {basket.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleResetOrder}
+                  className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" /> Clear
+                </button>
+              )}
+            </div>
+
+            {/* customer */}
+            <div className="shrink-0 px-3 py-2 space-y-1.5 border-b border-gray-100">
+              <Segmented
+                value={collectionSource}
+                onChange={setCollectionSource}
+                options={[
+                  { id: "room_pickup", label: "Room pickup" },
+                  { id: "front_desk", label: "Front desk" },
+                  { id: "walk_in", label: "Walk-in" },
+                ]}
+              />
+              {collectionSource !== "walk_in" ? (
+                <>
+                  <Select value={selectedBookingId} onValueChange={handleBookingSelect}>
+                    <SelectTrigger className="!h-8 text-xs">
+                      <SelectValue placeholder="Choose checked-in room and guest" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-56">
+                      {checkedInBookings.map((b) => {
+                        const gInfo = resolveGuestDetails(b);
+                        return (
+                          <SelectItem key={b.booking_id} value={b.booking_id}>
+                            Room {getDisplayRoomNumber(b, rooms) || "Unassigned"} — {gInfo.name || "Guest"}
+                            {gInfo.phone ? ` (${gInfo.phone})` : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <div className="h-5 flex items-center text-[11px] text-gray-600">
+                    {selectedRoomNumber ? (
+                      <span>
+                        <strong className="text-gray-900">Room {selectedRoomNumber}</strong> ·{" "}
+                        {guestName || "In-house guest"}
+                        {guestMobile ? ` · ${guestMobile}` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">Select a room to charge or track delivery</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Input
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    placeholder="Guest name *"
+                    className="!h-8 text-xs"
+                  />
+                  <Input
+                    value={guestMobile}
+                    onChange={(e) => setGuestMobile(e.target.value)}
+                    placeholder="Mobile number"
+                    className="!h-8 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* delivery */}
+            <div className="shrink-0 px-3 py-2 space-y-1.5 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-gray-700">Delivery</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSpeedsModalOpen(true)}
+                  className="flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
+                >
+                  <Settings className="w-3 h-3" /> Edit charges
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {serviceSpeeds.map((sp) => (
                   <button
-                    key={cat}
-                    onClick={() => setCatalogCategory(cat)}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
-                      catalogCategory === cat
-                        ? "bg-blue-600 text-white shadow-2xs"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    key={sp.id}
+                    type="button"
+                    onClick={() => handleServiceSpeedChange(sp.id)}
+                    className={`rounded-md border py-1 text-center transition-colors ${
+                      serviceSpeed === sp.id
+                        ? "bg-blue-600 border-blue-600 text-white"
+                        : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
                     }`}
                   >
-                    {cat === "Women" ? "Ladies" : cat === "Men" ? "Men" : cat}
+                    <div className="text-[11px] font-semibold truncate">{sp.shortLabel}</div>
+                    <div className={`text-[10px] ${serviceSpeed === sp.id ? "text-blue-100" : "text-gray-500"}`}>
+                      {speedExtraLabel(sp)}
+                    </div>
                   </button>
                 ))}
               </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <div>
+                  <span className="text-[10px] text-gray-500">Date</span>
+                  <Input
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    className="!h-7 text-[11px] px-1.5"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-500">Time</span>
+                  <Input
+                    type="time"
+                    value={deliveryTime}
+                    onChange={(e) => setDeliveryTime(e.target.value)}
+                    className="!h-7 text-[11px] px-1.5"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-500">Extra fee (₹)</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={customExtraCharge || ""}
+                    onChange={(e) => setCustomExtraCharge(Math.max(0, Number(e.target.value) || 0))}
+                    placeholder="0"
+                    className="!h-7 text-[11px] px-1.5 text-right"
+                  />
+                </div>
+              </div>
+            </div>
 
-              {/* Garment Search Input */}
-              <div className="relative min-w-[160px] flex-1 max-w-xs">
-                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
-                <Input
-                  type="text"
-                  value={searchGarment}
-                  onChange={(e) => setSearchGarment(e.target.value)}
-                  placeholder="Search garment..."
-                  className="h-6.5 pl-7 text-xs bg-gray-50 border-gray-200 focus:bg-white"
-                />
-                {searchGarment && (
-                  <button
-                    onClick={() => setSearchGarment("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+            {/* items (the only scrolling region) */}
+            <div className="flex-1 min-h-0 flex flex-col px-3 py-2">
+              <div className="shrink-0 flex items-center justify-between mb-1">
+                <span className="font-semibold text-gray-700">Items ({totals.totalGarments} pcs)</span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-0.5">
+                {basket.length === 0 ? (
+                  <div className="h-full min-h-16 flex flex-col items-center justify-center rounded-md border border-dashed border-gray-200 text-gray-400">
+                    <p className="font-medium text-gray-500">No items yet</p>
+                    <p className="text-[10px]">Tap a rate on a garment card to add it</p>
+                  </div>
+                ) : (
+                  basket.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-[11px] truncate">{item.name}</div>
+                        <div className="flex items-center gap-1">
+                          <CareChip careType={item.careType} />
+                          <span className="text-[10px] text-gray-500">₹{item.unitRate} each</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center rounded border border-gray-300 bg-white">
+                        <button
+                          type="button"
+                          onClick={() => updateBasketQuantity(idx, -1)}
+                          className="px-1.5 text-gray-600 hover:bg-gray-100 font-bold"
+                        >
+                          −
+                        </button>
+                        <span className="px-1.5 text-[11px] font-bold">{item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateBasketQuantity(idx, 1)}
+                          className="px-1.5 text-gray-600 hover:bg-gray-100 font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="w-12 text-right font-semibold text-[11px]">
+                        ₹{(item.unitRate * item.quantity).toFixed(0)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeBasketItem(idx)}
+                        className="text-gray-400 hover:text-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
 
-            {/* Square Cards Garments Grid */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 pr-1 content-start">
-              {filteredGarments.map((garment) => {
-                const inBasketQty = basket
-                  .filter((b) => b.garmentId === garment.id)
-                  .reduce((sum, b) => sum + b.quantity, 0);
-
-                const getCareQty = (care) =>
-                  basket
-                    .filter((b) => b.garmentId === garment.id && b.careType === care)
-                    .reduce((sum, b) => sum + b.quantity, 0);
-
-                const washQty = getCareQty("wash_only");
-                const washPressQty = getCareQty("wash_and_press");
-                const pressQty = getCareQty("press_only");
-                const dryCleanQty = getCareQty("dry_clean");
-
-                return (
-                  <Card
-                    key={garment.id}
-                    className={`border transition-all flex flex-col justify-between p-2 rounded-lg ${
-                      inBasketQty > 0
-                        ? "border-blue-400 bg-blue-50/20 shadow-2xs ring-1 ring-blue-300"
-                        : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-2xs"
-                    }`}
-                  >
-                    <div>
-                      {/* Top Header of the Square Card */}
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="text-[8.5px] font-bold uppercase tracking-wider text-gray-500 bg-gray-100 px-1 py-0.2 rounded">
-                          {garment.category === "Women" ? "Ladies" : garment.category}
-                        </span>
-                        {inBasketQty > 0 && (
-                          <Badge className="bg-blue-600 text-white text-[8.5px] px-1 py-0 font-bold">
-                            {inBasketQty} in order
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Garment Item Name */}
-                      <h4
-                        className="font-bold text-xs text-gray-900 leading-snug line-clamp-1 truncate"
-                        title={garment.name}
-                      >
-                        {garment.name}
-                      </h4>
-                    </div>
-
-                    {/* 4 Care Service Price Buttons Inside Card */}
-                    <div className="grid grid-cols-2 gap-1 pt-1.5 mt-1 border-t border-gray-100">
-                      {/* 1. Wash Only */}
-                      <button
-                        type="button"
-                        onClick={() => handleAddToBasket(garment, "wash_only")}
-                        className={`flex flex-col items-center justify-center p-1 rounded border text-center transition-all ${
-                          washQty > 0
-                            ? "bg-cyan-100 border-cyan-400 text-cyan-950 font-bold ring-1 ring-cyan-300"
-                            : "border-cyan-200 bg-cyan-50/40 hover:bg-cyan-100 text-cyan-950"
-                        }`}
-                        title="Wash Only"
-                      >
-                        <span className="text-[8px] font-medium text-cyan-700 uppercase flex items-center gap-0.5">
-                          <Waves className="w-2 h-2 text-cyan-600" /> Wash
-                        </span>
-                        <div className="text-[11px] font-bold text-cyan-950 flex items-center gap-0.5">
-                          <span>₹{garment.rates?.wash_only || 0}</span>
-                          {washQty > 0 && (
-                            <span className="text-[8.5px] bg-cyan-600 text-white px-1 rounded-full">
-                              {washQty}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-
-                      {/* 2. Wash & Press */}
-                      <button
-                        type="button"
-                        onClick={() => handleAddToBasket(garment, "wash_and_press")}
-                        className={`flex flex-col items-center justify-center p-1 rounded border text-center transition-all ${
-                          washPressQty > 0
-                            ? "bg-blue-100 border-blue-400 text-blue-950 font-bold ring-1 ring-blue-300"
-                            : "border-blue-200 bg-blue-50/40 hover:bg-blue-100 text-blue-950"
-                        }`}
-                        title="Wash & Iron"
-                      >
-                        <span className="text-[8px] font-medium text-blue-700 uppercase flex items-center gap-0.5">
-                          <Sparkles className="w-2 h-2 text-blue-600" /> Wash+Iron
-                        </span>
-                        <div className="text-[11px] font-bold text-blue-950 flex items-center gap-0.5">
-                          <span>₹{garment.rates?.wash_and_press || 0}</span>
-                          {washPressQty > 0 && (
-                            <span className="text-[8.5px] bg-blue-600 text-white px-1 rounded-full">
-                              {washPressQty}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-
-                      {/* 3. Press Only */}
-                      <button
-                        type="button"
-                        onClick={() => handleAddToBasket(garment, "press_only")}
-                        className={`flex flex-col items-center justify-center p-1 rounded border text-center transition-all ${
-                          pressQty > 0
-                            ? "bg-amber-100 border-amber-400 text-amber-950 font-bold ring-1 ring-amber-300"
-                            : "border-amber-200 bg-amber-50/40 hover:bg-amber-100 text-amber-950"
-                        }`}
-                        title="Iron Only"
-                      >
-                        <span className="text-[8px] font-medium text-amber-700 uppercase flex items-center gap-0.5">
-                          <Flame className="w-2 h-2 text-amber-600" /> Iron
-                        </span>
-                        <div className="text-[11px] font-bold text-amber-950 flex items-center gap-0.5">
-                          <span>₹{garment.rates?.press_only || 0}</span>
-                          {pressQty > 0 && (
-                            <span className="text-[8.5px] bg-amber-600 text-white px-1 rounded-full">
-                              {pressQty}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-
-                      {/* 4. Dry Clean */}
-                      <button
-                        type="button"
-                        onClick={() => handleAddToBasket(garment, "dry_clean")}
-                        className={`flex flex-col items-center justify-center p-1 rounded border text-center transition-all ${
-                          dryCleanQty > 0
-                            ? "bg-purple-100 border-purple-400 text-purple-950 font-bold ring-1 ring-purple-300"
-                            : "border-purple-200 bg-purple-50/40 hover:bg-purple-100 text-purple-950"
-                        }`}
-                        title="Dry Clean"
-                      >
-                        <span className="text-[8px] font-medium text-purple-700 uppercase flex items-center gap-0.5">
-                          <ShieldCheck className="w-2 h-2 text-purple-600" /> Dry Clean
-                        </span>
-                        <div className="text-[11px] font-bold text-purple-950 flex items-center gap-0.5">
-                          <span>₹{garment.rates?.dry_clean || 0}</span>
-                          {dryCleanQty > 0 && (
-                            <span className="text-[8.5px] bg-purple-600 text-white px-1 rounded-full">
-                              {dryCleanQty}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* -------------------------------------------------------------
-              RIGHT COLUMN: ORDER, COLLECTION & SETTLEMENT CARD (lg:col-span-5)
-             ------------------------------------------------------------- */}
-          <div className="lg:col-span-5 overflow-y-auto">
-            <Card className="border border-gray-200 rounded-xl shadow-2xs bg-white overflow-hidden">
-              <CardHeader className="p-2.5 bg-gray-50/90 border-b border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Receipt className="w-4 h-4 text-blue-600" />
-                    <span className="text-xs font-bold text-gray-900">Order & Settlement</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[11px] font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded">
-                      #{token}
-                    </span>
-                    {basket.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleResetOrder}
-                        className="text-[10px] text-red-600 hover:text-red-800 font-semibold flex items-center gap-0.5"
-                        title="Clear Order"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
+            {/* bill + actions, pinned to the bottom */}
+            <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 py-2 space-y-1.5">
+              <div className="space-y-0.5 text-[11px] text-gray-600">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span>₹{totals.itemsSubtotal.toFixed(2)}</span>
                 </div>
-              </CardHeader>
-
-              <CardContent className="p-2.5 space-y-2.5 text-xs">
-                {/* 1. Collection Source Segmented Toggle */}
-                <div>
-                  <div className="grid grid-cols-3 gap-1 bg-gray-100 p-0.5 rounded-lg">
-                    <button
-                      type="button"
-                      onClick={() => setCollectionSource("room_pickup")}
-                      className={`py-1 text-center rounded-md font-bold text-[11px] transition-all ${
-                        collectionSource === "room_pickup"
-                          ? "bg-white text-blue-900 shadow-2xs"
-                          : "text-gray-600 hover:text-black"
-                      }`}
-                    >
-                      Room Pickup
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCollectionSource("front_desk")}
-                      className={`py-1 text-center rounded-md font-bold text-[11px] transition-all ${
-                        collectionSource === "front_desk"
-                          ? "bg-white text-blue-900 shadow-2xs"
-                          : "text-gray-600 hover:text-black"
-                      }`}
-                    >
-                      Front Desk
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCollectionSource("walk_in")}
-                      className={`py-1 text-center rounded-md font-bold text-[11px] transition-all ${
-                        collectionSource === "walk_in"
-                          ? "bg-white text-purple-900 shadow-2xs"
-                          : "text-gray-600 hover:text-black"
-                      }`}
-                    >
-                      Walk-In POS
-                    </button>
-                  </div>
-                </div>
-
-                {/* 2. Room & Guest Selection (Resolves Human Room Numbers) */}
-                {collectionSource !== "walk_in" ? (
-                  <div className="space-y-1 bg-blue-50/50 p-2 rounded-lg border border-blue-100">
-                    <Select
-                      value={selectedBookingId}
-                      onValueChange={handleBookingSelect}
-                    >
-                      <SelectTrigger className="h-7.5 text-xs bg-white border-blue-200">
-                        <SelectValue placeholder="Choose Checked-In Room & Guest..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-56">
-                        {checkedInBookings.map((b) => {
-                          const displayRoomNum =
-                            getDisplayRoomNumber(b, rooms) || "Unassigned";
-                          const gName =
-                            b.guest_name || b.booking_name || b.full_name || b.name || b.primary_guest_name || b.primary_guest || b.customerName || "Guest";
-                          const phone = b.mobile_number || b.mobile || "";
-                          return (
-                            <SelectItem key={b.booking_id} value={b.booking_id}>
-                              Room {displayRoomNum} — {gName} {phone ? `(${phone})` : ""}
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-
-                    {/* Compact Badge displaying selected room details */}
-                    {selectedRoomNumber ? (
-                      <div className="flex items-center justify-between px-2 py-1 rounded bg-blue-100/80 border border-blue-200 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.2 rounded bg-blue-600 text-white font-black text-[11px]">
-                            Room {selectedRoomNumber}
-                          </span>
-                          <span className="font-bold text-gray-900 text-[11px]">
-                            {guestName || "Guest"}
-                          </span>
-                        </div>
-                        {guestMobile && (
-                          <span className="text-[10px] text-gray-600 font-medium">
-                            {guestMobile}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-blue-700 italic">
-                        Select a guest room to charge bill or track room delivery.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-1.5 bg-purple-50/40 p-2 rounded-lg border border-purple-100">
-                    <div>
-                      <Input
-                        value={guestName}
-                        onChange={(e) => setGuestName(e.target.value)}
-                        placeholder="Guest Name *"
-                        className="h-7 text-xs bg-white"
-                      />
-                    </div>
-                    <div>
-                      <Input
-                        value={guestMobile}
-                        onChange={(e) => setGuestMobile(e.target.value)}
-                        placeholder="Mobile #"
-                        className="h-7 text-xs bg-white"
-                      />
-                    </div>
+                {totals.surchargeAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Delivery extra</span>
+                    <span>₹{totals.surchargeAmount.toFixed(2)}</span>
                   </div>
                 )}
-
-                {/* 3. Turnaround Speed & Delivery Target */}
-                <div className="space-y-1.5 bg-gray-50 p-2 rounded-lg border border-gray-200">
-                  <div className="grid grid-cols-3 gap-1">
-                    {serviceSpeeds.map((sp) => (
-                      <button
-                        key={sp.id}
-                        type="button"
-                        onClick={() => handleServiceSpeedChange(sp.id)}
-                        className={`p-1 rounded border text-center transition-all ${
-                          serviceSpeed === sp.id
-                            ? "bg-blue-600 text-white border-blue-600 shadow-2xs font-bold"
-                            : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
-                        }`}
-                      >
-                        <div className="text-[10px] uppercase font-bold">{sp.shortLabel}</div>
-                        <div className="text-[8px] opacity-80">
-                          {sp.surchargePercent > 0 ? `+${sp.surchargePercent}%` : "Normal"}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Inline Delivery Date & Time Pickers */}
-                  <div className="flex items-center gap-1.5 pt-1 border-t border-gray-200">
-                    <span className="text-[9.5px] font-bold text-gray-600 shrink-0">
-                      Target Delivery:
-                    </span>
-                    <Input
-                      type="date"
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                      className="h-6 text-[11px] bg-white font-medium flex-1 px-1.5"
-                    />
-                    <Input
-                      type="time"
-                      value={deliveryTime}
-                      onChange={(e) => setDeliveryTime(e.target.value)}
-                      className="h-6 text-[11px] bg-white font-medium w-20 px-1.5"
-                    />
-                  </div>
+                <div className="flex justify-between">
+                  <span>
+                    GST {cgstRate + sgstRate}% (SAC {LAUNDRY_SAC_CODE})
+                  </span>
+                  <span>₹{totals.totalTax.toFixed(2)}</span>
                 </div>
+              </div>
+              <div className="flex items-baseline justify-between border-t border-gray-300 pt-1.5">
+                <span className="font-semibold text-gray-900">Total payable</span>
+                <span className="text-lg font-bold text-gray-900">₹{totals.grandTotal.toFixed(2)}</span>
+              </div>
 
-                {/* 4. Basket Items List */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-[10px] font-bold text-gray-600 uppercase">
-                    <span>Garments in Order ({totals.totalGarments} pcs)</span>
-                    {basket.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setBasket([])}
-                        className="text-red-600 hover:underline capitalize"
-                      >
-                        Clear items
-                      </button>
-                    )}
-                  </div>
-
-                  {basket.length === 0 ? (
-                    <div className="text-center py-2.5 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-gray-400">
-                      <p className="text-[11px] font-medium text-gray-500">Order is empty</p>
-                      <p className="text-[9.5px]">Click care price buttons on garment cards to add</p>
-                    </div>
-                  ) : (
-                    <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                      {basket.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between p-1 rounded-md bg-gray-50 border border-gray-200 text-xs"
-                        >
-                          <div className="flex-1 min-w-0 pr-1">
-                            <div className="font-bold text-gray-900 truncate text-[11px]">{item.name}</div>
-                            <div className="flex items-center gap-1 mt-0.2">
-                              <span
-                                className={`text-[8px] font-bold px-1 py-0.2 rounded uppercase ${
-                                  item.careType === "wash_only"
-                                    ? "bg-cyan-100 text-cyan-800"
-                                    : item.careType === "wash_and_press"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : item.careType === "press_only"
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-purple-100 text-purple-800"
-                                }`}
-                              >
-                                {item.careType === "wash_only"
-                                  ? "Wash"
-                                  : item.careType === "wash_and_press"
-                                  ? "Wash & Iron"
-                                  : item.careType === "press_only"
-                                  ? "Iron"
-                                  : "Dry Clean"}
-                              </span>
-                              <span className="text-[9.5px] text-gray-500">₹{item.unitRate}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <div className="flex items-center border border-gray-300 rounded bg-white">
-                              <button
-                                type="button"
-                                onClick={() => updateBasketQuantity(idx, -1)}
-                                className="px-1.5 py-0.2 text-[10px] text-gray-600 hover:bg-gray-100 font-bold"
-                              >
-                                -
-                              </button>
-                              <span className="px-1 text-[11px] font-bold text-gray-900">{item.quantity}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateBasketQuantity(idx, 1)}
-                                className="px-1.5 py-0.2 text-[10px] text-gray-600 hover:bg-gray-100 font-bold"
-                              >
-                                +
-                              </button>
-                            </div>
-                            <span className="font-bold text-gray-900 w-10 text-right text-[11px]">
-                              ₹{(item.unitRate * item.quantity).toFixed(0)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeBasketItem(idx)}
-                              className="text-gray-400 hover:text-red-600 p-0.5"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 5. Financial Bill Summary */}
-                <div className="bg-gray-100/90 p-2 rounded-lg space-y-0.5 border border-gray-200 text-xs">
-                  <div className="flex justify-between text-gray-600 text-[11px]">
-                    <span>Items Subtotal:</span>
-                    <span>₹{totals.itemsSubtotal.toFixed(2)}</span>
-                  </div>
-                  {totals.surchargeAmount > 0 && (
-                    <div className="flex justify-between text-amber-800 font-semibold text-[11px]">
-                      <span>Express Surcharge ({totals.surchargePercent}%):</span>
-                      <span>+₹{totals.surchargeAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-gray-600 text-[11px]">
-                    <span>GST (SAC: {LAUNDRY_SAC_CODE}):</span>
-                    <span>₹{totals.totalTax.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-black text-gray-950 pt-1 border-t border-gray-300">
-                    <span>Net Payable:</span>
-                    <span className="text-sm font-black text-blue-900">₹{totals.grandTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {/* 6. Settlement, Hold & Print Action Buttons */}
-                <div className="space-y-1.5 pt-0.5">
-                  {collectionSource !== "walk_in" && selectedRoomNumber ? (
-                    <>
-                      {/* Button 1: Post Directly to Room Bill (Hotel Folio) */}
-                      <Button
-                        type="button"
-                        onClick={handleSettleToRoomFolio}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-8 text-xs shadow-2xs"
-                      >
-                        <Bed className="w-3.5 h-3.5 mr-1" /> Post to Room {selectedRoomNumber} Bill (Hotel Folio)
-                      </Button>
-
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {/* Button 2: Hold on Hotel Room */}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleHoldOnRoom}
-                          className="h-7 text-[11px] border-amber-300 bg-amber-50/70 text-amber-900 hover:bg-amber-100 font-bold"
-                        >
-                          <Clock className="w-3 h-3 mr-1" /> Hold on Room
-                        </Button>
-
-                        {/* Button 3: Direct Cash / UPI */}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => handleDirectPOSSettle("CASH")}
-                          className="h-7 text-[11px] border-blue-200 bg-blue-50/70 text-blue-900 hover:bg-blue-100 font-bold"
-                        >
-                          <Banknote className="w-3 h-3 mr-1" /> Pay in Cash
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    /* Walk-In POS Settlement */
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <Button
-                        type="button"
-                        onClick={() => handleDirectPOSSettle("CASH")}
-                        className="w-full bg-black hover:bg-gray-800 text-white font-bold h-8 text-xs"
-                      >
-                        <Banknote className="w-3.5 h-3.5 mr-1" /> Settle Cash
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => handleDirectPOSSettle("UPI")}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-8 text-xs"
-                      >
-                        <CreditCard className="w-3.5 h-3.5 mr-1" /> Settle UPI
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Print Actions: A4 Bill & Thermal Roll Slip */}
-                  <div className="pt-1 border-t border-gray-100 grid grid-cols-2 gap-1.5">
-                    {/* Print A4 Bill Button */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (basket.length === 0) {
-                          toast.error("Add garments to order first before printing bill.");
-                          return;
-                        }
-                        const currentOrderPreview = buildOrderPayload(
-                          selectedRoomNumber ? "ROOM_FOLIO" : "CASH"
-                        );
-                        printLaundryA4Bill({
-                          order: currentOrderPreview,
-                          institutionData,
-                        });
-                      }}
-                      className="h-8 text-[11px] font-bold border-blue-200 bg-blue-50/60 text-blue-900 hover:bg-blue-100"
-                    >
-                      <FileText className="w-3 h-3 mr-1 text-blue-700" /> Print A4 Bill
+              {inRoomMode ? (
+                <>
+                  <Button
+                    type="button"
+                    onClick={handleSettleToRoomFolio}
+                    className="w-full !h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Bed className="w-3.5 h-3.5 mr-1" /> Post to Room {selectedRoomNumber} bill
+                  </Button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Button type="button" variant="outline" onClick={handleHoldOnRoom} className="!h-8 text-[11px] font-semibold">
+                      <Clock className="w-3 h-3 mr-1" /> Hold on room
                     </Button>
-
-                    {/* Print Thermal Slip Button */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (basket.length === 0) {
-                          toast.error("Add garments to order first before printing slip.");
-                          return;
-                        }
-                        const currentOrderPreview = buildOrderPayload(
-                          selectedRoomNumber ? "ROOM_FOLIO" : "CASH"
-                        );
-                        printLaundryThermalSlip({
-                          order: currentOrderPreview,
-                          institutionData,
-                          paperSize,
-                        });
-                      }}
-                      className="h-8 text-[11px] font-bold border-gray-300 text-gray-800 hover:bg-gray-100"
-                    >
-                      <Printer className="w-3 h-3 mr-1" /> {paperSize}mm Slip
+                    <Button type="button" variant="outline" onClick={() => handleDirectPOSSettle("CASH")} className="!h-8 text-[11px] font-semibold">
+                      <Banknote className="w-3 h-3 mr-1" /> Pay cash
                     </Button>
                   </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Button type="button" onClick={() => handleDirectPOSSettle("CASH")} className="!h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
+                    <Banknote className="w-3.5 h-3.5 mr-1" /> Pay cash
+                  </Button>
+                  <Button type="button" onClick={() => handleDirectPOSSettle("UPI")} className="!h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
+                    <CreditCard className="w-3.5 h-3.5 mr-1" /> Pay UPI
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              )}
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (basket.length === 0) return toast.error("Add garments before printing.");
+                    printA4(previewCurrent());
+                  }}
+                  className="!h-7 text-[11px]"
+                >
+                  <FileText className="w-3 h-3 mr-1" /> A4 bill
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (basket.length === 0) return toast.error("Add garments before printing.");
+                    printSlip(previewCurrent());
+                  }}
+                  className="!h-7 text-[11px]"
+                >
+                  <Printer className="w-3 h-3 mr-1" /> {paperSize}mm slip
+                </Button>
+              </div>
+            </div>
+          </Panel>
         </div>
       )}
 
-      {/* =========================================================================
-          VIEW 2: ROOM DELIVERIES BOARD ("Which room we have to deliver")
-         ========================================================================= */}
+      {/* ----------------------------- DELIVERIES --------------------------- */}
       {activeTab === "deliveries" && (
-        <Card className="border border-gray-200 shadow-xs bg-white rounded-xl">
-          <CardHeader className="p-3.5 bg-gray-50/70 border-b border-gray-100">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-              <div>
-                <CardTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <Truck className="w-4 h-4 text-blue-600" />
-                  Room Deliveries Board (Which Rooms We Have to Deliver)
-                </CardTitle>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  Live delivery queue for laundry staff with room numbers, care badges, and 1-click room delivery sign-off.
-                </p>
-              </div>
-
-              {/* Delivery Filter Pills */}
-              <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200 text-xs">
-                <button
-                  onClick={() => setDeliveryFilter("pending")}
-                  className={`px-2.5 py-1 rounded font-bold text-[11px] transition-all ${
-                    deliveryFilter === "pending"
-                      ? "bg-white text-blue-700 shadow-xs"
-                      : "text-gray-600 hover:text-black"
-                  }`}
-                >
-                  Awaiting Delivery ({pendingDeliveries.length})
-                </button>
-                <button
-                  onClick={() => setDeliveryFilter("held")}
-                  className={`px-2.5 py-1 rounded font-bold text-[11px] transition-all ${
-                    deliveryFilter === "held"
-                      ? "bg-white text-amber-700 shadow-xs"
-                      : "text-gray-600 hover:text-black"
-                  }`}
-                >
-                  Held on Room ({heldOnRoomOrders.length})
-                </button>
-                <button
-                  onClick={() => setDeliveryFilter("delivered")}
-                  className={`px-2.5 py-1 rounded font-bold text-[11px] transition-all ${
-                    deliveryFilter === "delivered"
-                      ? "bg-white text-emerald-700 shadow-xs"
-                      : "text-gray-600 hover:text-black"
-                  }`}
-                >
-                  Delivered Today ({deliveredTodayList.length})
-                </button>
-                <button
-                  onClick={() => setDeliveryFilter("all")}
-                  className={`px-2.5 py-1 rounded font-bold text-[11px] transition-all ${
-                    deliveryFilter === "all"
-                      ? "bg-white text-gray-900 shadow-xs"
-                      : "text-gray-600 hover:text-black"
-                  }`}
-                >
-                  All ({allOrders.length})
-                </button>
-              </div>
-            </div>
-
-            {/* Pending alert banner */}
-            {pendingDeliveries.length > 0 && (
-              <div className="mt-2.5 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 text-amber-950 font-medium">
-                  <Bed className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                  <span>
-                    Rooms awaiting delivery:{" "}
-                    <strong className="underline text-amber-900">
-                      {roomsToDeliverSet.join(", ")}
-                    </strong>
-                  </span>
-                </div>
-                <Badge className="bg-amber-200 text-amber-900 font-bold border-amber-300 text-[10px]">
-                  {pendingDeliveries.length} bags pending drop-off
-                </Badge>
-              </div>
+        <Panel className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="shrink-0 px-3 py-2 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+            <Segmented
+              value={deliveryFilter}
+              onChange={setDeliveryFilter}
+              options={[
+                { id: "pending", label: `Awaiting (${pendingDeliveries.length})` },
+                { id: "held", label: `On hold (${heldOnRoomOrders.length})` },
+                { id: "delivered", label: `Delivered today (${deliveredTodayList.length})` },
+                { id: "all", label: `All (${allOrders.length})` },
+              ]}
+            />
+            {roomsToDeliver.length > 0 && (
+              <span className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                <Bed className="w-3.5 h-3.5 text-amber-600" />
+                Rooms waiting: <strong className="text-gray-900">{roomsToDeliver.join(", ")}</strong>
+              </span>
             )}
-          </CardHeader>
+          </div>
 
-          <CardContent className="p-3.5">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3">
             {(() => {
               const displayList =
                 deliveryFilter === "pending"
@@ -1886,68 +1505,45 @@ export default function LaundryManager({
 
               if (displayList.length === 0) {
                 return (
-                  <div className="text-center py-10 text-gray-400">
-                    <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-400 opacity-60" />
-                    <p className="text-xs font-bold text-gray-700">All guest laundry has been delivered!</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      New orders taken will appear automatically in this room delivery queue.
-                    </p>
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                    <CheckCircle2 className="w-9 h-9 mb-2 text-emerald-400" />
+                    <p className="font-semibold text-gray-700">Nothing here</p>
+                    <p className="text-[11px]">New orders appear in this queue automatically.</p>
                   </div>
                 );
               }
 
               return (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
                   {displayList.map((ord) => {
                     const isDelivered =
                       ord.delivery_status === "delivered_to_room" ||
                       ord.status === "Delivered" ||
                       ord.status === "delivered";
                     const isHeld = ord.paymentStatus === "HELD_ON_ROOM";
-
-                    let washCount = 0;
-                    let washPressCount = 0;
-                    let pressCount = 0;
-                    let dryCleanCount = 0;
-                    (ord.items || []).forEach((item) => {
-                      const qty = Number(item.quantity) || 1;
-                      if (item.careType === "wash_only") washCount += qty;
-                      else if (item.careType === "press_only") pressCount += qty;
-                      else if (item.careType === "dry_clean") dryCleanCount += qty;
-                      else washPressCount += qty;
+                    const counts = {};
+                    (ord.items || []).forEach((it) => {
+                      const c = careOf(it);
+                      counts[c] = (counts[c] || 0) + (Number(it.quantity) || 1);
                     });
+                    const pay = paymentBadge(ord);
 
                     return (
-                      <Card
+                      <div
                         key={ord.orderId || ord.token}
-                        className={`border rounded-xl transition-all ${
-                          isDelivered
-                            ? "border-gray-200 bg-gray-50/50 opacity-80"
-                            : isHeld
-                            ? "border-amber-300 bg-amber-50/20"
-                            : "border-blue-200 bg-white hover:border-blue-400 hover:shadow-xs"
+                        className={`rounded-lg border bg-white p-2.5 space-y-2 ${
+                          isDelivered ? "border-gray-200 opacity-75" : isHeld ? "border-amber-300" : "border-gray-200"
                         }`}
                       >
-                        <CardHeader className="p-2.5 pb-2 border-b border-gray-100 flex flex-row items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`px-2 py-0.5 rounded-md font-black text-xs ${
-                                ord.roomNumber === "Walk-In"
-                                  ? "bg-purple-100 text-purple-900"
-                                  : "bg-blue-600 text-white shadow-xs"
-                              }`}
-                            >
-                              {ord.roomNumber === "Walk-In"
-                                ? "Walk-In POS"
-                                : `Room ${ord.roomNumber}`}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm">
+                              {ord.roomNumber === "Walk-In" ? "Walk-in" : `Room ${ord.roomNumber}`}
                             </span>
-                            <span className="font-mono text-[10px] text-gray-500 font-semibold">
-                              #{ord.token || ord.orderId}
-                            </span>
+                            <span className="font-mono text-[10px] text-gray-500">#{ord.token || ord.orderId}</span>
                           </div>
-
                           <Badge
-                            className={`text-[9.5px] font-bold ${
+                            className={`text-[10px] font-semibold ${
                               isDelivered
                                 ? "bg-emerald-100 text-emerald-800"
                                 : isHeld
@@ -1955,775 +1551,526 @@ export default function LaundryManager({
                                 : "bg-sky-100 text-sky-800"
                             }`}
                           >
-                            {isDelivered
-                              ? "✓ Delivered"
-                              : isHeld
-                              ? "⏱ Held on Room"
-                              : ord.status || "Received"}
+                            {isDelivered ? "Delivered" : isHeld ? "On hold" : ord.status || "Received"}
                           </Badge>
-                        </CardHeader>
+                        </div>
 
-                        <CardContent className="p-2.5 space-y-2 text-xs">
-                          {/* Guest info & turnaround speed */}
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-bold text-gray-900">{ord.guestName || "Guest"}</div>
-                              {ord.guestMobile && (
-                                <div className="text-[10px] text-gray-500">{ord.guestMobile}</div>
-                              )}
-                            </div>
-                            <div className="text-right">
-                              <span className="font-semibold text-gray-600 text-[10px] block">
-                                {ord.serviceSpeedLabel || ord.serviceSpeed}
-                              </span>
-                              {ord.deliveryDateTime && (
-                                <span className="text-[10px] text-blue-700 font-bold block">
-                                  Due: {ord.deliveryDateTime}
-                                </span>
-                              )}
-                            </div>
+                        <div className="flex items-start justify-between text-[11px]">
+                          <div>
+                            <div className="font-semibold">{ord.guestName || "Guest"}</div>
+                            {ord.guestMobile && <div className="text-gray-500">{ord.guestMobile}</div>}
                           </div>
-
-                          {/* Garment care breakdown tags */}
-                          <div className="bg-gray-50 p-1.5 rounded-lg border border-gray-100 space-y-1">
-                            <div className="text-[9.5px] font-semibold text-gray-500 flex justify-between">
-                              <span>Items Package:</span>
-                              <strong>{ord.totalGarments || ord.items?.length} pcs</strong>
-                            </div>
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {washCount > 0 && (
-                                <span className="px-1 py-0.2 rounded text-[9.5px] font-bold bg-cyan-100 text-cyan-900">
-                                  {washCount} Wash
-                                </span>
-                              )}
-                              {washPressCount > 0 && (
-                                <span className="px-1 py-0.2 rounded text-[9.5px] font-bold bg-blue-100 text-blue-900">
-                                  {washPressCount} Wash & Iron
-                                </span>
-                              )}
-                              {pressCount > 0 && (
-                                <span className="px-1 py-0.2 rounded text-[9.5px] font-bold bg-amber-100 text-amber-900">
-                                  {pressCount} Iron
-                                </span>
-                              )}
-                              {dryCleanCount > 0 && (
-                                <span className="px-1 py-0.2 rounded text-[9.5px] font-bold bg-purple-100 text-purple-900">
-                                  {dryCleanCount} Dry Clean
-                                </span>
-                              )}
-                            </div>
+                          <div className="text-right text-gray-500">
+                            <div>{ord.serviceSpeedLabel || ord.serviceSpeed}</div>
+                            {ord.deliveryDateTime && <div className="text-gray-800 font-medium">Due {ord.deliveryDateTime}</div>}
                           </div>
+                        </div>
 
-                          {/* Billing & Settlement status */}
-                          <div className="flex items-center justify-between pt-1 border-t border-gray-100">
-                            <span className="text-gray-600 font-medium">Bill Total:</span>
-                            <div className="flex items-center gap-1">
-                              <strong className="text-xs font-bold text-gray-950">
-                                ₹{Number(ord.grandTotal || ord.totalAmount || 0).toFixed(2)}
-                              </strong>
-                              <Badge
-                                variant="outline"
-                                className={`text-[8.5px] font-bold ${
-                                  ord.paymentStatus === "POSTED_TO_ROOM_BILL"
-                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                    : ord.paymentStatus === "HELD_ON_ROOM"
-                                    ? "bg-amber-50 text-amber-900 border-amber-300"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
-                                {ord.paymentStatus === "POSTED_TO_ROOM_BILL"
-                                  ? "Folio Posted"
-                                  : ord.paymentStatus === "HELD_ON_ROOM"
-                                  ? "Room Hold"
-                                  : ord.paymentMethod || "Direct"}
-                              </Badge>
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-[11px] text-gray-500 mr-1">{ord.totalGarments || ord.items?.length} pcs</span>
+                          {Object.entries(counts).map(([c, q]) => (
+                            <CareChip key={c} careType={c} qty={q} />
+                          ))}
+                        </div>
 
-                          {/* If Held on Room: Settlement Actions (Release Hold / Post to Bill) */}
-                          {isHeld && (
-                            <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1">
-                              <span className="text-[9.5px] font-bold text-amber-900 block">
-                                Settle Room Hold:
-                              </span>
-                              <div className="grid grid-cols-2 gap-1">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleReleaseHoldToCash(ord, "CASH")}
-                                  className="h-6 text-[9.5px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                                >
-                                  Settle Cash (Release)
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleConvertHoldToRoomFolio(ord)}
-                                  className="h-6 text-[9.5px] bg-blue-600 hover:bg-blue-700 text-white font-bold"
-                                >
-                                  Post to Hotel Bill
-                                </Button>
-                              </div>
-                            </div>
-                          )}
+                        <div className="flex items-center justify-between border-t border-gray-100 pt-1.5">
+                          <span className="font-bold text-sm">₹{Number(ord.grandTotal || ord.totalAmount || 0).toFixed(2)}</span>
+                          <Badge variant="outline" className={`text-[10px] font-semibold ${pay.cls}`}>
+                            {pay.text}
+                          </Badge>
+                        </div>
 
-                          {/* Delivery Action Button */}
-                          {isDelivered ? (
-                            <div className="text-[9.5px] text-emerald-800 bg-emerald-50 p-1.5 rounded border border-emerald-200 font-medium">
-                              ✓ Delivered by {ord.delivered_by || "Staff"}
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-xs"
-                              onClick={() => handleMarkDeliveredToRoom(ord)}
-                            >
-                              <Truck className="w-3 h-3 mr-1" /> Mark Delivered to Room
+                        {isHeld && (
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <Button size="sm" variant="outline" onClick={() => handleReleaseHoldToCash(ord, "CASH")} className="!h-7 text-[11px] font-semibold">
+                              Settle in cash
                             </Button>
-                          )}
-
-                          {/* Print & Preview links */}
-                          <div className="flex items-center justify-between pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreviewDocType("a4");
-                                setPreviewOrder(ord);
-                              }}
-                              className="text-[10px] text-blue-600 hover:underline font-semibold"
-                            >
-                              Preview
-                            </button>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-1.5 text-[10px] text-blue-700 border-blue-200 hover:bg-blue-50"
-                                onClick={() =>
-                                  printLaundryA4Bill({
-                                    order: ord,
-                                    institutionData,
-                                  })
-                                }
-                              >
-                                <FileText className="w-2.5 h-2.5 mr-1" /> A4 Bill
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-[10px]"
-                                onClick={() =>
-                                  printLaundryThermalSlip({
-                                    order: ord,
-                                    institutionData,
-                                    paperSize,
-                                  })
-                                }
-                              >
-                                <Printer className="w-2.5 h-2.5 mr-1" /> {paperSize}mm
-                              </Button>
-                            </div>
+                            <Button size="sm" variant="outline" onClick={() => handleConvertHoldToRoomFolio(ord)} className="!h-7 text-[11px] font-semibold">
+                              Post to room bill
+                            </Button>
                           </div>
-                        </CardContent>
-                      </Card>
+                        )}
+
+                        {isDelivered ? (
+                          <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                            Delivered by {ord.delivered_by || "staff"}
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => handleMarkDeliveredToRoom(ord)}
+                            className="w-full !h-7 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Truck className="w-3 h-3 mr-1" /> Mark delivered
+                          </Button>
+                        )}
+
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="!h-6 text-[11px] text-blue-700"
+                            onClick={() => {
+                              setPreviewDocType("a4");
+                              setPreviewOrder(ord);
+                            }}
+                          >
+                            Preview
+                          </Button>
+                          <Button size="sm" variant="outline" className="!h-6 text-[11px]" onClick={() => printA4(ord)}>
+                            A4
+                          </Button>
+                          <Button size="sm" variant="outline" className="!h-6 text-[11px]" onClick={() => printSlip(ord)}>
+                            {paperSize}mm
+                          </Button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               );
             })()}
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       )}
 
-      {/* =========================================================================
-          VIEW 3: DAY-BY-DAY STATISTICS & REVENUE ("which day how much all statics")
-         ========================================================================= */}
-      {activeTab === "statistics" && (
-        <Card className="border border-gray-200 shadow-xs bg-white rounded-xl">
-          <CardHeader className="p-3.5 bg-gray-50/70 border-b border-gray-100">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div>
-                <CardTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-600" />
-                  Day-by-Day Revenue & Performance Statistics
-                </CardTitle>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  Complete statistics: which day how much revenue, care service breakdowns, and settlement splits.
-                </p>
-              </div>
-
-              {/* Single Date Selector for Focused Inspection */}
-              <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs">
-                <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-gray-600 font-semibold text-[11px]">Focus Date:</span>
-                <input
-                  type="date"
-                  value={statsDateFilter}
-                  onChange={(e) => setStatsDateFilter(e.target.value)}
-                  className="bg-white border border-gray-300 rounded px-2 py-0.5 text-xs text-gray-800 font-bold"
-                />
-                {statsDateFilter !== currentDateStr && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[10px] px-1 text-blue-600"
-                    onClick={() => setStatsDateFilter(currentDateStr)}
-                  >
-                    Today
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="p-3.5 space-y-4">
-            {/* 4 Care Revenue Overview Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-              <Card className="p-2.5 border-cyan-200 bg-cyan-50/40">
-                <div className="text-[10px] font-bold text-cyan-800 uppercase flex items-center gap-1">
-                  <Waves className="w-3 h-3 text-cyan-600" /> Wash Only
-                </div>
-                <div className="text-lg font-black text-gray-900 mt-0.5">
-                  ₹{washOnlySales.toFixed(2)}
-                </div>
-                <div className="text-[10px] text-gray-500">{washOnlyPcs} garments</div>
-              </Card>
-
-              <Card className="p-2.5 border-blue-200 bg-blue-50/40">
-                <div className="text-[10px] font-bold text-blue-800 uppercase flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-blue-600" /> Wash & Iron
-                </div>
-                <div className="text-lg font-black text-gray-900 mt-0.5">
-                  ₹{washAndPressSales.toFixed(2)}
-                </div>
-                <div className="text-[10px] text-gray-500">{washAndPressPcs} garments</div>
-              </Card>
-
-              <Card className="p-2.5 border-amber-200 bg-amber-50/40">
-                <div className="text-[10px] font-bold text-amber-800 uppercase flex items-center gap-1">
-                  <Flame className="w-3 h-3 text-amber-600" /> Pressing Only
-                </div>
-                <div className="text-lg font-black text-gray-900 mt-0.5">
-                  ₹{pressSales.toFixed(2)}
-                </div>
-                <div className="text-[10px] text-gray-500">{pressPcs} garments</div>
-              </Card>
-
-              <Card className="p-2.5 border-purple-200 bg-purple-50/40">
-                <div className="text-[10px] font-bold text-purple-800 uppercase flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-purple-600" /> Dry Cleaning
-                </div>
-                <div className="text-lg font-black text-gray-900 mt-0.5">
-                  ₹{dryCleanSales.toFixed(2)}
-                </div>
-                <div className="text-[10px] text-gray-500">{dryCleanPcs} garments</div>
-              </Card>
+      {/* ----------------------------- STATISTICS --------------------------- */}
+      {activeTab === "statistics" && (() => {
+        const day = dailyStatsMap[statsDateFilter];
+        return (
+          <Panel className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="shrink-0 px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5 text-gray-500" />
+              <span className="text-gray-600 font-medium">Date</span>
+              <input
+                type="date"
+                value={statsDateFilter}
+                onChange={(e) => setStatsDateFilter(e.target.value)}
+                className="!h-7 bg-white border border-gray-300 rounded px-2 text-xs font-semibold"
+              />
+              {statsDateFilter !== currentDateStr && (
+                <Button variant="ghost" size="sm" className="!h-7 text-[11px] text-blue-600" onClick={() => setStatsDateFilter(currentDateStr)}>
+                  Today
+                </Button>
+              )}
+              <span className="ml-auto text-[11px] text-gray-500">
+                {day ? `${day.orders} orders · ${day.garments} pcs` : "No orders on this date"}
+              </span>
             </div>
 
-            {/* Day-by-Day Historical Sales Table ("which day how much all statics") */}
-            <div>
-              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2 flex items-center justify-between">
-                <span>Day-by-Day Revenue Ledger</span>
-                <span className="text-[10px] text-gray-400 font-normal">
-                  Aggregated from all completed and active laundry orders
-                </span>
-              </h4>
+            <div className="shrink-0 grid grid-cols-2 md:grid-cols-5 gap-2 p-3">
+              {CARE_IDS.map((c) => {
+                const ui = CARE_UI[c];
+                return (
+                  <div key={c} className="rounded-lg border border-gray-200 p-2.5">
+                    <div className="flex items-center gap-1 text-[11px] text-gray-600">
+                      <ui.Icon className="w-3 h-3" /> {ui.label}
+                    </div>
+                    <div className="text-base font-bold mt-0.5">₹{(day?.care[c].amt || 0).toFixed(2)}</div>
+                    <div className="text-[10px] text-gray-500">{day?.care[c].pcs || 0} garments</div>
+                  </div>
+                );
+              })}
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5">
+                <div className="text-[11px] text-blue-800">Day total</div>
+                <div className="text-base font-bold mt-0.5">₹{(day?.total || 0).toFixed(2)}</div>
+                <div className="text-[10px] text-blue-800/70">
+                  Folio ₹{(day?.folio || 0).toFixed(0)} · Direct ₹{(day?.pos || 0).toFixed(0)}
+                </div>
+              </div>
+            </div>
 
+            <div className="flex-1 min-h-0 overflow-auto px-3 pb-3">
+              <h4 className="font-semibold text-gray-700 mb-1.5">Daily revenue</h4>
               {Object.keys(dailyStatsMap).length === 0 ? (
-                <div className="text-center py-6 bg-gray-50 rounded-lg text-gray-400 text-xs">
-                  No historical laundry records recorded yet.
-                </div>
+                <div className="text-center py-8 text-gray-400">No laundry orders recorded yet.</div>
               ) : (
-                <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                  <table className="w-full text-xs text-left">
+                <table className="w-full text-xs text-left border border-gray-200 rounded-lg">
+                  <thead className="sticky top-0 bg-gray-50 text-gray-700">
+                    <tr className="border-b border-gray-200">
+                      <th className="py-1.5 px-3 font-semibold">Date</th>
+                      <th className="py-1.5 px-3 text-center font-semibold">Orders</th>
+                      <th className="py-1.5 px-3 text-center font-semibold">Pcs</th>
+                      <th className="py-1.5 px-3 text-right font-semibold">Wash</th>
+                      <th className="py-1.5 px-3 text-right font-semibold">Wash + Iron</th>
+                      <th className="py-1.5 px-3 text-right font-semibold">Iron</th>
+                      <th className="py-1.5 px-3 text-right font-semibold">Dry clean</th>
+                      <th className="py-1.5 px-3 text-right font-semibold">Room bill</th>
+                      <th className="py-1.5 px-3 text-right font-semibold">Cash / UPI</th>
+                      <th className="py-1.5 px-3 text-right font-semibold">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {Object.values(dailyStatsMap)
+                      .sort((a, b) => (b.date > a.date ? 1 : -1))
+                      .map((d) => (
+                        <tr
+                          key={d.date}
+                          onClick={() => setStatsDateFilter(d.date)}
+                          className={`cursor-pointer hover:bg-gray-50 ${d.date === statsDateFilter ? "bg-blue-50/60" : ""}`}
+                        >
+                          <td className="py-1.5 px-3 font-semibold">
+                            {d.date}
+                            {d.date === currentDateStr ? " (today)" : ""}
+                          </td>
+                          <td className="py-1.5 px-3 text-center">{d.orders}</td>
+                          <td className="py-1.5 px-3 text-center">{d.garments}</td>
+                          <td className="py-1.5 px-3 text-right">₹{d.care.wash_only.amt.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right">₹{d.care.wash_and_press.amt.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right">₹{d.care.press_only.amt.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right">₹{d.care.dry_clean.amt.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right">₹{d.folio.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right">₹{d.pos.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right font-bold">₹{d.total.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Panel>
+        );
+      })()}
+
+      {/* ------------------------------ RATES ------------------------------- */}
+      {activeTab === "price_sheet" && (
+        <Panel className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="shrink-0 px-3 py-2 border-b border-gray-100 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={() => setShowBatchAddSection(!showBatchAddSection)}
+                  className="!h-7 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Plus className="w-3 h-3 mr-1" /> {showBatchAddSection ? "Close form" : "Add garments"}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setEditSpeedsModalOpen(true)} className="!h-7 text-xs">
+                  <Settings className="w-3 h-3 mr-1" /> Delivery charges
+                </Button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" onClick={handleResetCatalog} disabled={isSavingConfig} className="!h-7 text-xs text-gray-600">
+                  <RotateCcw className="w-3 h-3 mr-1" /> Clear all
+                </Button>
+                <Button size="sm" onClick={handleSaveToBackendDatabase} disabled={isSavingConfig} className="!h-7 text-xs font-semibold bg-gray-900 hover:bg-gray-800 text-white">
+                  <Save className="w-3 h-3 mr-1" /> {isSavingConfig ? "Saving..." : "Save rates"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="flex items-center gap-1 font-semibold text-gray-700">
+                <Clock className="w-3.5 h-3.5 text-gray-500" /> Delivery extra
+              </span>
+              {serviceSpeeds.map((sp) => (
+                <div key={sp.id} className="flex items-center gap-1 rounded border border-gray-200 px-2 py-1">
+                  <span className="font-semibold">{sp.shortLabel}</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={sp.surchargePercent}
+                    onChange={(e) => handleSpeedSurchargeChange(sp.id, e.target.value, sp.flatExtraAmount)}
+                    className="!h-6 w-12 text-center text-xs px-1"
+                  />
+                  <span className="text-gray-500">%</span>
+                  <span className="text-gray-300">|</span>
+                  <span className="text-gray-500">₹</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={sp.flatExtraAmount || 0}
+                    onChange={(e) => handleSpeedSurchargeChange(sp.id, sp.surchargePercent, e.target.value)}
+                    className="!h-6 w-12 text-center text-xs px-1"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+            {showBatchAddSection && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-2.5 space-y-2">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50 text-gray-700 font-bold">
-                        <th className="py-2 px-3">Date</th>
-                        <th className="py-2 px-3 text-center">Orders</th>
-                        <th className="py-2 px-3 text-center">Garments</th>
-                        <th className="py-2 px-3 text-right">Wash (₹)</th>
-                        <th className="py-2 px-3 text-right">Wash & Iron (₹)</th>
-                        <th className="py-2 px-3 text-right">Iron Only (₹)</th>
-                        <th className="py-2 px-3 text-right">Dry Clean (₹)</th>
-                        <th className="py-2 px-3 text-right">Room Folio (₹)</th>
-                        <th className="py-2 px-3 text-right">Cash / UPI (₹)</th>
-                        <th className="py-2 px-3 text-right font-black">Total Revenue (₹)</th>
+                      <tr className="text-[11px] text-gray-600 text-left">
+                        <th className="pb-1 min-w-[150px] font-semibold">Garment name *</th>
+                        <th className="pb-1 w-28 font-semibold">Category</th>
+                        <th className="pb-1 w-20 text-center font-semibold">Wash ₹</th>
+                        <th className="pb-1 w-24 text-center font-semibold">Wash + Iron ₹</th>
+                        <th className="pb-1 w-20 text-center font-semibold">Iron ₹</th>
+                        <th className="pb-1 w-24 text-center font-semibold">Dry clean ₹</th>
+                        <th className="pb-1 w-8" />
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {Object.values(dailyStatsMap)
-                        .sort((a, b) => (b.date > a.date ? 1 : -1))
-                        .map((dayRow) => (
-                          <tr
-                            key={dayRow.date}
-                            className={`hover:bg-gray-50/60 ${
-                              dayRow.date === currentDateStr ? "bg-blue-50/30 font-semibold" : ""
-                            }`}
-                          >
-                            <td className="py-2 px-3 font-bold text-gray-900">
-                              {dayRow.date} {dayRow.date === currentDateStr ? "(Today)" : ""}
+                    <tbody>
+                      {batchGarments.map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="py-0.5 pr-1.5">
+                            <Input
+                              placeholder={idx === 0 ? "e.g. Shirt" : idx === 1 ? "e.g. Saree" : "e.g. Bedsheet"}
+                              value={row.name}
+                              onChange={(e) => handleUpdateBatchRow(idx, "name", e.target.value)}
+                              className="!h-7 text-xs bg-white"
+                            />
+                          </td>
+                          <td className="py-0.5 pr-1.5">
+                            <select
+                              value={row.category}
+                              onChange={(e) => handleUpdateBatchRow(idx, "category", e.target.value)}
+                              className="!h-7 text-xs bg-white border border-gray-200 rounded px-2 w-full"
+                            >
+                              <option value="Men">Men</option>
+                              <option value="Women">Ladies</option>
+                              <option value="Kids">Kids</option>
+                              <option value="Linen">Linen</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </td>
+                          {["wash_only", "wash_and_press", "press_only", "dry_clean"].map((f) => (
+                            <td key={f} className="py-0.5 pr-1.5">
+                              <Input
+                                type="number"
+                                min="0"
+                                placeholder="0"
+                                value={row[f]}
+                                onChange={(e) => handleUpdateBatchRow(idx, f, e.target.value)}
+                                className="!h-7 text-xs bg-white text-center"
+                              />
                             </td>
-                            <td className="py-2 px-3 text-center">{dayRow.ordersCount}</td>
-                            <td className="py-2 px-3 text-center">{dayRow.garmentsCount} pcs</td>
-                            <td className="py-2 px-3 text-right text-cyan-800">
-                              ₹{dayRow.washOnlySales.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-3 text-right text-blue-800">
-                              ₹{dayRow.washAndPressSales.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-3 text-right text-amber-800">
-                              ₹{dayRow.pressSales.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-3 text-right text-purple-800">
-                              ₹{dayRow.dryCleanSales.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-3 text-right text-blue-900">
-                              ₹{dayRow.folioSales.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-3 text-right text-emerald-900">
-                              ₹{dayRow.posSales.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-3 text-right font-black text-gray-950">
-                              ₹{dayRow.totalSales.toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
+                          ))}
+                          <td className="py-0.5 text-center">
+                            <button type="button" onClick={() => handleRemoveBatchRow(idx)} className="text-gray-400 hover:text-red-600 p-1">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* =========================================================================
-          VIEW 4: PRICE SHEET & RATE MASTER ("for item price there will be different shet thinsk")
-         ========================================================================= */}
-      {activeTab === "price_sheet" && (
-        <Card className="border border-gray-200 shadow-xs bg-white rounded-xl">
-          <CardHeader className="p-3.5 bg-gray-50/70 border-b border-gray-100">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div>
-                <CardTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <Database className="w-4 h-4 text-blue-600" />
-                  Garment Price Sheet & Rates Master (Database Backed)
-                </CardTitle>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  Dynamic rate sheet for all garments across Wash, Wash & Press, Pressing, and Dry Clean.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setNewGarmentModalOpen(true)}
-                  className="text-xs h-7"
-                >
-                  <Plus className="w-3 h-3 mr-1" /> Add Custom Garment
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetCatalog}
-                  disabled={isSavingConfig}
-                  className="text-xs h-7 text-gray-600"
-                >
-                  <RotateCcw className="w-3 h-3 mr-1" /> Reset Defaults
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSaveToBackendDatabase}
-                  disabled={isSavingConfig}
-                  className="bg-black text-white hover:bg-gray-800 text-xs font-bold h-7 shadow-xs"
-                >
-                  <Save className="w-3 h-3 mr-1" />
-                  {isSavingConfig ? "Saving..." : "Save All to Database"}
-                </Button>
-              </div>
-            </div>
-
-            {/* Express Turnaround Surcharges Config Row */}
-            <div className="mt-2.5 p-2 bg-blue-50/70 rounded-lg border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-              <span className="font-bold text-blue-950 flex items-center gap-1.5 text-[11px]">
-                <Clock className="w-3.5 h-3.5 text-blue-600" /> Express Turnaround Surcharges (%):
-              </span>
-              <div className="flex items-center gap-3 flex-wrap">
-                {serviceSpeeds.map((sp) => (
-                  <div key={sp.id} className="flex items-center gap-1">
-                    <span className="text-gray-700 font-semibold text-[11px]">{sp.shortLabel}:</span>
-                    <Input
-                      type="number"
-                      value={sp.surchargePercent}
-                      onChange={(e) => handleSpeedSurchargeChange(sp.id, e.target.value)}
-                      className="h-6 w-14 text-center text-xs bg-white border-blue-200 font-bold"
-                    />
-                    <span className="text-gray-500 font-bold text-[11px]">%</span>
+                <div className="flex items-center justify-between">
+                  <Button type="button" variant="outline" size="sm" onClick={handleAddBatchRow} className="!h-7 text-xs bg-white">
+                    <Plus className="w-3 h-3 mr-1" /> Add row
+                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowBatchAddSection(false)} className="!h-7 text-xs">
+                      Cancel
+                    </Button>
+                    <Button type="button" size="sm" onClick={handleSaveBatchGarments} disabled={isSavingConfig} className="!h-7 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
+                      <Save className="w-3 h-3 mr-1" /> Save garments
+                    </Button>
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-          </CardHeader>
+            )}
 
-          <CardContent className="p-3.5">
-            <div className="overflow-x-auto max-h-[600px] border border-gray-200 rounded-xl">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50 text-gray-700 font-bold sticky top-0 z-10">
-                    <th className="py-2 px-3">Garment Item</th>
-                    <th className="py-2 px-3">Category</th>
-                    <th className="py-2 px-3 text-center">Wash Only Rate (₹)</th>
-                    <th className="py-2 px-3 text-center">Wash & Iron Rate (₹)</th>
-                    <th className="py-2 px-3 text-center">Press Only Rate (₹)</th>
-                    <th className="py-2 px-3 text-center">Dry Clean Rate (₹)</th>
-                    <th className="py-2 px-3 text-right">Action</th>
+            <table className="w-full text-xs text-left border border-gray-200">
+              <thead className="sticky top-0 bg-gray-50 text-gray-700 z-10">
+                <tr className="border-b border-gray-200">
+                  <th className="py-1.5 px-3 font-semibold">Garment</th>
+                  <th className="py-1.5 px-3 font-semibold">Category</th>
+                  <th className="py-1.5 px-3 text-center font-semibold">Wash ₹</th>
+                  <th className="py-1.5 px-3 text-center font-semibold">Wash + Iron ₹</th>
+                  <th className="py-1.5 px-3 text-center font-semibold">Iron ₹</th>
+                  <th className="py-1.5 px-3 text-center font-semibold">Dry clean ₹</th>
+                  <th className="py-1.5 px-3 w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {catalog.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-10 text-gray-500">
+                      <Shirt className="w-7 !h-7 text-gray-300 mx-auto mb-2" />
+                      <p className="font-semibold text-gray-700">No garments yet</p>
+                      <p className="text-[11px] mt-0.5">Use “Add garments” to build your rate sheet.</p>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {catalog.map((garment) => (
-                    <tr key={garment.id} className="hover:bg-gray-50/50">
-                      <td className="py-2 px-3 font-bold text-gray-900">{garment.name}</td>
-                      <td className="py-2 px-3">
-                        <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.2 rounded uppercase">
-                          {garment.category}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        <Input
-                          type="number"
-                          value={garment.rates?.wash_only || ""}
-                          onChange={(e) => handlePriceChange(garment.id, "wash_only", e.target.value)}
-                          className="h-7 w-20 mx-auto text-xs text-center font-semibold bg-white"
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        <Input
-                          type="number"
-                          value={garment.rates?.wash_and_press || ""}
-                          onChange={(e) => handlePriceChange(garment.id, "wash_and_press", e.target.value)}
-                          className="h-7 w-20 mx-auto text-xs text-center font-semibold bg-white"
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        <Input
-                          type="number"
-                          value={garment.rates?.press_only || ""}
-                          onChange={(e) => handlePriceChange(garment.id, "press_only", e.target.value)}
-                          className="h-7 w-20 mx-auto text-xs text-center font-semibold bg-white"
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        <Input
-                          type="number"
-                          value={garment.rates?.dry_clean || ""}
-                          onChange={(e) => handlePriceChange(garment.id, "dry_clean", e.target.value)}
-                          className="h-7 w-20 mx-auto text-xs text-center font-semibold bg-white"
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteGarment(garment.id)}
-                          className="text-gray-400 hover:text-red-600 p-1"
-                        >
+                ) : (
+                  catalog.map((garment) => (
+                    <tr key={garment.id} className="hover:bg-gray-50">
+                      <td className="py-1.5 px-3 font-semibold">{garment.name}</td>
+                      <td className="py-1.5 px-3 text-gray-500">{garment.category === "Women" ? "Ladies" : garment.category}</td>
+                      {["wash_only", "wash_and_press", "press_only", "dry_clean"].map((f) => (
+                        <td key={f} className="py-1 px-3 text-center">
+                          <Input
+                            type="number"
+                            value={garment.rates?.[f] || ""}
+                            onChange={(e) => handlePriceChange(garment.id, f, e.target.value)}
+                            className="!h-7 w-20 mx-auto text-xs text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-1 px-3 text-right">
+                        <button type="button" onClick={() => handleDeleteGarment(garment.id)} className="text-gray-400 hover:text-red-600 p-1">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
       )}
 
-      {/* =========================================================================
-          VIEW 5: BAGS & TRACKER
-         ========================================================================= */}
+      {/* ------------------------------ TRACKER ----------------------------- */}
       {activeTab === "tracker" && (
-        <Card className="border border-gray-200 shadow-xs bg-white rounded-xl">
-          <CardHeader className="p-3.5 bg-gray-50/70 border-b border-gray-100">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div>
-                <CardTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <Barcode className="w-4 h-4 text-blue-600" />
-                  Laundry Bags & Tickets Tracker
-                </CardTitle>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  Scan barcode or search by Room #, Token, or Guest Name to view lifecycle & reprint slips.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="relative min-w-[200px]">
-                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  <Input
-                    type="text"
-                    value={barcodeQuery}
-                    onChange={(e) => setBarcodeQuery(e.target.value)}
-                    placeholder="Scan Barcode / Room #..."
-                    className="h-7 pl-8 text-xs bg-white border-gray-300"
-                  />
-                </div>
-
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-7 text-xs w-32 bg-white">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="received">Received</SelectItem>
-                    <SelectItem value="in process">In Process</SelectItem>
-                    <SelectItem value="ready">Ready</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+        <Panel className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="shrink-0 px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+            <div className="relative w-56">
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Input
+                value={barcodeQuery}
+                onChange={(e) => setBarcodeQuery(e.target.value)}
+                placeholder="Scan token, room or guest"
+                className="!h-7 pl-8 text-xs"
+              />
             </div>
-          </CardHeader>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="!h-7 text-xs w-32">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="received">Received</SelectItem>
+                <SelectItem value="in process">In process</SelectItem>
+                <SelectItem value="ready">Ready</SelectItem>
+                <SelectItem value="delivered">Delivered</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="ml-auto text-[11px] text-gray-500">{filteredTrackerOrders.length} orders</span>
+          </div>
 
-          <CardContent className="p-3.5">
+          <div className="flex-1 min-h-0 overflow-auto">
             {filteredTrackerOrders.length === 0 ? (
-              <div className="text-center py-10 text-gray-400">
-                <Barcode className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-xs font-semibold text-gray-700">No matching orders found</p>
+              <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                <Barcode className="w-8 !h-8 mb-2 opacity-50" />
+                <p className="font-semibold text-gray-700">No matching orders</p>
               </div>
             ) : (
-              <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50 text-gray-700 font-bold">
-                      <th className="py-2 px-3">Token #</th>
-                      <th className="py-2 px-3">Room / Guest</th>
-                      <th className="py-2 px-3">Garments</th>
-                      <th className="py-2 px-3">Delivery Due</th>
-                      <th className="py-2 px-3 text-right">Total Amount</th>
-                      <th className="py-2 px-3">Payment</th>
-                      <th className="py-2 px-3">Status</th>
-                      <th className="py-2 px-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredTrackerOrders.map((ord) => (
-                      <tr key={ord.orderId || ord.token} className="hover:bg-gray-50/50">
-                        <td className="py-2 px-3 font-mono font-bold text-blue-900">
-                          #{ord.token || ord.orderId}
-                        </td>
-                        <td className="py-2 px-3">
-                          <div className="font-bold text-gray-900">
-                            {ord.roomNumber === "Walk-In" ? "Walk-In" : `Room ${ord.roomNumber}`}
-                          </div>
+              <table className="w-full text-xs text-left">
+                <thead className="sticky top-0 bg-gray-50 text-gray-700">
+                  <tr className="border-b border-gray-200">
+                    <th className="py-1.5 px-3 font-semibold">Token</th>
+                    <th className="py-1.5 px-3 font-semibold">Room / guest</th>
+                    <th className="py-1.5 px-3 font-semibold">Pcs</th>
+                    <th className="py-1.5 px-3 font-semibold">Due</th>
+                    <th className="py-1.5 px-3 text-right font-semibold">Amount</th>
+                    <th className="py-1.5 px-3 font-semibold">Payment</th>
+                    <th className="py-1.5 px-3 font-semibold">Status</th>
+                    <th className="py-1.5 px-3 text-right font-semibold">Print</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredTrackerOrders.map((ord) => {
+                    const pay = paymentBadge(ord);
+                    return (
+                      <tr key={ord.orderId || ord.token} className="hover:bg-gray-50">
+                        <td className="py-1.5 px-3 font-mono font-semibold text-blue-800">#{ord.token || ord.orderId}</td>
+                        <td className="py-1.5 px-3">
+                          <div className="font-semibold">{ord.roomNumber === "Walk-In" ? "Walk-in" : `Room ${ord.roomNumber}`}</div>
                           <div className="text-[10px] text-gray-500">{ord.guestName}</div>
                         </td>
-                        <td className="py-2 px-3">
-                          <span className="font-semibold text-gray-800">
-                            {ord.totalGarments || ord.items?.length} pcs
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-gray-600">
-                          {ord.deliveryDateTime || ord.createdAt?.split("T")[0]}
-                        </td>
-                        <td className="py-2 px-3 text-right font-black text-gray-900">
-                          ₹{Number(ord.grandTotal || ord.totalAmount || 0).toFixed(2)}
-                        </td>
-                        <td className="py-2 px-3">
-                          <Badge
-                            variant="outline"
-                            className={`text-[9px] font-bold ${
-                              ord.paymentStatus === "POSTED_TO_ROOM_BILL"
-                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                : ord.paymentStatus === "HELD_ON_ROOM"
-                                ? "bg-amber-50 text-amber-900 border-amber-300"
-                                : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {ord.paymentStatus === "POSTED_TO_ROOM_BILL"
-                              ? "Folio Posted"
-                              : ord.paymentStatus === "HELD_ON_ROOM"
-                              ? "Room Hold"
-                              : ord.paymentMethod || "Paid"}
+                        <td className="py-1.5 px-3">{ord.totalGarments || ord.items?.length}</td>
+                        <td className="py-1.5 px-3 text-gray-600">{ord.deliveryDateTime || ord.createdAt?.split("T")[0]}</td>
+                        <td className="py-1.5 px-3 text-right font-bold">₹{Number(ord.grandTotal || ord.totalAmount || 0).toFixed(2)}</td>
+                        <td className="py-1.5 px-3">
+                          <Badge variant="outline" className={`text-[10px] font-semibold ${pay.cls}`}>
+                            {pay.text}
                           </Badge>
                         </td>
-                        <td className="py-2 px-3">
-                          <Select
-                            value={ord.status || "Received"}
-                            onValueChange={(val) => handleUpdateOrderStatus(ord.orderId, val)}
-                          >
-                            <SelectTrigger className="h-6 w-24 text-[10px] bg-white">
+                        <td className="py-1.5 px-3">
+                          <Select value={ord.status || "Received"} onValueChange={(val) => handleUpdateOrderStatus(ord.orderId, val)}>
+                            <SelectTrigger className="!h-6 w-28 text-[11px]">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Received">Received</SelectItem>
-                              <SelectItem value="In Process">In Process</SelectItem>
+                              <SelectItem value="In Process">In process</SelectItem>
                               <SelectItem value="Ready">Ready</SelectItem>
                               <SelectItem value="Delivered">Delivered</SelectItem>
                             </SelectContent>
                           </Select>
                         </td>
-                        <td className="py-2 px-3 text-right">
+                        <td className="py-1.5 px-3">
                           <div className="flex items-center justify-end gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-1.5 text-[10px] text-blue-700 border-blue-200 hover:bg-blue-50 font-semibold"
-                              onClick={() =>
-                                printLaundryA4Bill({
-                                  order: ord,
-                                  institutionData,
-                                })
-                              }
-                            >
-                              <FileText className="w-2.5 h-2.5 mr-1" /> A4 Bill
+                            <Button size="sm" variant="outline" className="!h-6 px-2 text-[11px]" onClick={() => printA4(ord)}>
+                              <FileText className="w-3 h-3 mr-1" /> A4
                             </Button>
-                            <Button
-                              size="sm"
-                              className="h-6 px-2 text-[10px] bg-black text-white hover:bg-gray-800"
-                              onClick={() =>
-                                printLaundryThermalSlip({
-                                  order: ord,
-                                  institutionData,
-                                  paperSize,
-                                })
-                              }
-                            >
-                              <Printer className="w-2.5 h-2.5 mr-1" /> {paperSize}mm
+                            <Button size="sm" variant="outline" className="!h-6 px-2 text-[11px]" onClick={() => printSlip(ord)}>
+                              <Printer className="w-3 h-3 mr-1" /> {paperSize}mm
                             </Button>
                           </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       )}
 
-      {/* =========================================================================
-          MODAL 1: PREVIEW & DIRECT PRINT (A4 TAX INVOICE & THERMAL SLIP)
-         ========================================================================= */}
+      {/* --------------------------- BILL PREVIEW --------------------------- */}
       {previewOrder && (
         <Dialog open={Boolean(previewOrder)} onOpenChange={() => setPreviewOrder(null)}>
-          <DialogContent className={`${previewDocType === "a4" ? "max-w-4xl" : "max-w-md"} p-3 sm:p-4 bg-gray-100 max-h-[92vh] flex flex-col transition-all`}>
+          <DialogContent
+            className={`${previewDocType === "a4" ? "max-w-4xl" : "max-w-md"} p-3 bg-gray-100 max-h-[92vh] flex flex-col`}
+          >
             <DialogHeader className="shrink-0 pb-2 border-b border-gray-200">
-              <DialogTitle className="text-xs font-bold text-gray-900 flex flex-wrap items-center justify-between gap-2">
+              <DialogTitle className="text-xs font-semibold flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5">
                   <Receipt className="w-4 h-4 text-blue-600" />
-                  Laundry Bill #{previewOrder.token || previewOrder.orderId}
+                  Laundry bill #{previewOrder.token || previewOrder.orderId}
                   {previewOrder.roomNumber && previewOrder.roomNumber !== "Walk-In" && (
-                    <Badge className="bg-blue-600 text-white text-[10px] ml-1">
-                      Room {previewOrder.roomNumber}
-                    </Badge>
+                    <Badge className="bg-blue-600 text-white text-[10px]">Room {previewOrder.roomNumber}</Badge>
                   )}
                 </span>
-
-                {/* Document Type Switcher: A4 Bill vs 80mm vs 58mm */}
-                <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-gray-300 text-[11px] shadow-2xs">
-                  <button
-                    onClick={() => setPreviewDocType("a4")}
-                    className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
-                      previewDocType === "a4"
-                        ? "bg-blue-600 text-white shadow-xs"
-                        : "text-gray-700 hover:text-black hover:bg-gray-100"
-                    }`}
-                  >
-                    <FileText className="w-3 h-3" />
-                    <span>A4 Tax Invoice</span>
-                  </button>
-                  <button
-                    onClick={() => {
+                <Segmented
+                  value={previewDocType === "a4" ? "a4" : paperSize}
+                  onChange={(v) => {
+                    if (v === "a4") setPreviewDocType("a4");
+                    else {
                       setPreviewDocType("thermal");
-                      setPaperSize("80");
-                    }}
-                    className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
-                      previewDocType === "thermal" && paperSize === "80"
-                        ? "bg-black text-white shadow-xs"
-                        : "text-gray-700 hover:text-black hover:bg-gray-100"
-                    }`}
-                  >
-                    <Printer className="w-3 h-3" />
-                    <span>80mm Thermal</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPreviewDocType("thermal");
-                      setPaperSize("58");
-                    }}
-                    className={`px-2 py-1 rounded-md font-bold transition-all ${
-                      previewDocType === "thermal" && paperSize === "58"
-                        ? "bg-black text-white shadow-xs"
-                        : "text-gray-700 hover:text-black hover:bg-gray-100"
-                    }`}
-                  >
-                    <span>58mm</span>
-                  </button>
-                </div>
+                      setPaperSize(v);
+                    }
+                  }}
+                  options={[
+                    { id: "a4", label: "A4 invoice" },
+                    { id: "80", label: "80mm" },
+                    { id: "58", label: "58mm" },
+                  ]}
+                />
               </DialogTitle>
             </DialogHeader>
 
-            {/* Document Body */}
-            <div className="flex-1 overflow-y-auto my-2 p-2 sm:p-4 bg-white border border-gray-300 rounded-lg shadow-sm mx-auto w-full">
+            <div className="flex-1 overflow-y-auto my-2 p-3 bg-white border border-gray-300 rounded-lg w-full">
               {previewDocType === "a4" ? (
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: getLaundryA4BillHTML({
-                      order: previewOrder,
-                      institutionData,
-                    }),
-                  }}
-                />
+                <div dangerouslySetInnerHTML={{ __html: getLaundryA4BillHTML({ order: previewOrder, institutionData }) }} />
               ) : (
                 <div
                   className="font-mono max-w-sm mx-auto"
                   dangerouslySetInnerHTML={{
-                    __html: getLaundryThermalSlipHTML({
-                      order: previewOrder,
-                      institutionData,
-                      paperSize,
-                    }),
+                    __html: getLaundryThermalSlipHTML({ order: previewOrder, institutionData, paperSize }),
                   }}
                 />
               )}
             </div>
 
-            {/* Modal Footer with Direct Print Actions */}
             <DialogFooter className="shrink-0 pt-2 border-t border-gray-200 flex flex-row items-center justify-between gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPreviewOrder(null)}
-                className="h-8 text-xs font-semibold"
-              >
+              <Button variant="outline" size="sm" onClick={() => setPreviewOrder(null)} className="!h-8 text-xs">
                 Close
               </Button>
-
               <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs font-bold border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100"
-                  onClick={() =>
-                    printLaundryA4Bill({
-                      order: previewOrder,
-                      institutionData,
-                    })
-                  }
-                >
-                  <FileText className="w-3.5 h-3.5 mr-1 text-blue-600" /> Print A4 Bill
+                <Button size="sm" variant="outline" className="!h-8 text-xs" onClick={() => printA4(previewOrder)}>
+                  <FileText className="w-3.5 h-3.5 mr-1" /> Print A4
                 </Button>
-                <Button
-                  size="sm"
-                  className="h-8 text-xs font-bold bg-black text-white hover:bg-gray-800"
-                  onClick={() =>
-                    printLaundryThermalSlip({
-                      order: previewOrder,
-                      institutionData,
-                      paperSize,
-                    })
-                  }
-                >
-                  <Printer className="w-3.5 h-3.5 mr-1" /> Print {paperSize}mm Slip
+                <Button size="sm" className="!h-8 text-xs bg-gray-900 text-white hover:bg-gray-800" onClick={() => printSlip(previewOrder)}>
+                  <Printer className="w-3.5 h-3.5 mr-1" /> Print {paperSize}mm
                 </Button>
               </div>
             </DialogFooter>
@@ -2731,114 +2078,85 @@ export default function LaundryManager({
         </Dialog>
       )}
 
-      {/* =========================================================================
-          MODAL 2: ADD NEW CUSTOM GARMENT ITEM
-         ========================================================================= */}
-      <Dialog open={newGarmentModalOpen} onOpenChange={setNewGarmentModalOpen}>
+      {/* ------------------------- DELIVERY CHARGES ------------------------- */}
+      <Dialog open={editSpeedsModalOpen} onOpenChange={setEditSpeedsModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <Plus className="w-4 h-4 text-blue-600" />
-              Add Custom Garment to Database
+            <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+              <Clock className="w-4 h-4 text-blue-600" /> Delivery speeds and extra charges
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3 py-2 text-xs">
-            <div>
-              <Label className="text-xs font-semibold text-gray-700 block mb-1">
-                Garment Item Name *
-              </Label>
-              <Input
-                value={newGarmentData.name}
-                onChange={(e) => setNewGarmentData({ ...newGarmentData, name: e.target.value })}
-                placeholder="e.g. Designer Lehenga, Sherwani, Quilt..."
-                className="h-8 text-xs"
-              />
-            </div>
-
-            <div>
-              <Label className="text-xs font-semibold text-gray-700 block mb-1">Category</Label>
-              <Select
-                value={newGarmentData.category}
-                onValueChange={(val) => setNewGarmentData({ ...newGarmentData, category: val })}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Men">Men</SelectItem>
-                  <SelectItem value="Women">Ladies</SelectItem>
-                  <SelectItem value="Kids">Kids</SelectItem>
-                  <SelectItem value="Linen">Linen</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <div>
-                <Label className="text-[11px] font-semibold text-gray-600 block mb-1">
-                  Wash Only (₹)
-                </Label>
-                <Input
-                  type="number"
-                  value={newGarmentData.wash_only}
-                  onChange={(e) => setNewGarmentData({ ...newGarmentData, wash_only: e.target.value })}
-                  placeholder="0"
-                  className="h-8 text-xs text-center font-bold"
-                />
-              </div>
-
-              <div>
-                <Label className="text-[11px] font-semibold text-gray-600 block mb-1">
-                  Wash & Iron (₹)
-                </Label>
-                <Input
-                  type="number"
-                  value={newGarmentData.wash_and_press}
-                  onChange={(e) => setNewGarmentData({ ...newGarmentData, wash_and_press: e.target.value })}
-                  placeholder="0"
-                  className="h-8 text-xs text-center font-bold"
-                />
-              </div>
-
-              <div>
-                <Label className="text-[11px] font-semibold text-gray-600 block mb-1">
-                  Iron Only (₹)
-                </Label>
-                <Input
-                  type="number"
-                  value={newGarmentData.press_only}
-                  onChange={(e) => setNewGarmentData({ ...newGarmentData, press_only: e.target.value })}
-                  placeholder="0"
-                  className="h-8 text-xs text-center font-bold"
-                />
-              </div>
-
-              <div>
-                <Label className="text-[11px] font-semibold text-gray-600 block mb-1">
-                  Dry Clean (₹)
-                </Label>
-                <Input
-                  type="number"
-                  value={newGarmentData.dry_clean}
-                  onChange={(e) => setNewGarmentData({ ...newGarmentData, dry_clean: e.target.value })}
-                  placeholder="0"
-                  className="h-8 text-xs text-center font-bold"
-                />
-              </div>
+          <div className="space-y-3 py-1 text-xs">
+            <p className="text-[11px] text-gray-500">
+              Set a percentage, a flat fee in ₹, or both for each delivery speed.
+            </p>
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+              {serviceSpeeds.map((sp, idx) => {
+                const patch = (changes) => {
+                  const updated = [...serviceSpeeds];
+                  updated[idx] = { ...updated[idx], ...changes };
+                  setServiceSpeeds(updated);
+                };
+                return (
+                  <div key={sp.id} className="p-2.5 rounded-lg border border-gray-200 space-y-2">
+                    <div className="font-semibold">
+                      {sp.shortLabel} <span className="font-normal text-gray-500">({sp.label})</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-[10px] text-gray-600 block mb-0.5">Label</Label>
+                        <Input value={sp.shortLabel} onChange={(e) => patch({ shortLabel: e.target.value })} className="!h-7 text-xs" />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-gray-600 block mb-0.5">Extra (%)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={sp.surchargePercent}
+                          onChange={(e) => patch({ surchargePercent: Math.max(0, Number(e.target.value) || 0) })}
+                          className="!h-7 text-xs text-center"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-gray-600 block mb-0.5">Flat extra (₹)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={sp.flatExtraAmount || 0}
+                          onChange={(e) => patch({ flatExtraAmount: Math.max(0, Number(e.target.value) || 0) })}
+                          className="!h-7 text-xs text-center"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" size="sm" onClick={() => setNewGarmentModalOpen(false)}>
+            <Button variant="outline" size="sm" onClick={() => setEditSpeedsModalOpen(false)}>
               Cancel
             </Button>
             <Button
               size="sm"
-              onClick={handleAddNewGarment}
-              className="bg-black text-white hover:bg-gray-800 font-bold"
+              disabled={isSavingConfig}
+              onClick={async () => {
+                setIsSavingConfig(true);
+                try {
+                  await saveLaundryConfigToBackend({ catalog, serviceSpeeds, institutionData, updateInstitutionData });
+                  toast.success("Delivery charges saved");
+                  setEditSpeedsModalOpen(false);
+                } catch (e) {
+                  toast.error("Could not save delivery charges");
+                } finally {
+                  setIsSavingConfig(false);
+                }
+              }}
+              className="bg-gray-900 text-white hover:bg-gray-800 font-semibold"
             >
-              Add to Catalog
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>

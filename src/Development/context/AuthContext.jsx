@@ -50,31 +50,48 @@ export const AuthContextProvider = ({ children }) => {
       userType: user.role || user.userType,
     };
 
-    if (Array.isArray(returnVal.userType)) {
-      returnVal.userTypes = returnVal.userType.map((userType) =>
-        userType.toLowerCase()
-      );
-      returnVal.userType =
-        localStorage.getItem("userType") &&
-        returnVal.userTypes.includes(
-          localStorage.getItem("userType").toLowerCase()
-        )
-          ? localStorage.getItem("userType").toLowerCase()
-          : returnVal?.userTypes.includes("admin")
-          ? "admin"
-          : returnVal?.userTypes[0];
+    const allRoles = ["admin", "frontdesk", "housekeeping", "accountant", "laundry", "store"];
+    const storedRole = typeof localStorage !== "undefined" && localStorage.getItem("userType")
+      ? localStorage.getItem("userType").toLowerCase()
+      : null;
 
-      if (
-        !localStorage.getItem("userType") ||
-        !returnVal.userTypes.includes(
-          localStorage.getItem("userType").toLowerCase()
-        )
-      ) {
-        localStorage.setItem("userType", returnVal.userType);
+    if (Array.isArray(returnVal.userType)) {
+      returnVal.userTypes = returnVal.userType.map((t) => String(t).toLowerCase());
+    } else if (typeof returnVal.userType === "string") {
+      returnVal.userTypes = [returnVal.userType.toLowerCase()];
+    } else {
+      returnVal.userTypes = ["admin"];
+    }
+
+    const isAdmin = returnVal.userTypes.includes("admin");
+
+    if (isAdmin) {
+      // For admins, preserve whatever role is in the current URL route if present
+      const pathSegment = typeof window !== "undefined" ? window.location.pathname.split("/")[2]?.toLowerCase() : "";
+      let matchedRoleFromUrl = null;
+      if (pathSegment === "laundry") matchedRoleFromUrl = "laundry";
+      else if (pathSegment === "store") matchedRoleFromUrl = "store";
+      else if (pathSegment === "frontdesk") matchedRoleFromUrl = "frontdesk";
+      else if (pathSegment === "housekeeping") matchedRoleFromUrl = "housekeeping";
+      else if (pathSegment === "accounting") matchedRoleFromUrl = "accountant";
+      else if (pathSegment === "admin") matchedRoleFromUrl = "admin";
+
+      if (matchedRoleFromUrl) {
+        returnVal.userType = matchedRoleFromUrl;
+        localStorage.setItem("userType", matchedRoleFromUrl);
+      } else if (storedRole && allRoles.includes(storedRole)) {
+        returnVal.userType = storedRole;
+      } else {
+        returnVal.userType = "admin";
+        localStorage.setItem("userType", "admin");
       }
     } else {
-      returnVal.userType = returnVal.userType.toLowerCase();
-      returnVal.userTypes = [returnVal.userType];
+      if (storedRole && returnVal.userTypes.includes(storedRole)) {
+        returnVal.userType = storedRole;
+      } else {
+        returnVal.userType = returnVal.userTypes[0] || "frontdesk";
+        localStorage.setItem("userType", returnVal.userType);
+      }
     }
     console.log(returnVal);
     return returnVal;
