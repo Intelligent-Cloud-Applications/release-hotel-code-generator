@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import {
 } from "@/Development/components/ui/accordion.js";
 import { Button } from "@/Development/components/ui/button.js";
 import { Hash, Utensils, Bed, Shirt, Coffee, Plus } from "lucide-react";
+import { fetchRestaurantReceipt, normalizeRestaurantOrders } from "@/Development/utils/restaurantReceiptService.js";
 
 const categoryMap = {
   food: {
@@ -99,7 +100,10 @@ function extractChargesByType(servicesData, type) {
   return { linked, unlinked };
 }
 
-function findOrderById(orders, chargeType, order_id) {
+function findOrderById(orders, chargeType, order_id, fetchedFoodOrders = {}) {
+  if (chargeType === "food" && fetchedFoodOrders && fetchedFoodOrders[order_id]) {
+    return fetchedFoodOrders[order_id];
+  }
   if (orders && orders[chargeType]) {
     const found = orders[chargeType].find((order) => order.orderId === order_id || order.token === order_id);
     if (found) return found;
@@ -116,7 +120,31 @@ function findOrderById(orders, chargeType, order_id) {
 
 export function OrderDetailsDialog({ orders, servicesData }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [fetchedFoodOrders, setFetchedFoodOrders] = useState({});
   const chargeTypes = Object.keys(categoryMap);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const { linked } = extractChargesByType(servicesData, "food");
+    const missingOrderIds = linked
+      .map((c) => String(c.order_id).trim())
+      .filter((id) => id && !findOrderById(orders, "food", id, fetchedFoodOrders));
+
+    if (missingOrderIds.length > 0) {
+      fetchRestaurantReceipt({ orderIds: missingOrderIds })
+        .then((data) => {
+          const norm = normalizeRestaurantOrders(data, missingOrderIds);
+          setFetchedFoodOrders((prev) => {
+            const next = { ...prev };
+            norm.forEach((o) => {
+              next[o.orderId] = o;
+            });
+            return next;
+          });
+        })
+        .catch((err) => console.error("Error fetching dialog food orders:", err));
+    }
+  }, [isOpen, servicesData, orders]);
 
   // Compute if anything to show for the button
   const hasAnyCharges = chargeTypes.some((type) => {
@@ -179,7 +207,8 @@ export function OrderDetailsDialog({ orders, servicesData }) {
                       const order = findOrderById(
                         orders,
                         chargeType,
-                        charge.order_id
+                        charge.order_id,
+                        fetchedFoodOrders
                       );
                       return (
                         <AccordionItem

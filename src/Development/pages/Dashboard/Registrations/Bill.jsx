@@ -700,21 +700,76 @@ const Bill = () => {
     return filtered;
   };
 
-  // Function to check if there are food charges that can be split
-  const hasFoodCharges = () => {
-    if (!billData?.serviceChargesByDate) return false;
+  // Function to check if there are splitable department charges (F&B, Laundry, Minibar, Housekeeping, Excluded)
+  const hasSplitableCharges = () => {
+    // 1. Any service charges in summary
+    if (Number(billData?.billingSummary?.totalServiceCharges) > 0) return true;
+    if (Number(billData?.summary?.serviceCharges) > 0) return true;
 
-    return billData.serviceChargesByDate.some((dayData) => {
-      const date = Object.keys(dayData)[0];
-      const roomEntries = dayData[date];
-      return roomEntries.some((entry) => entry.charges.foodCharges > 0);
-    });
+    // 2. Check detailed services from booking
+    const services = getDetailedServices();
+    if (services && typeof services === "object") {
+      for (const room in services) {
+        for (const date in services[room]) {
+          if (Array.isArray(services[room][date]) && services[room][date].length > 0) {
+            const hasAny = services[room][date].some(
+              (s) =>
+                Number(s.food_charges) > 0 ||
+                Number(s.laundry_charges) > 0 ||
+                Number(s.minibar_charges) > 0 ||
+                Number(s.extra_bed_charges) > 0 ||
+                Number(s.manual_charges) > 0 ||
+                s.order_id
+            );
+            if (hasAny) return true;
+          }
+        }
+      }
+    }
+
+    // 3. Check serviceChargesByDate in billData
+    if (billData?.serviceChargesByDate && Array.isArray(billData.serviceChargesByDate)) {
+      const hasAnyDate = billData.serviceChargesByDate.some((dayData) => {
+        const date = Object.keys(dayData)[0];
+        const roomEntries = dayData[date];
+        return (
+          Array.isArray(roomEntries) &&
+          roomEntries.some(
+            (entry) =>
+              Number(entry.charges?.foodCharges || entry.charges?.food_charges) > 0 ||
+              Number(entry.charges?.laundryCharges || entry.charges?.laundry_charges) > 0 ||
+              Number(entry.charges?.minibarCharges || entry.charges?.minibar_charges) > 0 ||
+              Number(entry.charges?.extraBedCharges || entry.charges?.extra_bed_charges) > 0 ||
+              Number(entry.charges?.manualCharges || entry.charges?.manual_charges) > 0
+          )
+        );
+      });
+      if (hasAnyDate) return true;
+    }
+
+    // 4. Check if any charges are excluded
+    if (excludedCharges && Object.keys(excludedCharges).length > 0) return true;
+
+    // 5. Check if booking has any orderDetails
+    if (booking?.breakdown?.charges?.serviceCharges?.orderDetails?.length > 0) return true;
+
+    return false;
   };
+
+  const hasFoodCharges = hasSplitableCharges;
 
   // Function to get detailed services data from booking
   const getDetailedServices = () => {
-    const bookingData = bookings.find((b) => b.booking_id === bookingId);
-    return bookingData?.detailedServices || {};
+    const bookingData = bookings.find((b) => b.booking_id === bookingId) || booking;
+    return (
+      bookingData?.detailedServices ||
+      bookingData?.services ||
+      bookingData?.breakdown?.bookingDetails?.services ||
+      booking?.detailedServices ||
+      booking?.services ||
+      booking?.breakdown?.bookingDetails?.services ||
+      {}
+    );
   };
 
   // Refresh function
@@ -3171,8 +3226,8 @@ const Bill = () => {
               <span>Download PDF</span>
             </Button>
 
-            {/* Split Bill Button - Show only if there are food charges */}
-            {hasFoodCharges() && (
+            {/* Split Bills Button - Multi-Department Billing Separation */}
+            {hasSplitableCharges() && (
               <Button
                 variant="outline"
                 onClick={() => setShowSplitBill(true)}

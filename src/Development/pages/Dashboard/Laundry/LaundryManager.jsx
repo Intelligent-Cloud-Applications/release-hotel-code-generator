@@ -44,6 +44,7 @@ import {
   X,
   CreditCard,
   Banknote,
+  QrCode,
   Settings,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -685,51 +686,32 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     }
   };
 
-  // 2. Hold on room (settle later)
-  const handleHoldOnRoom = async () => {
-    if (basket.length === 0) return toast.error("Add at least one garment.");
-    if (!selectedRoomNumber) return toast.error("Select a room to hold against.");
+ 
 
-    const { name, phone } = resolveRoomGuest("In-House Guest");
-    const orderData = {
-      ...buildOrderPayload("HELD_ON_ROOM"),
-      booking_id: selectedBookingId,
-      bookingId: selectedBookingId,
-      guestName: name,
-      guestPhone: phone,
-      guestMobile: phone,
-      roomNumber: selectedRoomNumber,
-      totalAmount: totals.grandTotal,
-      settlementType: "room_folio",
-      turnaroundSpeed: serviceSpeed,
-      institutionId: currentInstitutionId,
-    };
-    try {
-      toast.info(`Order ${token} held for Room ${selectedRoomNumber}`);
-      await finishOrder(orderData);
-    } catch (err) {
-      console.error(err);
-      toast.error("Could not hold order");
-    }
-  };
-
-  // 3. Direct POS settlement
+  // 3. Direct POS settlement (Cash, Card, UPI)
   const handleDirectPOSSettle = async (payMethod = "CASH") => {
     if (basket.length === 0) return toast.error("Add at least one garment.");
-    if (collectionSource === "walk_in" && !guestName.trim()) return toast.error("Enter the guest name.");
+    if (collectionSource === "walk_in" && !guestName.trim()) {
+      return toast.error("Please enter the guest name for Walk-In order.");
+    }
+    if (collectionSource === "room_pickup" && !selectedRoomNumber) {
+      return toast.error("Please select a checked-in room.");
+    }
 
-    const { name, phone } = resolveRoomGuest("Walk-In Guest");
-    const resolvedName = selectedRoomNumber ? name : guestName || "Walk-In Guest";
+    const { name, phone } = resolveRoomGuest(collectionSource === "walk_in" ? "Walk-In Guest" : "In-House Guest");
+    const resolvedName = collectionSource === "walk_in" ? (guestName.trim() || "Walk-In Guest") : name;
+    const resolvedPhone = collectionSource === "walk_in" ? (guestMobile.trim() || "") : phone;
     const orderData = {
       ...buildOrderPayload(payMethod),
-      booking_id: selectedBookingId || null,
-      bookingId: selectedBookingId || null,
+      booking_id: collectionSource === "room_pickup" ? selectedBookingId || null : null,
+      bookingId: collectionSource === "room_pickup" ? selectedBookingId || null : null,
       guestName: resolvedName,
-      guestPhone: phone,
-      guestMobile: phone,
-      roomNumber: selectedRoomNumber || "Walk-In",
+      guestPhone: resolvedPhone,
+      guestMobile: resolvedPhone,
+      roomNumber: collectionSource === "room_pickup" && selectedRoomNumber ? selectedRoomNumber : "Walk-In",
       totalAmount: totals.grandTotal,
       settlementType: "direct",
+      paymentMethod: payMethod,
       turnaroundSpeed: serviceSpeed,
       institutionId: currentInstitutionId,
     };
@@ -742,7 +724,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
             expense: 0,
             received: totals.grandTotal,
             name: `Laundry Service - ${token}`,
-            description: `${totals.totalGarments} Garments [${payMethod}] - ${resolvedName}`,
+            description: `${totals.totalGarments} Garments [${payMethod}] - ${resolvedName}${selectedRoomNumber ? ` (Room ${selectedRoomNumber})` : ""}`,
           });
         } catch (e) {
           console.warn("Cash drawer recording skipped:", e);
@@ -1208,61 +1190,79 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
               )}
             </div>
 
-            {/* customer */}
+            {/* customer / order type: Only 2 options (Room Pickup vs Walk-In) */}
             <div className="shrink-0 px-3 py-2 space-y-1.5 border-b border-gray-100">
               <Segmented
                 value={collectionSource}
-                onChange={setCollectionSource}
+                onChange={(val) => {
+                  setCollectionSource(val);
+                  if (val === "walk_in") {
+                    setSelectedBookingId("");
+                    setSelectedRoomNumber("");
+                    setGuestName("");
+                    setGuestMobile("");
+                  }
+                }}
                 options={[
-                  { id: "room_pickup", label: "Room pickup" },
-                  { id: "front_desk", label: "Front desk" },
-                  { id: "walk_in", label: "Walk-in" },
+                  { id: "room_pickup", label: "Room Pickup" },
+                  { id: "walk_in", label: "Walk-In" },
                 ]}
               />
-              {collectionSource !== "walk_in" ? (
+              {collectionSource === "room_pickup" ? (
                 <>
                   <Select value={selectedBookingId} onValueChange={handleBookingSelect}>
                     <SelectTrigger className="!h-8 text-xs">
-                      <SelectValue placeholder="Choose checked-in room and guest" />
+                      <SelectValue placeholder="Select checked-in room *" />
                     </SelectTrigger>
                     <SelectContent className="max-h-56">
-                      {checkedInBookings.map((b) => {
-                        const gInfo = resolveGuestDetails(b);
-                        return (
-                          <SelectItem key={b.booking_id} value={b.booking_id}>
-                            Room {getDisplayRoomNumber(b, rooms) || "Unassigned"} — {gInfo.name || "Guest"}
-                            {gInfo.phone ? ` (${gInfo.phone})` : ""}
-                          </SelectItem>
-                        );
-                      })}
+                      {checkedInBookings.length === 0 ? (
+                        <div className="p-2 text-xs text-gray-500 text-center">No checked-in rooms found</div>
+                      ) : (
+                        checkedInBookings.map((b) => {
+                          const gInfo = resolveGuestDetails(b);
+                          const rNum = getDisplayRoomNumber(b, rooms) || "Unassigned";
+                          return (
+                            <SelectItem key={b.booking_id} value={b.booking_id}>
+                              Room {rNum} — {gInfo.name || "In-House Guest"}
+                              {gInfo.phone ? ` (${gInfo.phone})` : ""}
+                            </SelectItem>
+                          );
+                        })
+                      )}
                     </SelectContent>
                   </Select>
-                  <div className="h-5 flex items-center text-[11px] text-gray-600">
+                  <div className="min-h-5 flex items-center text-[11px] text-gray-600">
                     {selectedRoomNumber ? (
-                      <span>
+                      <span className="bg-blue-50 text-blue-900 px-2 py-0.5 rounded border border-blue-200">
                         <strong className="text-gray-900">Room {selectedRoomNumber}</strong> ·{" "}
-                        {guestName || "In-house guest"}
+                        {guestName || "In-House Guest"}
                         {guestMobile ? ` · ${guestMobile}` : ""}
                       </span>
                     ) : (
-                      <span className="text-gray-400">Select a room to charge or track delivery</span>
+                      <span className="text-amber-700 font-medium">Please select a checked-in room</span>
                     )}
                   </div>
                 </>
               ) : (
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Input
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    placeholder="Guest name *"
-                    className="!h-8 text-xs"
-                  />
-                  <Input
-                    value={guestMobile}
-                    onChange={(e) => setGuestMobile(e.target.value)}
-                    placeholder="Mobile number"
-                    className="!h-8 text-xs"
-                  />
+                <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Input
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      placeholder="Guest Name *"
+                      className="!h-8 text-xs font-medium"
+                      required
+                    />
+                    <Input
+                      value={guestMobile}
+                      onChange={(e) => setGuestMobile(e.target.value)}
+                      placeholder="Phone Number (Optional)"
+                      className="!h-8 text-xs"
+                    />
+                  </div>
+                  <div className="text-[10px] text-gray-500">
+                    * Guest name is required for Walk-In. Phone number is optional.
+                  </div>
                 </div>
               )}
             </div>
@@ -1413,32 +1413,79 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                 <span className="text-lg font-bold text-gray-900">₹{totals.grandTotal.toFixed(2)}</span>
               </div>
 
-              {inRoomMode ? (
-                <>
+              {collectionSource === "room_pickup" ? (
+                <div className="space-y-1.5">
                   <Button
                     type="button"
                     onClick={handleSettleToRoomFolio}
-                    className="w-full !h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={!selectedRoomNumber || basket.length === 0}
+                    className="w-full !h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs disabled:opacity-50"
                   >
-                    <Bed className="w-3.5 h-3.5 mr-1" /> Post to Room {selectedRoomNumber} bill
+                    <Bed className="w-3.5 h-3.5 mr-1" />
+                    {selectedRoomNumber ? `Post to Hotel Bill (Room ${selectedRoomNumber})` : "Post to Hotel Bill"}
                   </Button>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <Button type="button" variant="outline" onClick={handleHoldOnRoom} className="!h-8 text-[11px] font-semibold">
-                      <Clock className="w-3 h-3 mr-1" /> Hold on room
+                  <div className="grid grid-cols-3 gap-1">
+                   
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleDirectPOSSettle("CASH")}
+                      disabled={!selectedRoomNumber || basket.length === 0}
+                      className="!h-7 text-[10.5px] font-semibold px-1 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      <Banknote className="w-3 h-3 mr-0.5 shrink-0" /> Cash
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => handleDirectPOSSettle("CASH")} className="!h-8 text-[11px] font-semibold">
-                      <Banknote className="w-3 h-3 mr-1" /> Pay cash
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleDirectPOSSettle("CARD")}
+                      disabled={!selectedRoomNumber || basket.length === 0}
+                      className="!h-7 text-[10.5px] font-semibold px-1 bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 disabled:opacity-50"
+                    >
+                      <CreditCard className="w-3 h-3 mr-0.5 shrink-0" /> Card
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleDirectPOSSettle("UPI")}
+                      disabled={!selectedRoomNumber || basket.length === 0}
+                      className="!h-7 text-[10.5px] font-semibold px-1 bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 disabled:opacity-50"
+                    >
+                      <QrCode className="w-3 h-3 mr-0.5 shrink-0" /> UPI
                     </Button>
                   </div>
-                </>
+                </div>
               ) : (
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Button type="button" onClick={() => handleDirectPOSSettle("CASH")} className="!h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
-                    <Banknote className="w-3.5 h-3.5 mr-1" /> Pay cash
-                  </Button>
-                  <Button type="button" onClick={() => handleDirectPOSSettle("UPI")} className="!h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
-                    <CreditCard className="w-3.5 h-3.5 mr-1" /> Pay UPI
-                  </Button>
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                    Settle Walk-In Bill
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <Button
+                      type="button"
+                      onClick={() => handleDirectPOSSettle("CASH")}
+                      disabled={basket.length === 0}
+                      className="!h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+                    >
+                      <Banknote className="w-3.5 h-3.5 mr-1" /> Cash
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => handleDirectPOSSettle("CARD")}
+                      disabled={basket.length === 0}
+                      className="!h-8 text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+                    >
+                      <CreditCard className="w-3.5 h-3.5 mr-1" /> Card
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => handleDirectPOSSettle("UPI")}
+                      disabled={basket.length === 0}
+                      className="!h-8 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-50"
+                    >
+                      <QrCode className="w-3.5 h-3.5 mr-1" /> UPI
+                    </Button>
+                  </div>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-1.5">

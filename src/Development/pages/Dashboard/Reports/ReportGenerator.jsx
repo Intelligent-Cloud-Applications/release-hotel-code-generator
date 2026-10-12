@@ -76,7 +76,11 @@ const ReportGenerator = () => {
   const { institutionData } = useInstitutionContext();
   console.log("listExpenses", expenses);
   const [selectedReport, setSelectedReport] = useState(
-    userData?.userType === "store" ? "stock_inventory" : ""
+    userData?.userType === "store"
+      ? "stock_inventory"
+      : userData?.userType === "laundry"
+      ? "laundry"
+      : ""
   );
   const [dateRange, setDateRange] = useState({ from: null, to: null });
   const [filters, setFilters] = useState({});
@@ -221,12 +225,16 @@ const ReportGenerator = () => {
     }
   }, []);
 
-  // Enforce store-only reports when userType is store
+  // Enforce store-only reports when userType is store, and laundry-only reports when userType is laundry
   useEffect(() => {
     if (userData?.userType === "store") {
       const storeReports = ["stock_inventory", "stock_issues", "stock_purchases"];
       if (!storeReports.includes(selectedReport)) {
         setSelectedReport("stock_inventory");
+      }
+    } else if (userData?.userType === "laundry") {
+      if (selectedReport !== "laundry") {
+        setSelectedReport("laundry");
       }
     }
   }, [userData?.userType, selectedReport]);
@@ -2444,6 +2452,9 @@ const ReportGenerator = () => {
                         .filter(([key]) => {
                           if (userData?.userType === "store") {
                             return ["stock_inventory", "stock_issues", "stock_purchases"].includes(key);
+                          }
+                          if (userData?.userType === "laundry") {
+                            return key === "laundry";
                           }
                           return true;
                         })
