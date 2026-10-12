@@ -849,9 +849,9 @@ const ReportGenerator = () => {
       if (entry.price && Number(entry.price) > 0) map[key].price = Number(entry.price);
 
       const q = Number(entry.quantity) || 0;
-      if (entry.actionType === "add" || entry.actionType === "purchase-entry") map[key].quantity += q;
+      if (entry.actionType === "add" || entry.actionType === "purchase-entry" || entry.actionType === "return") map[key].quantity += q;
       if (entry.actionType === "distributed" || entry.actionType === "issue_entry") map[key].quantity -= q;
-      if (entry.actionType === "adjustment" || entry.actionType === "wastage" || entry.actionType === "return") map[key].quantity = q;
+      if (entry.actionType === "adjustment" || entry.actionType === "wastage") map[key].quantity = q;
     });
 
     return Object.values(map).map((item) => {
@@ -1977,7 +1977,12 @@ const ReportGenerator = () => {
         doc.setFontSize(10);
         doc.setFont("courier", "normal");
         doc.setTextColor(80, 80, 80);
-        const dateRangeText = `${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`;
+        const formatDMY = (d) => {
+          if (!d) return "";
+          const dt = d instanceof Date ? d : new Date(d);
+          return isNaN(dt.getTime()) ? "" : `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+        };
+        const dateRangeText = `${formatDMY(dateRange.from)} - ${formatDMY(dateRange.to)}`;
         const dateRangeWidth = doc.getTextWidth(dateRangeText);
 
         const totalWidth = titleWidth + 40 + dateRangeWidth;
