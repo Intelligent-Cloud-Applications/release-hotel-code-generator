@@ -214,40 +214,44 @@ const CheckIn = () => {
       !roomAutoSelected && 
       (!checkInData.room_id || checkInData.room_id.length === 0)
     ) {
-      // Filter vacant/clean rooms inline (to avoid dependency on getVacantRooms)
-      const vacantRooms = rooms.filter(
-        (room) => room.status === "Clean" || room.status === "Vacant"
-      );
-      
-      // Find the room in the vacant rooms list
-      const roomToSelect = vacantRooms.find(room => {
-        const roomIdStr = String(room.room_id);
+      // Find the room in all rooms first
+      const targetRoom = rooms.find(room => {
+        const roomIdStr = String(room.room_id || room.id);
         const urlRoomIdStr = String(roomIdFromUrl);
         return roomIdStr === urlRoomIdStr;
       });
 
-      if (roomToSelect) {
-        // Room is already validated as Vacant or Clean by the filter above
-        // Auto-select the room by updating state directly (avoid dependency on handleInputChange)
-        setCheckInData(prev => ({
-          ...prev,
-          room_id: [roomToSelect.room_id]
-        }));
-        
-        // Mark as auto-selected to prevent re-selection
-        setRoomAutoSelected(true);
-        
-        // Clear the URL parameter after a short delay to allow state updates
+      if (targetRoom) {
+        const s = String(targetRoom.status || "").toLowerCase().trim();
+        const isNotReady =
+          s === "dirty" ||
+          s.includes("dirty") ||
+          s.includes("maintenance") ||
+          s.includes("order") ||
+          s.includes("block");
+
+        if (isNotReady) {
+          toast.warning(
+            `Warning: Room ${targetRoom.room_number} was selected, but is currently ${targetRoom.status || "Dirty"} (Dirty / Under Maintenance). Please clean/maintain it or select an alternate clean room.`,
+            { duration: 7000 }
+          );
+        } else {
+          // Room is Vacant or Clean
+          setCheckInData(prev => ({
+            ...prev,
+            room_id: [targetRoom.room_id]
+          }));
+          setRoomAutoSelected(true);
+          toast.success(`Room ${targetRoom.room_number} has been auto-selected for check-in`);
+        }
+
         setTimeout(() => {
           const newSearchParams = new URLSearchParams(searchParams);
           newSearchParams.delete('room_id');
           setSearchParams(newSearchParams, { replace: true });
         }, 100);
-        
-        // Show success message
-        toast.success(`Room ${roomToSelect.room_number} has been auto-selected for check-in`);
       } else {
-        // Room not found in vacant rooms, clear URL parameter
+        // Room not found in rooms list, clear URL parameter
         toast.error("Room not found or not available for check-in");
         const newSearchParams = new URLSearchParams(searchParams);
         newSearchParams.delete('room_id');
@@ -309,6 +313,51 @@ const CheckIn = () => {
         checkoutDate = new Date(currentDateTime + 24 * 60 * 60 * 1000).getTime();
       }
 
+      const rawAssignedRoomIds = (Array.isArray(selectedBooking.room_id) && selectedBooking.room_id.length > 0)
+        ? selectedBooking.room_id
+        : (typeof selectedBooking.room_id === "string" && selectedBooking.room_id.trim())
+        ? [selectedBooking.room_id.trim()]
+        : (Array.isArray(selectedBooking.rooms_config)
+            ? selectedBooking.rooms_config.map((r) => r.room_id).filter((id) => id && id !== "none")
+            : []);
+
+      const validSelectableRoomIds = [];
+      const notReadyRoomsFound = [];
+
+      rawAssignedRoomIds.forEach((rid) => {
+        const rObj = (rooms || []).find((r) => String(r.room_id) === String(rid) || String(r.id) === String(rid));
+        if (rObj) {
+          const s = String(rObj.status || "").toLowerCase().trim();
+          const isNotReady =
+            s === "dirty" ||
+            s.includes("dirty") ||
+            s.includes("maintenance") ||
+            s.includes("order") ||
+            s.includes("block");
+
+          if (isNotReady) {
+            notReadyRoomsFound.push({
+              roomNumber: rObj.room_number || rid,
+              status: rObj.status || "Dirty",
+            });
+          } else {
+            validSelectableRoomIds.push(rObj.room_id);
+          }
+        } else {
+          validSelectableRoomIds.push(rid);
+        }
+      });
+
+      if (notReadyRoomsFound.length > 0) {
+        const details = notReadyRoomsFound
+          .map((r) => `Room ${r.roomNumber} (${r.status})`)
+          .join(", ");
+        toast.warning(
+          `Notice: ${details} was assigned at booking, but is currently not ready (Dirty / Under Maintenance). Please clean or maintain it, or select an alternate clean room before check-in.`,
+          { duration: 8000 }
+        );
+      }
+
       setCheckInData({
         // Guest Details
         full_name: guest?.full_name || "",
@@ -335,13 +384,7 @@ const CheckIn = () => {
         checkin_date: currentDateTime,
         checkout_date: checkoutDate,
         room_type: selectedBooking.room_category || selectedBooking.room_type || "",
-        room_id: (Array.isArray(selectedBooking.room_id) && selectedBooking.room_id.length > 0)
-          ? selectedBooking.room_id
-          : (typeof selectedBooking.room_id === "string" && selectedBooking.room_id.trim())
-          ? [selectedBooking.room_id.trim()]
-          : (Array.isArray(selectedBooking.rooms_config)
-              ? selectedBooking.rooms_config.map((r) => r.room_id).filter((id) => id && id !== "none")
-              : []),
+        room_id: validSelectableRoomIds,
         no_of_adults: selectedBooking.no_of_persons || selectedBooking.no_of_adults || 1,
         no_of_children: selectedBooking.no_of_children || 0,
         company_id: selectedBooking.company_id || "",

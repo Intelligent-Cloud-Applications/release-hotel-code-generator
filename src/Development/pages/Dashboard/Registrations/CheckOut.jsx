@@ -122,6 +122,56 @@ const CheckOut = () => {
     return c ? getCompanyGst(c) : "";
   };
 
+// Helper to format room numbers without stray commas or UUIDs
+const formatBookingRoomNumbers = (booking, rooms = []) => {
+  if (!booking) return "";
+  const rawList = [];
+  const collect = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach(collect);
+    } else if (typeof val === "string") {
+      val.split(",").forEach((s) => {
+        const trimmed = s.trim();
+        if (trimmed) rawList.push(trimmed);
+      });
+    } else if (typeof val === "number") {
+      rawList.push(String(val));
+    }
+  };
+
+  collect(booking.room_id);
+  collect(booking.room_ids);
+  collect(booking.room_number);
+  collect(booking.room_numbers);
+  collect(booking.roomNo);
+
+  const resolved = [];
+  rawList.forEach((item) => {
+    const foundByRoomId = (rooms || []).find(
+      (r) => String(r.room_id) === String(item) || String(r.id) === String(item)
+    );
+    if (foundByRoomId && foundByRoomId.room_number) {
+      resolved.push(String(foundByRoomId.room_number).trim());
+      return;
+    }
+    const foundByRoomNum = (rooms || []).find(
+      (r) => String(r.room_number) === String(item)
+    );
+    if (foundByRoomNum && foundByRoomNum.room_number) {
+      resolved.push(String(foundByRoomNum.room_number).trim());
+      return;
+    }
+    const cleanItem = String(item).replace(/^,+|,+$/g, "").trim();
+    if (cleanItem) {
+      resolved.push(cleanItem);
+    }
+  });
+
+  const unique = Array.from(new Set(resolved)).filter(Boolean);
+  return unique.join(", ");
+};
+
   // Get checked-in bookings
   const checkedInBookings =
     bookings?.filter((booking) => booking.status === "Checked-in") || [];
@@ -129,15 +179,13 @@ const CheckOut = () => {
   // Filter bookings based on search
   const filteredBookings = checkedInBookings.filter((booking) => {
     const guest = guests?.find((g) => g.guest_id === booking.guest_id);
-    const room = rooms?.find(
-      (r) => String(r.room_id) === String(booking.room_id)
-    );
+    const bookingRoomNumbers = formatBookingRoomNumbers(booking, rooms);
     const searchLower = searchTerm.toLowerCase();
     return (
       booking.booking_id?.toLowerCase().includes(searchLower) ||
       guest?.full_name?.toLowerCase().includes(searchLower) ||
       guest?.mobile?.includes(searchTerm) ||
-      room?.room_number?.includes(searchTerm) ||
+      bookingRoomNumbers.toLowerCase().includes(searchLower) ||
       booking.room_type?.toLowerCase().includes(searchLower)
     );
   });
@@ -1171,19 +1219,7 @@ const CheckOut = () => {
     );
   };
 
-  const roomNumbers = selectedBooking?.room_id
-    ? Array.isArray(selectedBooking.room_id)
-      ? selectedBooking.room_id
-          .map(
-            (rid) =>
-              rooms?.find((r) => String(r.room_id) === String(rid))?.room_number
-          )
-          .filter(Boolean)
-          .join(", ")
-      : rooms?.find(
-          (r) => String(r.room_id) === String(selectedBooking.room_id)
-        )?.room_number
-    : "";
+  const roomNumbers = formatBookingRoomNumbers(selectedBooking, rooms);
 
   const ErrorMessage = ({ error }) => {
     if (!error) return null;
@@ -1315,15 +1351,7 @@ const CheckOut = () => {
                     return (
                       <TableRow key={booking.booking_id}>
                         <TableCell className="font-medium">
-                          {(() => {
-                            return booking?.room_id
-                              ?.map(
-                                (rid) =>
-                                  rooms?.find((room) => rid === room.room_id)
-                                    ?.room_number
-                              )
-                              ?.join(", ");
-                          })()}
+                          {formatBookingRoomNumbers(booking, rooms) || "N/A"}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">

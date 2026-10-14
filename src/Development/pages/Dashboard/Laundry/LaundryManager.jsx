@@ -46,6 +46,9 @@ import {
   Banknote,
   QrCode,
   Settings,
+  Eye,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -106,7 +109,14 @@ const emptyBatchRow = (category = "Men") => ({
 });
 const initialBatch = () => [emptyBatchRow("Men"), emptyBatchRow("Women"), emptyBatchRow("Kids")];
 
-const ymd = (d = new Date()) => d.toISOString().split("T")[0];
+const ymd = (d = new Date()) => {
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 /**
  * Robust room number resolution helper
@@ -155,9 +165,9 @@ const Panel = ({ className = "", children }) => (
   <div className={`bg-white border border-gray-200 rounded-lg ${className}`}>{children}</div>
 );
 
-const Segmented = ({ value, onChange, options }) => (
+const Segmented = ({ value, onChange, options, className = "", size = "normal" }) => (
   <div
-    className="grid gap-0.5 bg-gray-100 p-0.5 rounded-md"
+    className={`grid gap-0.5 bg-gray-100 p-0.5 rounded-md ${className}`}
     style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
   >
     {options.map((o) => (
@@ -165,7 +175,7 @@ const Segmented = ({ value, onChange, options }) => (
         key={o.id}
         type="button"
         onClick={() => onChange(o.id)}
-        className={`px-3 py-1.5 rounded text-[12px] font-semibold transition-colors ${
+        className={`${size === "sm" ? "px-2 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]"} rounded font-semibold transition-colors ${
           value === o.id ? "bg-white text-blue-700 shadow-sm" : "text-gray-600 hover:text-gray-900"
         }`}
       >
@@ -184,6 +194,71 @@ const CareChip = ({ careType, qty }) => {
     </span>
   );
 };
+
+const SvgDonutChart = ({
+  data = [],
+  size = 124,
+  strokeWidth = 20,
+  centerValue = "",
+  centerLabel = "",
+}) => {
+  const total = data.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  let accumulatedPercent = 0;
+
+  return (
+    <div className="relative inline-flex items-center justify-center shrink-0">
+      <svg width={size} height={size} className="transform -rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="transparent"
+          stroke="#f1f5f9"
+          strokeWidth={strokeWidth}
+        />
+        {total > 0 &&
+          data.map((item, idx) => {
+            if (!item.value || item.value <= 0) return null;
+            const itemPercent = (item.value / total) * 100;
+            const strokeDasharray = `${(itemPercent / 100) * circumference} ${circumference}`;
+            const strokeDashoffset = -((accumulatedPercent / 100) * circumference);
+            accumulatedPercent += itemPercent;
+
+            return (
+              <circle
+                key={idx}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="transparent"
+                stroke={item.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={strokeDasharray}
+                strokeDashoffset={strokeDashoffset}
+                className="transition-all duration-300 hover:opacity-80"
+              >
+                <title>{`${item.label}: ₹${Number(item.value).toFixed(2)} (${itemPercent.toFixed(1)}%)`}</title>
+              </circle>
+            );
+          })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
+        <span className="text-xs font-bold text-gray-900 leading-tight">
+          {centerValue || (total > 0 ? `₹${total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toFixed(0)}` : "₹0")}
+        </span>
+        {centerLabel && (
+          <span className="text-[9px] text-gray-500 uppercase tracking-wider font-semibold">
+            {centerLabel}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
 
 const paymentBadge = (ord) => {
   if (ord.paymentStatus === "POSTED_TO_ROOM_BILL")
@@ -224,6 +299,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
   const [catalogCategory, setCatalogCategory] = useState("All");
   const [searchGarment, setSearchGarment] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [showBatchAddSection, setShowBatchAddSection] = useState(false);
   const [batchGarments, setBatchGarments] = useState(initialBatch);
@@ -332,6 +408,10 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
 
   const currentDateStr = ymd();
   const [statsDateFilter, setStatsDateFilter] = useState(currentDateStr);
+  const [statsRangeType, setStatsRangeType] = useState("today");
+  const [statsCustomFrom, setStatsCustomFrom] = useState(currentDateStr);
+  const [statsCustomTo, setStatsCustomTo] = useState(currentDateStr);
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
   const currentInstitutionId = institutionData?.institutionid || institutionData?.institutionId;
 
   const resolveGuestDetails = (bk) => {
@@ -364,7 +444,14 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
   };
 
   /* Orders ----------------------------------------------------------------- */
-  const [allOrders, setAllOrders] = useState([]);
+  const [allOrders, setAllOrders] = useState(() => {
+    try {
+      const saved = localStorage.getItem("hotel_laundry_orders");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   const loadLaundryOrders = async () => {
@@ -386,7 +473,30 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
         }
       }
       const remoteOrders = await fetchLaundryOrdersBackend(currentInstitutionId);
-      if (Array.isArray(remoteOrders)) setAllOrders(remoteOrders);
+      if (Array.isArray(remoteOrders) && remoteOrders.length > 0) {
+        setAllOrders((prevOrders) => {
+          const map = new Map();
+          remoteOrders.forEach((o) => {
+            const key = o.orderId || o.token || o.id;
+            if (key) map.set(String(key), o);
+          });
+          (prevOrders || []).forEach((o) => {
+            const key = o.orderId || o.token || o.id;
+            if (key) {
+              if (map.has(String(key))) {
+                map.set(String(key), { ...map.get(String(key)), ...o });
+              } else {
+                map.set(String(key), o);
+              }
+            }
+          });
+          const merged = Array.from(map.values());
+          try {
+            localStorage.setItem("hotel_laundry_orders", JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+      }
     } catch (err) {
       console.warn("Failed loading laundry data from backend:", err);
     } finally {
@@ -399,7 +509,14 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     if (typeof fetchGuests === "function" && (!guests || guests.length === 0)) fetchGuests();
   }, [currentInstitutionId]);
 
-  const persistOrders = (updatedList) => setAllOrders(updatedList);
+  const persistOrders = (updatedList) => {
+    setAllOrders(updatedList);
+    try {
+      localStorage.setItem("hotel_laundry_orders", JSON.stringify(updatedList));
+    } catch (e) {
+      console.warn("Failed to persist laundry orders:", e);
+    }
+  };
 
   const checkedInBookings = useMemo(
     () =>
@@ -439,6 +556,24 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
   };
 
   /* Statistics: one pass, grouped by day ----------------------------------- */
+  const getOrderDate = (order) => {
+    if (order.createdAt) {
+      if (typeof order.createdAt === "string") {
+        const parts = order.createdAt.split("T");
+        if (parts[0] && parts[0].includes("-")) return parts[0];
+      }
+      const d = new Date(order.createdAt);
+      if (!isNaN(d.getTime())) return ymd(d);
+    }
+    if (order.created_at) {
+      const d = new Date(order.created_at);
+      if (!isNaN(d.getTime())) return ymd(d);
+    }
+    if (order.orderDate) return order.orderDate;
+    if (order.date) return order.date;
+    return "";
+  };
+
   const { dailyStatsMap, pendingDeliveries, deliveredTodayList, heldOnRoomOrders, roomsToDeliver } =
     useMemo(() => {
       const dailyMap = {};
@@ -448,7 +583,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       const roomsSet = new Set();
 
       (allOrders || []).forEach((order) => {
-        const orderDate = order.createdAt ? order.createdAt.split("T")[0] : "";
+        const orderDate = getOrderDate(order);
         const grandTotal = Number(order.grandTotal || order.totalAmount || 0);
         const isDelivered =
           order.delivery_status === "delivered_to_room" ||
@@ -479,10 +614,19 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
             const rate = Number(item.unitRate || item.rate || 0);
             const amt = Number(item.total || rate * qty);
             const c = day.care[careOf(item)];
-            c.amt += amt;
-            c.pcs += qty;
+            if (c) {
+              c.amt += amt;
+              c.pcs += qty;
+            }
           });
-          if (orderDate === currentDateStr && isDelivered) deliveredToday.push(order);
+        }
+
+        const deliveredDate = order.delivered_at
+          ? (typeof order.delivered_at === "string" ? order.delivered_at.split("T")[0] : ymd(new Date(order.delivered_at)))
+          : orderDate;
+
+        if (isDelivered && (deliveredDate === currentDateStr || orderDate === currentDateStr)) {
+          deliveredToday.push(order);
         }
 
         if (order.paymentStatus === "HELD_ON_ROOM") held.push(order);
@@ -505,6 +649,121 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
   const todayStats = dailyStatsMap[currentDateStr];
   const todaySales = todayStats?.total || 0;
   const todayGarments = todayStats?.garments || 0;
+
+  const statsDateRange = useMemo(() => {
+    const today = new Date();
+    const todayStr = ymd(today);
+
+    if (statsRangeType === "today") {
+      return { from: todayStr, to: todayStr, label: "Today" };
+    }
+    if (statsRangeType === "yesterday") {
+      const yest = new Date();
+      yest.setDate(yest.getDate() - 1);
+      const yestStr = ymd(yest);
+      return { from: yestStr, to: yestStr, label: "Yesterday" };
+    }
+    if (statsRangeType === "7days") {
+      const past7 = new Date();
+      past7.setDate(past7.getDate() - 6);
+      return { from: ymd(past7), to: todayStr, label: "Last 7 Days" };
+    }
+    if (statsRangeType === "month") {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { from: ymd(monthStart), to: todayStr, label: "This Month" };
+    }
+    return {
+      from: statsCustomFrom || todayStr,
+      to: statsCustomTo || todayStr,
+      label: "Custom Range",
+    };
+  }, [statsRangeType, statsCustomFrom, statsCustomTo, currentDateStr]);
+
+  const periodFilteredOrders = useMemo(() => {
+    const { from, to } = statsDateRange;
+    return (allOrders || [])
+      .filter((ord) => {
+        const d = getOrderDate(ord);
+        if (!d) return false;
+        return d >= from && d <= to;
+      })
+      .sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.created_at || a.orderDate || 0);
+        const dateB = new Date(b.createdAt || b.created_at || b.orderDate || 0);
+        return dateB - dateA;
+      });
+  }, [allOrders, statsDateRange]);
+
+  const periodMetrics = useMemo(() => {
+    let totalRevenue = 0;
+    let totalGarments = 0;
+    let folioAmount = 0;
+    let cashAmount = 0;
+    let cardAmount = 0;
+    let upiAmount = 0;
+    const careBreakdown = Object.fromEntries(CARE_IDS.map((c) => [c, { amt: 0, pcs: 0 }]));
+    const dailyTrendMap = {};
+
+    periodFilteredOrders.forEach((ord) => {
+      const amt = Number(ord.grandTotal || ord.totalAmount || 0);
+      const pcs = Number(
+        ord.totalGarments ||
+          (ord.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0) ||
+          0
+      );
+      const d = getOrderDate(ord);
+
+      totalRevenue += amt;
+      totalGarments += pcs;
+
+      const pMethod =
+        ord.settlementType === "ROOM_FOLIO" || ord.paymentMethod === "ROOM_FOLIO"
+          ? "ROOM_FOLIO"
+          : (ord.paymentMethod || "").toUpperCase();
+
+      if (pMethod === "ROOM_FOLIO") folioAmount += amt;
+      else if (pMethod === "CASH") cashAmount += amt;
+      else if (pMethod === "CARD") cardAmount += amt;
+      else if (pMethod === "UPI") upiAmount += amt;
+      else cashAmount += amt;
+
+      (ord.items || []).forEach((item) => {
+        const itemQty = Number(item.quantity) || 1;
+        const itemRate = Number(item.unitRate || item.rate || 0);
+        const itemTotal = Number(item.total || itemQty * itemRate);
+        const cKey = careOf(item);
+        if (careBreakdown[cKey]) {
+          careBreakdown[cKey].amt += itemTotal;
+          careBreakdown[cKey].pcs += itemQty;
+        }
+      });
+
+      if (d) {
+        if (!dailyTrendMap[d]) {
+          dailyTrendMap[d] = { date: d, revenue: 0, orders: 0, pcs: 0 };
+        }
+        dailyTrendMap[d].revenue += amt;
+        dailyTrendMap[d].orders += 1;
+        dailyTrendMap[d].pcs += pcs;
+      }
+    });
+
+    const dailyTrendList = Object.values(dailyTrendMap).sort((a, b) => (a.date > b.date ? 1 : -1));
+    const maxDailyRevenue = Math.max(1, ...dailyTrendList.map((d) => d.revenue));
+
+    return {
+      totalRevenue,
+      totalOrders: periodFilteredOrders.length,
+      totalGarments,
+      folioAmount,
+      cashAmount,
+      cardAmount,
+      upiAmount,
+      careBreakdown,
+      dailyTrendList,
+      maxDailyRevenue,
+    };
+  }, [periodFilteredOrders]);
 
   const filteredGarments = useMemo(
     () =>
@@ -551,8 +810,57 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     );
   const removeBasketItem = (index) => setBasket((prev) => prev.filter((_, i) => i !== index));
 
-  const cgstRate = Number(institutionData?.cgst ?? 2.5);
-  const sgstRate = Number(institutionData?.sgst ?? 2.5);
+  const laundryGstRate = useMemo(() => {
+    if (institutionData?.laundryConfig?.gstRate !== undefined && institutionData?.laundryConfig?.gstRate !== null) {
+      return Number(institutionData.laundryConfig.gstRate);
+    }
+    if (institutionData?.laundryGst !== undefined && institutionData?.laundryGst !== null) {
+      return Number(institutionData.laundryGst);
+    }
+    const defaultTotal = Number(institutionData?.cgst ?? 2.5) + Number(institutionData?.sgst ?? 2.5);
+    return defaultTotal > 0 ? defaultTotal : 5;
+  }, [institutionData]);
+
+  const cgstRate = useMemo(() => {
+    if (institutionData?.laundryConfig?.cgstRate !== undefined && institutionData?.laundryConfig?.cgstRate !== null) {
+      return Number(institutionData.laundryConfig.cgstRate);
+    }
+    return laundryGstRate / 2;
+  }, [institutionData, laundryGstRate]);
+
+  const sgstRate = useMemo(() => {
+    if (institutionData?.laundryConfig?.sgstRate !== undefined && institutionData?.laundryConfig?.sgstRate !== null) {
+      return Number(institutionData.laundryConfig.sgstRate);
+    }
+    return laundryGstRate / 2;
+  }, [institutionData, laundryGstRate]);
+
+  const [customGstInput, setCustomGstInput] = useState(() => String(laundryGstRate));
+  useEffect(() => {
+    setCustomGstInput(String(laundryGstRate));
+  }, [laundryGstRate]);
+
+  const handleSaveLaundryGst = async (rateToSave) => {
+    const num = Math.max(0, Number(rateToSave) || 0);
+    setIsSavingConfig(true);
+    try {
+      await saveLaundryConfigToBackend({
+        catalog,
+        serviceSpeeds,
+        gstRate: num,
+        cgstRate: num / 2,
+        sgstRate: num / 2,
+        institutionData,
+        updateInstitutionData,
+      });
+      toast.success(`Laundry GST updated to ${num}% (${num / 2}% CGST + ${num / 2}% SGST)`);
+    } catch (e) {
+      toast.error("Failed to update laundry GST");
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
   const totals = useMemo(
     () => calculateLaundryTotals(basket, serviceSpeed, cgstRate, sgstRate, serviceSpeeds, customExtraCharge),
     [basket, serviceSpeed, cgstRate, sgstRate, serviceSpeeds, customExtraCharge]
@@ -592,6 +900,9 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       flatExtraAmount: totals.flatExtraAmount || 0,
       itemsSubtotal: totals.itemsSubtotal,
       taxableAmount: totals.taxableAmount,
+      cgstRate,
+      sgstRate,
+      laundryGstRate,
       cgstAmount: totals.cgstAmount,
       sgstAmount: totals.sgstAmount,
       grandTotal: totals.grandTotal,
@@ -629,9 +940,11 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
 
   // 1. Post directly to hotel room bill
   const handleSettleToRoomFolio = async () => {
+    if (isSubmitting) return;
     if (basket.length === 0) return toast.error("Add at least one garment.");
     if (!selectedRoomNumber) return toast.error("Select a room to charge.");
 
+    setIsSubmitting(true);
     const { foundBooking, name, phone } = resolveRoomGuest("In-House Guest");
     const orderData = {
       ...buildOrderPayload("ROOM_FOLIO"),
@@ -646,43 +959,19 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       turnaroundSpeed: serviceSpeed,
       institutionId: currentInstitutionId,
     };
-    const currentDate = ymd();
 
     try {
-      if (selectedBookingId) {
-        const institutionId = foundBooking?.institutionId || currentInstitutionId;
-        const entry = {
-          food_charges: 0,
-          laundry_charges: totals.grandTotal,
-          minibar_charges: 0,
-          extra_bed_charges: 0,
-          manual_charges: 0,
-          order_id: token,
-          service_id: token,
-          service_type: "laundry",
-          name: `Laundry: ${totals.totalGarments} pcs`,
-          token,
-          guestName: name,
-          roomNumber: selectedRoomNumber,
-          items: basket,
-          cgstAmount: totals.cgstAmount,
-          sgstAmount: totals.sgstAmount,
-          itemsSubtotal: totals.itemsSubtotal,
-          notes: `Laundry: ${totals.totalGarments} pcs (${orderData.serviceSpeedLabel})`,
-          totalAmount: totals.grandTotal,
-          created_at: Date.now(),
-        };
-        await updateBookingServices(selectedBookingId, {
-          booking_id: selectedBookingId,
-          institutionId,
-          services: { [selectedRoomNumber]: { [currentDate]: [entry] } },
-        });
-        toast.success(`Posted ₹${totals.grandTotal} to Room ${selectedRoomNumber} (${name})`);
-      }
+      // finishOrder calls createLaundryOrderBackend (POST /laundry/orders).
+      // The backend /laundry/orders Lambda automatically records and posts the folio entry
+      // directly to the booking in DynamoDB. Calling updateBookingServices manually from frontend
+      // caused DynamoDB to receive duplicate entries (one from /laundry/orders, one from /bookings/services).
       await finishOrder(orderData);
+      toast.success(`Posted ₹${totals.grandTotal} to Room ${selectedRoomNumber} (${name})`);
     } catch (err) {
       console.error(err);
       toast.error("Could not post to room bill");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -690,6 +979,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
 
   // 3. Direct POS settlement (Cash, Card, UPI)
   const handleDirectPOSSettle = async (payMethod = "CASH") => {
+    if (isSubmitting) return;
     if (basket.length === 0) return toast.error("Add at least one garment.");
     if (collectionSource === "walk_in" && !guestName.trim()) {
       return toast.error("Please enter the guest name for Walk-In order.");
@@ -698,6 +988,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       return toast.error("Please select a checked-in room.");
     }
 
+    setIsSubmitting(true);
     const { name, phone } = resolveRoomGuest(collectionSource === "walk_in" ? "Walk-In Guest" : "In-House Guest");
     const resolvedName = collectionSource === "walk_in" ? (guestName.trim() || "Walk-In Guest") : name;
     const resolvedPhone = collectionSource === "walk_in" ? (guestMobile.trim() || "") : phone;
@@ -735,6 +1026,8 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     } catch (err) {
       console.error(err);
       toast.error("Could not complete payment");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -768,9 +1061,11 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
   };
 
   const handleConvertHoldToRoomFolio = async (orderToPost) => {
+    if (isSubmitting) return;
     const bId = orderToPost.bookingId || orderToPost.booking_id;
     if (!bId) return toast.error("Missing booking reference for this room.");
 
+    setIsSubmitting(true);
     const foundBooking = bookings.find((b) => b.booking_id === bId);
     const gInfo = resolveGuestDetails(foundBooking);
     const name =
@@ -780,31 +1075,44 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
 
     try {
       const chargeAmt = Number(orderToPost.grandTotal || orderToPost.totalAmount || 0);
-      const entry = {
-        food_charges: 0,
-        laundry_charges: chargeAmt,
-        minibar_charges: 0,
-        extra_bed_charges: 0,
-        manual_charges: 0,
-        order_id: orderToPost.token || orderToPost.orderId,
-        service_id: orderToPost.token || orderToPost.orderId,
-        service_type: "laundry",
-        name: `Laundry: ${orderToPost.totalGarments || 1} pcs`,
-        guestName: name,
-        roomNumber: orderToPost.roomNumber,
-        items: orderToPost.items || [],
-        cgstAmount: orderToPost.cgstAmount || Math.round(chargeAmt * 0.025),
-        sgstAmount: orderToPost.sgstAmount || Math.round(chargeAmt * 0.025),
-        itemsSubtotal: orderToPost.itemsSubtotal || orderToPost.subtotal || chargeAmt,
-        notes: `Laundry: ${orderToPost.totalGarments || 1} pcs (Released from hold)`,
-        totalAmount: chargeAmt,
-        created_at: Date.now(),
-      };
-      await updateBookingServices(bId, {
-        booking_id: bId,
-        institutionId: currentInstitutionId,
-        services: { [orderToPost.roomNumber]: { [currentDateStr]: [entry] } },
-      });
+      const oToken = orderToPost.token || orderToPost.orderId;
+      const rawExisting = foundBooking?.services?.[orderToPost.roomNumber]?.[currentDateStr];
+      const existingList = Array.isArray(rawExisting)
+        ? rawExisting
+        : rawExisting && typeof rawExisting === "object"
+        ? [rawExisting]
+        : [];
+      const alreadyPosted = existingList.some(
+        (s) => s && (s.order_id === oToken || s.token === oToken || s.service_id === oToken)
+      );
+
+      if (!alreadyPosted) {
+        const entry = {
+          food_charges: 0,
+          laundry_charges: chargeAmt,
+          minibar_charges: 0,
+          extra_bed_charges: 0,
+          manual_charges: 0,
+          order_id: oToken,
+          service_id: oToken,
+          service_type: "laundry",
+          name: `Laundry: ${orderToPost.totalGarments || 1} pcs`,
+          guestName: name,
+          roomNumber: orderToPost.roomNumber,
+          items: orderToPost.items || [],
+          cgstAmount: orderToPost.cgstAmount || Math.round(chargeAmt * 0.025),
+          sgstAmount: orderToPost.sgstAmount || Math.round(chargeAmt * 0.025),
+          itemsSubtotal: orderToPost.itemsSubtotal || orderToPost.subtotal || chargeAmt,
+          notes: `Laundry: ${orderToPost.totalGarments || 1} pcs (Released from hold)`,
+          totalAmount: chargeAmt,
+          created_at: Date.now(),
+        };
+        await updateBookingServices(bId, {
+          booking_id: bId,
+          institutionId: currentInstitutionId,
+          services: { [orderToPost.roomNumber]: { [currentDateStr]: [entry] } },
+        });
+      }
 
       persistOrders(
         allOrders.map((o) =>
@@ -830,6 +1138,8 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     } catch (err) {
       console.error(err);
       toast.error("Could not post to room bill");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -864,13 +1174,35 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
   };
 
   const handleUpdateOrderStatus = (orderId, newStatus) => {
+    const isNowDelivered = newStatus === "Delivered" || newStatus === "delivered";
     persistOrders(
       allOrders.map((o) =>
-        o.orderId === orderId ? { ...o, status: newStatus, updatedAt: new Date().toISOString() } : o
+        o.orderId === orderId || o.token === orderId
+          ? {
+              ...o,
+              status: newStatus,
+              ...(isNowDelivered
+                ? {
+                    delivery_status: "delivered_to_room",
+                    delivered_to_room: true,
+                    delivered_at: o.delivered_at || new Date().toISOString(),
+                    delivered_by: o.delivered_by || userData?.userName || userData?.name || "Laundry Staff",
+                  }
+                : {}),
+              updatedAt: new Date().toISOString(),
+            }
+          : o
       )
     );
     try {
-      updateLaundryStatusBackend(orderId, { status: newStatus }, currentInstitutionId);
+      updateLaundryStatusBackend(
+        orderId,
+        {
+          status: newStatus,
+          ...(isNowDelivered ? { delivery_status: "delivered_to_room" } : {}),
+        },
+        currentInstitutionId
+      );
     } catch (e) {}
     toast.success(`Order ${orderId} is now "${newStatus}"`);
   };
@@ -1171,19 +1503,19 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
             </div>
           </Panel>
 
-          {/* RIGHT: order & settlement (fixed layout, only the item list scrolls) */}
-          <Panel className="lg:col-span-5 flex flex-col min-h-0 overflow-hidden">
+          {/* RIGHT: order & settlement (compact layout, 2-item clean fit with scrolling) */}
+          <Panel className="lg:col-span-5 flex flex-col justify-between overflow-hidden">
             {/* header */}
-            <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-100">
-              <div className="flex items-center gap-1.5 font-semibold">
-                <Receipt className="w-4 h-4 text-blue-600" /> Order
+            <div className="shrink-0 flex items-center justify-between px-2.5 py-1.5 border-b border-gray-100 bg-white">
+              <div className="flex items-center gap-1.5 font-semibold text-xs">
+                <Receipt className="w-3.5 h-3.5 text-blue-600" /> Order
                 <span className="font-mono text-[11px] text-gray-500">#{token}</span>
               </div>
               {basket.length > 0 && (
                 <button
                   type="button"
                   onClick={handleResetOrder}
-                  className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-red-600"
+                  className="flex items-center gap-1 text-[10.5px] text-gray-500 hover:text-red-600 font-medium"
                 >
                   <Trash2 className="w-3 h-3" /> Clear
                 </button>
@@ -1191,9 +1523,10 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
             </div>
 
             {/* customer / order type: Only 2 options (Room Pickup vs Walk-In) */}
-            <div className="shrink-0 px-3 py-2 space-y-1.5 border-b border-gray-100">
+            <div className="shrink-0 px-2.5 py-1.5 space-y-1 border-b border-gray-100 bg-white">
               <Segmented
                 value={collectionSource}
+                size="sm"
                 onChange={(val) => {
                   setCollectionSource(val);
                   if (val === "walk_in") {
@@ -1211,7 +1544,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
               {collectionSource === "room_pickup" ? (
                 <>
                   <Select value={selectedBookingId} onValueChange={handleBookingSelect}>
-                    <SelectTrigger className="!h-8 text-xs">
+                    <SelectTrigger className="!h-7 text-xs">
                       <SelectValue placeholder="Select checked-in room *" />
                     </SelectTrigger>
                     <SelectContent className="max-h-56">
@@ -1231,9 +1564,9 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                       )}
                     </SelectContent>
                   </Select>
-                  <div className="min-h-5 flex items-center text-[11px] text-gray-600">
+                  <div className="min-h-4 flex items-center text-[10.5px] text-gray-600">
                     {selectedRoomNumber ? (
-                      <span className="bg-blue-50 text-blue-900 px-2 py-0.5 rounded border border-blue-200">
+                      <span className="bg-blue-50 text-blue-900 px-1.5 py-0.5 rounded border border-blue-200 truncate">
                         <strong className="text-gray-900">Room {selectedRoomNumber}</strong> ·{" "}
                         {guestName || "In-House Guest"}
                         {guestMobile ? ` · ${guestMobile}` : ""}
@@ -1250,31 +1583,31 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                       value={guestName}
                       onChange={(e) => setGuestName(e.target.value)}
                       placeholder="Guest Name *"
-                      className="!h-8 text-xs font-medium"
+                      className="!h-7 text-xs font-medium"
                       required
                     />
                     <Input
                       value={guestMobile}
                       onChange={(e) => setGuestMobile(e.target.value)}
-                      placeholder="Phone Number (Optional)"
-                      className="!h-8 text-xs"
+                      placeholder="Phone (Optional)"
+                      className="!h-7 text-xs"
                     />
                   </div>
-                  <div className="text-[10px] text-gray-500">
-                    * Guest name is required for Walk-In. Phone number is optional.
+                  <div className="text-[9.5px] text-gray-500">
+                    * Guest name required for Walk-In.
                   </div>
                 </div>
               )}
             </div>
 
             {/* delivery */}
-            <div className="shrink-0 px-3 py-2 space-y-1.5 border-b border-gray-100">
+            <div className="shrink-0 px-2.5 py-1.5 space-y-1 border-b border-gray-100 bg-white">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-700">Delivery</span>
+                <span className="font-semibold text-[11px] text-gray-700">Delivery</span>
                 <button
                   type="button"
                   onClick={() => setEditSpeedsModalOpen(true)}
-                  className="flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
+                  className="flex items-center gap-1 text-[10.5px] text-blue-600 hover:underline"
                 >
                   <Settings className="w-3 h-3" /> Edit charges
                 </button>
@@ -1285,102 +1618,106 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                     key={sp.id}
                     type="button"
                     onClick={() => handleServiceSpeedChange(sp.id)}
-                    className={`rounded-md border py-1 text-center transition-colors ${
+                    className={`rounded border py-0.5 px-1 text-center transition-colors ${
                       serviceSpeed === sp.id
                         ? "bg-blue-600 border-blue-600 text-white"
                         : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
                     }`}
                   >
-                    <div className="text-[11px] font-semibold truncate">{sp.shortLabel}</div>
-                    <div className={`text-[10px] ${serviceSpeed === sp.id ? "text-blue-100" : "text-gray-500"}`}>
+                    <div className="text-[10px] font-semibold truncate leading-tight">{sp.shortLabel}</div>
+                    <div className={`text-[9px] leading-tight ${serviceSpeed === sp.id ? "text-blue-100" : "text-gray-500"}`}>
                       {speedExtraLabel(sp)}
                     </div>
                   </button>
                 ))}
               </div>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-3 gap-1">
                 <div>
-                  <span className="text-[10px] text-gray-500">Date</span>
+                  <span className="text-[9.5px] text-gray-500">Date</span>
                   <Input
                     type="date"
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
-                    className="!h-7 text-[11px] px-1.5"
+                    className="!h-6 text-[10px] px-1"
                   />
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-500">Time</span>
+                  <span className="text-[9.5px] text-gray-500">Time</span>
                   <Input
                     type="time"
                     value={deliveryTime}
                     onChange={(e) => setDeliveryTime(e.target.value)}
-                    className="!h-7 text-[11px] px-1.5"
+                    className="!h-6 text-[10px] px-1"
                   />
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-500">Extra fee (₹)</span>
+                  <span className="text-[9.5px] text-gray-500">Extra fee (₹)</span>
                   <Input
                     type="number"
                     min="0"
                     value={customExtraCharge || ""}
                     onChange={(e) => setCustomExtraCharge(Math.max(0, Number(e.target.value) || 0))}
                     placeholder="0"
-                    className="!h-7 text-[11px] px-1.5 text-right"
+                    className="!h-6 text-[10px] px-1 text-right"
                   />
                 </div>
               </div>
             </div>
 
-            {/* items (the only scrolling region) */}
-            <div className="flex-1 min-h-0 flex flex-col px-3 py-2">
+            {/* items (scrollable after 2 items cleanly) */}
+            <div className="shrink-0 flex flex-col px-2.5 py-1.5 bg-white">
               <div className="shrink-0 flex items-center justify-between mb-1">
-                <span className="font-semibold text-gray-700">Items ({totals.totalGarments} pcs)</span>
+                <span className="font-semibold text-xs text-gray-700">Items ({totals.totalGarments} pcs)</span>
+                {basket.length > 2 && (
+                  <span className="text-[9.5px] text-blue-600 font-medium">Scroll to view all {basket.length}</span>
+                )}
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-0.5">
+              <div className="max-h-[110px] min-h-[90px] overflow-y-auto space-y-1.5 pr-0.5">
                 {basket.length === 0 ? (
-                  <div className="h-full min-h-16 flex flex-col items-center justify-center rounded-md border border-dashed border-gray-200 text-gray-400">
-                    <p className="font-medium text-gray-500">No items yet</p>
-                    <p className="text-[10px]">Tap a rate on a garment card to add it</p>
+                  <div className="h-[90px] flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 text-gray-400 p-2 text-center">
+                    <p className="font-semibold text-gray-600 text-xs">Cart is empty</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Tap any garment rate to add item</p>
                   </div>
                 ) : (
                   basket.map((item, idx) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1"
+                      className="flex items-center justify-between gap-1.5 rounded-md border border-gray-200 bg-white shadow-2xs p-1.5 px-2 transition-all hover:border-gray-300"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-[11px] truncate">{item.name}</div>
-                        <div className="flex items-center gap-1">
+                        <div className="font-semibold text-xs text-gray-800 truncate leading-tight">{item.name}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
                           <CareChip careType={item.careType} />
-                          <span className="text-[10px] text-gray-500">₹{item.unitRate} each</span>
+                          <span className="text-[10px] text-gray-500 font-medium">₹{item.unitRate} each</span>
                         </div>
                       </div>
-                      <div className="flex items-center rounded border border-gray-300 bg-white">
+                      <div className="flex items-center rounded border border-gray-200 bg-gray-50">
                         <button
                           type="button"
                           onClick={() => updateBasketQuantity(idx, -1)}
-                          className="px-1.5 text-gray-600 hover:bg-gray-100 font-bold"
+                          className="w-5 h-5 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-xs font-bold rounded-l transition-colors"
                         >
                           −
                         </button>
-                        <span className="px-1.5 text-[11px] font-bold">{item.quantity}</span>
+                        <span className="px-1 text-xs font-bold text-gray-800 min-w-[18px] text-center">{item.quantity}</span>
                         <button
                           type="button"
                           onClick={() => updateBasketQuantity(idx, 1)}
-                          className="px-1.5 text-gray-600 hover:bg-gray-100 font-bold"
+                          className="w-5 h-5 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-xs font-bold rounded-r transition-colors"
                         >
                           +
                         </button>
                       </div>
-                      <span className="w-12 text-right font-semibold text-[11px]">
+                      <span className="w-12 text-right font-bold text-xs text-gray-900">
                         ₹{(item.unitRate * item.quantity).toFixed(0)}
                       </span>
                       <button
                         type="button"
                         onClick={() => removeBasketItem(idx)}
-                        className="text-gray-400 hover:text-red-600"
+                        className="p-0.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                        title="Remove"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))
@@ -1388,50 +1725,59 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
               </div>
             </div>
 
-            {/* bill + actions, pinned to the bottom */}
-            <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 py-2 space-y-1.5">
-              <div className="space-y-0.5 text-[11px] text-gray-600">
+            {/* bill + actions, pinned to the bottom (clean, covered, prominent total payable) */}
+            <div className="shrink-0 border-t border-gray-200 bg-slate-50 px-2.5 py-1.5 space-y-1">
+              <div className="space-y-0.5 text-[10px] text-gray-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span>₹{totals.itemsSubtotal.toFixed(2)}</span>
+                  <span className="font-medium text-gray-800">₹{totals.itemsSubtotal.toFixed(2)}</span>
                 </div>
                 {totals.surchargeAmount > 0 && (
                   <div className="flex justify-between">
                     <span>Delivery extra</span>
-                    <span>₹{totals.surchargeAmount.toFixed(2)}</span>
+                    <span className="font-medium text-gray-800">₹{totals.surchargeAmount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
+                  <span>CGST ({cgstRate}%)</span>
+                  <span className="font-medium text-gray-800">₹{totals.cgstAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
                   <span>
-                    GST {cgstRate + sgstRate}% (SAC {LAUNDRY_SAC_CODE})
+                    SGST ({sgstRate}%) (SAC {LAUNDRY_SAC_CODE})
                   </span>
-                  <span>₹{totals.totalTax.toFixed(2)}</span>
+                  <span className="font-medium text-gray-800">₹{totals.sgstAmount.toFixed(2)}</span>
                 </div>
               </div>
-              <div className="flex items-baseline justify-between border-t border-gray-300 pt-1.5">
-                <span className="font-semibold text-gray-900">Total payable</span>
-                <span className="text-lg font-bold text-gray-900">₹{totals.grandTotal.toFixed(2)}</span>
+              
+              <div className="flex items-center justify-between border-t border-blue-200 bg-blue-50/80 -mx-2.5 px-2.5 py-1 rounded">
+                <span className="font-bold text-xs text-blue-950 uppercase tracking-wide">Total Payable</span>
+                <span className="text-base font-extrabold text-blue-900">₹{totals.grandTotal.toFixed(2)}</span>
               </div>
 
+
               {collectionSource === "room_pickup" ? (
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <Button
                     type="button"
                     onClick={handleSettleToRoomFolio}
-                    disabled={!selectedRoomNumber || basket.length === 0}
-                    className="w-full !h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs disabled:opacity-50"
+                    disabled={!selectedRoomNumber || basket.length === 0 || isSubmitting}
+                    className="w-full !h-7 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs disabled:opacity-50"
                   >
                     <Bed className="w-3.5 h-3.5 mr-1" />
-                    {selectedRoomNumber ? `Post to Hotel Bill (Room ${selectedRoomNumber})` : "Post to Hotel Bill"}
+                    {isSubmitting
+                      ? "Posting..."
+                      : selectedRoomNumber
+                      ? `Post to Hotel Bill (Room ${selectedRoomNumber})`
+                      : "Post to Hotel Bill"}
                   </Button>
                   <div className="grid grid-cols-3 gap-1">
-                   
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => handleDirectPOSSettle("CASH")}
-                      disabled={!selectedRoomNumber || basket.length === 0}
-                      className="!h-7 text-[10.5px] font-semibold px-1 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 disabled:opacity-50"
+                      disabled={!selectedRoomNumber || basket.length === 0 || isSubmitting}
+                      className="!h-6.5 text-[10.5px] font-semibold px-1 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 disabled:opacity-50"
                     >
                       <Banknote className="w-3 h-3 mr-0.5 shrink-0" /> Cash
                     </Button>
@@ -1439,8 +1785,8 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                       type="button"
                       variant="outline"
                       onClick={() => handleDirectPOSSettle("CARD")}
-                      disabled={!selectedRoomNumber || basket.length === 0}
-                      className="!h-7 text-[10.5px] font-semibold px-1 bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 disabled:opacity-50"
+                      disabled={!selectedRoomNumber || basket.length === 0 || isSubmitting}
+                      className="!h-6.5 text-[10.5px] font-semibold px-1 bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 disabled:opacity-50"
                     >
                       <CreditCard className="w-3 h-3 mr-0.5 shrink-0" /> Card
                     </Button>
@@ -1448,47 +1794,44 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                       type="button"
                       variant="outline"
                       onClick={() => handleDirectPOSSettle("UPI")}
-                      disabled={!selectedRoomNumber || basket.length === 0}
-                      className="!h-7 text-[10.5px] font-semibold px-1 bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 disabled:opacity-50"
+                      disabled={!selectedRoomNumber || basket.length === 0 || isSubmitting}
+                      className="!h-6.5 text-[10.5px] font-semibold px-1 bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 disabled:opacity-50"
                     >
                       <QrCode className="w-3 h-3 mr-0.5 shrink-0" /> UPI
                     </Button>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-1.5">
-                  <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-                    Settle Walk-In Bill
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
+                <div className="space-y-1">
+                  <div className="grid grid-cols-3 gap-1">
                     <Button
                       type="button"
                       onClick={() => handleDirectPOSSettle("CASH")}
-                      disabled={basket.length === 0}
-                      className="!h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+                      disabled={basket.length === 0 || isSubmitting}
+                      className="!h-7 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
                     >
                       <Banknote className="w-3.5 h-3.5 mr-1" /> Cash
                     </Button>
                     <Button
                       type="button"
                       onClick={() => handleDirectPOSSettle("CARD")}
-                      disabled={basket.length === 0}
-                      className="!h-8 text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+                      disabled={basket.length === 0 || isSubmitting}
+                      className="!h-7 text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
                     >
                       <CreditCard className="w-3.5 h-3.5 mr-1" /> Card
                     </Button>
                     <Button
                       type="button"
                       onClick={() => handleDirectPOSSettle("UPI")}
-                      disabled={basket.length === 0}
-                      className="!h-8 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-50"
+                      disabled={basket.length === 0 || isSubmitting}
+                      className="!h-7 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-50"
                     >
                       <QrCode className="w-3.5 h-3.5 mr-1" /> UPI
                     </Button>
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-1 pt-0.5">
                 <Button
                   type="button"
                   variant="outline"
@@ -1496,7 +1839,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                     if (basket.length === 0) return toast.error("Add garments before printing.");
                     printA4(previewCurrent());
                   }}
-                  className="!h-7 text-[11px]"
+                  className="!h-6 text-[10.5px]"
                 >
                   <FileText className="w-3 h-3 mr-1" /> A4 bill
                 </Button>
@@ -1507,7 +1850,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                     if (basket.length === 0) return toast.error("Add garments before printing.");
                     printSlip(previewCurrent());
                   }}
-                  className="!h-7 text-[11px]"
+                  className="!h-6 text-[10.5px]"
                 >
                   <Printer className="w-3 h-3 mr-1" /> {paperSize}mm slip
                 </Button>
@@ -1682,102 +2025,421 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       )}
 
       {/* ----------------------------- STATISTICS --------------------------- */}
-      {activeTab === "statistics" && (() => {
-        const day = dailyStatsMap[statsDateFilter];
-        return (
-          <Panel className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            <div className="shrink-0 px-3 py-2 border-b border-gray-100 flex items-center gap-2">
-              <Calendar className="w-3.5 h-3.5 text-gray-500" />
-              <span className="text-gray-600 font-medium">Date</span>
-              <input
-                type="date"
-                value={statsDateFilter}
-                onChange={(e) => setStatsDateFilter(e.target.value)}
-                className="!h-7 bg-white border border-gray-300 rounded px-2 text-xs font-semibold"
-              />
-              {statsDateFilter !== currentDateStr && (
-                <Button variant="ghost" size="sm" className="!h-7 text-[11px] text-blue-600" onClick={() => setStatsDateFilter(currentDateStr)}>
-                  Today
-                </Button>
-              )}
-              <span className="ml-auto text-[11px] text-gray-500">
-                {day ? `${day.orders} orders · ${day.garments} pcs` : "No orders on this date"}
+      {activeTab === "statistics" && (
+        <Panel className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* Filter Bar: Default Today + Quick Ranges + Custom Range */}
+          <div className="shrink-0 px-3 py-2 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2 bg-gray-50/50">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="flex items-center gap-1 font-semibold text-xs text-gray-700 mr-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" /> Date Range:
               </span>
+              {[
+                { id: "today", label: "Today" },
+                { id: "yesterday", label: "Yesterday" },
+                { id: "7days", label: "Last 7 Days" },
+                { id: "month", label: "This Month" },
+                { id: "custom", label: "Custom Range" },
+              ].map((pill) => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setStatsRangeType(pill.id)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors border ${
+                    statsRangeType === pill.id
+                      ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                      : "bg-white text-gray-600 border-gray-200 hover:bg-gray-100"
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+
+              {statsRangeType === "custom" && (
+                <div className="flex items-center gap-1 ml-1 bg-white border border-gray-200 rounded p-0.5">
+                  <input
+                    type="date"
+                    value={statsCustomFrom}
+                    onChange={(e) => setStatsCustomFrom(e.target.value)}
+                    className="!h-6 text-[11px] px-1 font-medium border-0 focus:ring-0"
+                  />
+                  <span className="text-[10px] text-gray-400">to</span>
+                  <input
+                    type="date"
+                    value={statsCustomTo}
+                    onChange={(e) => setStatsCustomTo(e.target.value)}
+                    className="!h-6 text-[11px] px-1 font-medium border-0 focus:ring-0"
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="shrink-0 grid grid-cols-2 md:grid-cols-5 gap-2 p-3">
-              {CARE_IDS.map((c) => {
-                const ui = CARE_UI[c];
-                return (
-                  <div key={c} className="rounded-lg border border-gray-200 p-2.5">
-                    <div className="flex items-center gap-1 text-[11px] text-gray-600">
-                      <ui.Icon className="w-3 h-3" /> {ui.label}
-                    </div>
-                    <div className="text-base font-bold mt-0.5">₹{(day?.care[c].amt || 0).toFixed(2)}</div>
-                    <div className="text-[10px] text-gray-500">{day?.care[c].pcs || 0} garments</div>
+            <div className="text-[11px] text-gray-500 font-medium">
+              Showing <strong className="text-gray-900">{periodMetrics.totalOrders}</strong> orders ·{" "}
+              <strong className="text-gray-900">{periodMetrics.totalGarments}</strong> pcs (
+              {statsDateRange.from === statsDateRange.to
+                ? statsDateRange.from
+                : `${statsDateRange.from} to ${statsDateRange.to}`}
+              )
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+            {/* Top KPI Metrics Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-2.5">
+                <div className="text-[11px] font-semibold text-blue-800 flex items-center justify-between">
+                  <span>Laundry Revenue</span>
+                  <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
+                </div>
+                <div className="text-lg font-bold text-blue-950 mt-0.5">
+                  ₹{periodMetrics.totalRevenue.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-blue-800/80">
+                  {periodMetrics.totalOrders} orders completed
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+                <div className="text-[11px] font-semibold text-gray-600">Hotel Room Folio</div>
+                <div className="text-lg font-bold text-gray-900 mt-0.5">
+                  ₹{periodMetrics.folioAmount.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-gray-500">
+                  {periodMetrics.totalRevenue > 0
+                    ? `${((periodMetrics.folioAmount / periodMetrics.totalRevenue) * 100).toFixed(0)}% of revenue`
+                    : "0%"}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-2.5">
+                <div className="text-[11px] font-semibold text-emerald-800">Cash Settlements</div>
+                <div className="text-lg font-bold text-emerald-950 mt-0.5">
+                  ₹{periodMetrics.cashAmount.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-emerald-700">Direct cash POS</div>
+              </div>
+
+              <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-2.5">
+                <div className="text-[11px] font-semibold text-purple-800">Card Payments</div>
+                <div className="text-lg font-bold text-purple-950 mt-0.5">
+                  ₹{periodMetrics.cardAmount.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-purple-700">Card POS terminal</div>
+              </div>
+
+              <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-2.5">
+                <div className="text-[11px] font-semibold text-sky-800">UPI / QR Code</div>
+                <div className="text-lg font-bold text-sky-950 mt-0.5">
+                  ₹{periodMetrics.upiAmount.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-sky-700">Instant UPI collection</div>
+              </div>
+            </div>
+
+            {/* Visual Settlement Distribution & Daily Trend Graphs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Circular Settlement Distribution Graph */}
+              <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-xs text-gray-800 flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 text-blue-600" /> Settlement Breakdown
+                  </h4>
+                  <span className="text-[11px] font-semibold text-gray-700">
+                    Total: ₹{periodMetrics.totalRevenue.toFixed(0)}
+                  </span>
+                </div>
+
+                {periodMetrics.totalRevenue === 0 ? (
+                  <div className="text-center py-8 text-xs text-gray-400">
+                    No billing activity in this period.
                   </div>
-                );
-              })}
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5">
-                <div className="text-[11px] text-blue-800">Day total</div>
-                <div className="text-base font-bold mt-0.5">₹{(day?.total || 0).toFixed(2)}</div>
-                <div className="text-[10px] text-blue-800/70">
-                  Folio ₹{(day?.folio || 0).toFixed(0)} · Direct ₹{(day?.pos || 0).toFixed(0)}
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+                    {/* SVG Circular Donut Chart */}
+                    <div className="shrink-0 flex justify-center">
+                      <SvgDonutChart
+                        size={120}
+                        strokeWidth={18}
+                        centerLabel="Settled"
+                        data={[
+                          { label: "Room Folio", value: periodMetrics.folioAmount, color: "#2563eb" },
+                          { label: "Cash", value: periodMetrics.cashAmount, color: "#10b981" },
+                          { label: "Card", value: periodMetrics.cardAmount, color: "#a855f7" },
+                          { label: "UPI", value: periodMetrics.upiAmount, color: "#0ea5e9" },
+                        ]}
+                      />
+                    </div>
+
+                    {/* Settlement legend badges */}
+                    <div className="flex-1 w-full grid grid-cols-2 gap-1.5 text-xs">
+                      <div className="flex items-center justify-between p-1.5 rounded bg-blue-50/60 border border-blue-100">
+                        <span className="flex items-center gap-1 font-medium text-gray-700 text-[11px]">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" /> Folio
+                        </span>
+                        <span className="font-bold text-gray-900 text-right text-[11px]">
+                          ₹{periodMetrics.folioAmount.toFixed(0)}{" "}
+                          <span className="text-[9.5px] text-gray-500 font-normal">
+                            ({((periodMetrics.folioAmount / (periodMetrics.totalRevenue || 1)) * 100).toFixed(0)}%)
+                          </span>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between p-1.5 rounded bg-emerald-50/60 border border-emerald-100">
+                        <span className="flex items-center gap-1 font-medium text-gray-700 text-[11px]">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" /> Cash
+                        </span>
+                        <span className="font-bold text-gray-900 text-right text-[11px]">
+                          ₹{periodMetrics.cashAmount.toFixed(0)}{" "}
+                          <span className="text-[9.5px] text-gray-500 font-normal">
+                            ({((periodMetrics.cashAmount / (periodMetrics.totalRevenue || 1)) * 100).toFixed(0)}%)
+                          </span>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between p-1.5 rounded bg-purple-50/60 border border-purple-100">
+                        <span className="flex items-center gap-1 font-medium text-gray-700 text-[11px]">
+                          <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0" /> Card
+                        </span>
+                        <span className="font-bold text-gray-900 text-right text-[11px]">
+                          ₹{periodMetrics.cardAmount.toFixed(0)}{" "}
+                          <span className="text-[9.5px] text-gray-500 font-normal">
+                            ({((periodMetrics.cardAmount / (periodMetrics.totalRevenue || 1)) * 100).toFixed(0)}%)
+                          </span>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between p-1.5 rounded bg-sky-50/60 border border-sky-100">
+                        <span className="flex items-center gap-1 font-medium text-gray-700 text-[11px]">
+                          <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0" /> UPI
+                        </span>
+                        <span className="font-bold text-gray-900 text-right text-[11px]">
+                          ₹{periodMetrics.upiAmount.toFixed(0)}{" "}
+                          <span className="text-[9.5px] text-gray-500 font-normal">
+                            ({((periodMetrics.upiAmount / (periodMetrics.totalRevenue || 1)) * 100).toFixed(0)}%)
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+
+              {/* Revenue Trend Bar Graph */}
+              <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-xs text-gray-800 flex items-center gap-1.5">
+                    <BarChart3 className="w-3.5 h-3.5 text-blue-600" /> Daily Revenue Trend
+                  </h4>
+                  <span className="text-[11px] text-gray-500">
+                    {periodMetrics.dailyTrendList.length} active day(s)
+                  </span>
+                </div>
+
+                {periodMetrics.dailyTrendList.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-gray-400">
+                    No daily revenue data for this range.
+                  </div>
+                ) : (
+                  <div className="h-28 flex items-end gap-2 pt-4 px-1 overflow-x-auto border-b border-gray-200 pb-1">
+                    {periodMetrics.dailyTrendList.map((d) => {
+                      const heightPct = Math.max(
+                        10,
+                        Math.round((d.revenue / periodMetrics.maxDailyRevenue) * 100)
+                      );
+                      const isToday = d.date === currentDateStr;
+                      return (
+                        <div
+                          key={d.date}
+                          className="flex-1 min-w-[36px] flex flex-col items-center gap-1 group relative"
+                        >
+                          <div className="text-[9.5px] font-bold text-gray-600 truncate opacity-90 group-hover:opacity-100">
+                            ₹{d.revenue >= 1000 ? `${(d.revenue / 1000).toFixed(1)}k` : d.revenue.toFixed(0)}
+                          </div>
+                          <div
+                            style={{ height: `${heightPct}%` }}
+                            className={`w-full max-w-[28px] rounded-t transition-all ${
+                              isToday
+                                ? "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                                : "bg-slate-400 hover:bg-slate-500"
+                            }`}
+                            title={`${d.date}: ₹${d.revenue.toFixed(2)} (${d.orders} orders)`}
+                          />
+                          <div className="text-[9px] text-gray-500 truncate font-mono">
+                            {d.date.substring(5)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Care Types Breakdown with Circular Chart */}
+            <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-xs text-gray-800 flex items-center gap-1.5">
+                  <Shirt className="w-3.5 h-3.5 text-blue-600" /> Garment Care Services Distribution
+                </h4>
+                <span className="text-[11px] font-semibold text-gray-700">
+                  {periodMetrics.totalGarments} pcs processed
+                </span>
+              </div>
+              <div className="flex flex-col md:flex-row items-center gap-3">
+                <div className="shrink-0 flex justify-center">
+                  <SvgDonutChart
+                    size={110}
+                    strokeWidth={16}
+                    centerLabel="Garments"
+                    centerValue={`${periodMetrics.totalGarments} pcs`}
+                    data={CARE_IDS.map((c) => {
+                      const cData = periodMetrics.careBreakdown[c] || { amt: 0, pcs: 0 };
+                      const colorMap = {
+                        wash_only: "#3b82f6",
+                        wash_and_press: "#10b981",
+                        press_only: "#f59e0b",
+                        dry_clean: "#8b5cf6",
+                      };
+                      return {
+                        label: CARE_UI[c]?.label || c,
+                        value: cData.pcs || 0,
+                        color: colorMap[c] || "#64748b",
+                      };
+                    })}
+                  />
+                </div>
+                <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {CARE_IDS.map((c) => {
+                    const ui = CARE_UI[c];
+                    const cData = periodMetrics.careBreakdown[c] || { amt: 0, pcs: 0 };
+                    return (
+                      <div key={c} className="rounded-lg border border-gray-100 bg-slate-50/70 p-2">
+                        <div className="flex items-center gap-1 text-[11px] font-medium text-gray-700">
+                          <ui.Icon className="w-3 h-3 text-gray-500" /> {ui.label}
+                        </div>
+                        <div className="text-sm font-bold text-gray-900 mt-0.5">
+                          ₹{cData.amt.toFixed(2)}
+                        </div>
+                        <div className="text-[10px] text-gray-500">{cData.pcs} garments</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto px-3 pb-3">
-              <h4 className="font-semibold text-gray-700 mb-1.5">Daily revenue</h4>
-              {Object.keys(dailyStatsMap).length === 0 ? (
-                <div className="text-center py-8 text-gray-400">No laundry orders recorded yet.</div>
+            {/* Detailed Orders History Table with Customer Name, Phone & Eye Button */}
+            <div className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-2xs">
+              <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                <h4 className="font-semibold text-xs text-gray-800">
+                  Orders Breakdown ({periodFilteredOrders.length} orders)
+                </h4>
+                <span className="text-[10.5px] text-gray-500">
+                  Click the <Eye className="w-3 h-3 inline text-blue-600" /> icon to view full bill & print
+                </span>
+              </div>
+
+              {periodFilteredOrders.length === 0 ? (
+                <div className="text-center py-8 text-xs text-gray-400">
+                  No laundry orders found in the selected date range.
+                </div>
               ) : (
-                <table className="w-full text-xs text-left border border-gray-200 rounded-lg">
-                  <thead className="sticky top-0 bg-gray-50 text-gray-700">
-                    <tr className="border-b border-gray-200">
-                      <th className="py-1.5 px-3 font-semibold">Date</th>
-                      <th className="py-1.5 px-3 text-center font-semibold">Orders</th>
-                      <th className="py-1.5 px-3 text-center font-semibold">Pcs</th>
-                      <th className="py-1.5 px-3 text-right font-semibold">Wash</th>
-                      <th className="py-1.5 px-3 text-right font-semibold">Wash + Iron</th>
-                      <th className="py-1.5 px-3 text-right font-semibold">Iron</th>
-                      <th className="py-1.5 px-3 text-right font-semibold">Dry clean</th>
-                      <th className="py-1.5 px-3 text-right font-semibold">Room bill</th>
-                      <th className="py-1.5 px-3 text-right font-semibold">Cash / UPI</th>
-                      <th className="py-1.5 px-3 text-right font-semibold">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {Object.values(dailyStatsMap)
-                      .sort((a, b) => (b.date > a.date ? 1 : -1))
-                      .map((d) => (
-                        <tr
-                          key={d.date}
-                          onClick={() => setStatsDateFilter(d.date)}
-                          className={`cursor-pointer hover:bg-gray-50 ${d.date === statsDateFilter ? "bg-blue-50/60" : ""}`}
-                        >
-                          <td className="py-1.5 px-3 font-semibold">
-                            {d.date}
-                            {d.date === currentDateStr ? " (today)" : ""}
-                          </td>
-                          <td className="py-1.5 px-3 text-center">{d.orders}</td>
-                          <td className="py-1.5 px-3 text-center">{d.garments}</td>
-                          <td className="py-1.5 px-3 text-right">₹{d.care.wash_only.amt.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 text-right">₹{d.care.wash_and_press.amt.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 text-right">₹{d.care.press_only.amt.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 text-right">₹{d.care.dry_clean.amt.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 text-right">₹{d.folio.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 text-right">₹{d.pos.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 text-right font-bold">₹{d.total.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto max-h-[360px]">
+                  <table className="w-full text-xs text-left">
+                    <thead className="sticky top-0 bg-gray-100 text-gray-700 z-10 border-b border-gray-200">
+                      <tr>
+                        <th className="py-2 px-2.5 font-semibold">Date & Time</th>
+                        <th className="py-2 px-2 font-semibold">Token No</th>
+                        <th className="py-2 px-2 font-semibold">Room / Type</th>
+                        <th className="py-2 px-2 font-semibold">Customer Name</th>
+                        <th className="py-2 px-2 font-semibold">Phone Number</th>
+                        <th className="py-2 px-2 text-center font-semibold">Pcs</th>
+                        <th className="py-2 px-2 font-semibold">Settlement</th>
+                        <th className="py-2 px-2 font-semibold">Status</th>
+                        <th className="py-2 px-2.5 text-right font-semibold">Amount</th>
+                        <th className="py-2 px-2 text-center font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {periodFilteredOrders.map((ord) => {
+                        const oDate = ord.createdAt
+                          ? new Date(ord.createdAt).toLocaleString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : ord.orderDate || "—";
+                        const pBadge = paymentBadge(ord);
+                        const isDelivered =
+                          ord.delivery_status === "delivered_to_room" ||
+                          ord.status === "Delivered" ||
+                          ord.status === "delivered";
+
+                        return (
+                          <tr key={ord.orderId || ord.token} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="py-2 px-2.5 font-medium text-gray-700 whitespace-nowrap">
+                              {oDate}
+                            </td>
+                            <td className="py-2 px-2 font-mono font-semibold text-blue-700 whitespace-nowrap">
+                              #{ord.token || ord.orderId}
+                            </td>
+                            <td className="py-2 px-2 font-semibold text-gray-900 whitespace-nowrap">
+                              {ord.roomNumber && ord.roomNumber !== "Walk-In"
+                                ? `Room ${ord.roomNumber}`
+                                : "Walk-In"}
+                            </td>
+                            <td className="py-2 px-2 text-gray-800 font-medium">
+                              {ord.guestName || "Guest"}
+                            </td>
+                            <td className="py-2 px-2 text-gray-600 font-mono text-[11px]">
+                              {ord.guestMobile || "—"}
+                            </td>
+                            <td className="py-2 px-2 text-center font-semibold text-gray-800">
+                              {ord.totalGarments || ord.items?.length || 1}
+                            </td>
+                            <td className="py-2 px-2 whitespace-nowrap">
+                              <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold ${pBadge.cls}`}>
+                                {pBadge.text}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  isDelivered
+                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                    : "bg-amber-50 text-amber-800 border-amber-200"
+                                }`}
+                              >
+                                {isDelivered ? "Delivered" : "In Progress"}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2.5 text-right font-bold text-gray-900 whitespace-nowrap">
+                              ₹{Number(ord.grandTotal || ord.totalAmount || 0).toFixed(2)}
+                            </td>
+                            <td className="py-2 px-2 text-center whitespace-nowrap">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setSelectedOrderForDetails(ord)}
+                                className="!h-7 !w-7 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded"
+                                title="View Order Breakdown & Print"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
-          </Panel>
-        );
-      })()}
+          </div>
+        </Panel>
+      )}
 
       {/* ------------------------------ RATES ------------------------------- */}
       {activeTab === "price_sheet" && (
@@ -1832,6 +2494,56 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                   />
                 </div>
               ))}
+            </div>
+
+            {/* Dynamic Laundry GST Settings Card */}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] bg-slate-50 border border-slate-200 rounded-md p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-slate-800 flex items-center gap-1">
+                  <Receipt className="w-3.5 h-3.5 text-blue-600" /> Laundry GST (SAC {LAUNDRY_SAC_CODE}):
+                </span>
+                <span className="text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded font-medium">
+                  Active: <strong className="text-blue-700">{laundryGstRate}%</strong> ({cgstRate}% CGST + {sgstRate}% SGST)
+                </span>
+                <div className="flex items-center gap-1">
+                  {[0, 5, 12, 18].map((slab) => (
+                    <button
+                      key={slab}
+                      type="button"
+                      onClick={() => handleSaveLaundryGst(slab)}
+                      disabled={isSavingConfig}
+                      className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors ${
+                        Number(laundryGstRate) === slab
+                          ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                      }`}
+                    >
+                      {slab}% {slab === 5 ? "(Standard)" : slab === 0 ? "(Exempt)" : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-500">Custom GST %:</span>
+                <Input
+                  type="number"
+                  min="0"
+                  max="28"
+                  step="0.5"
+                  value={customGstInput}
+                  onChange={(e) => setCustomGstInput(e.target.value)}
+                  placeholder="e.g. 5"
+                  className="!h-6 w-16 text-center text-xs px-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => handleSaveLaundryGst(customGstInput)}
+                  disabled={isSavingConfig}
+                  className="!h-6 text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Save GST
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -2206,6 +2918,187 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
               Save
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ----------------- ORDER DETAILS MODAL (EYE BUTTON) ----------------- */}
+      <Dialog
+        open={!!selectedOrderForDetails}
+        onOpenChange={(open) => !open && setSelectedOrderForDetails(null)}
+      >
+        <DialogContent className="max-w-xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          {selectedOrderForDetails && (() => {
+            const ord = selectedOrderForDetails;
+            const items = ord.items || [];
+            const speedObj = serviceSpeeds.find((s) => s.id === ord.serviceSpeed);
+            const ordCgstRate = ord.cgstRate !== undefined ? ord.cgstRate : cgstRate;
+            const ordSgstRate = ord.sgstRate !== undefined ? ord.sgstRate : sgstRate;
+
+            return (
+              <>
+                <DialogHeader className="p-4 pb-2 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <DialogTitle className="text-base font-bold flex items-center gap-2">
+                      <Receipt className="w-4 h-4 text-blue-600" />
+                      Order Details: #{ord.token || ord.orderId}
+                    </DialogTitle>
+                    <div className="flex items-center gap-1.5">
+                      <Badge className={paymentBadge(ord).cls}>
+                        {paymentBadge(ord).text}
+                      </Badge>
+                      <Badge variant="outline" className="text-[11px]">
+                        {ord.status || "Received"}
+                      </Badge>
+                    </div>
+                  </div>
+                </DialogHeader>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs">
+                  {/* Guest & Order Info Summary */}
+                  <div className="grid grid-cols-2 gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="space-y-1">
+                      <div className="text-[10.5px] uppercase font-bold text-gray-400 tracking-wide">
+                        Guest Details
+                      </div>
+                      <div className="font-semibold text-gray-900 text-sm">
+                        {ord.roomNumber && ord.roomNumber !== "Walk-In"
+                          ? `Room ${ord.roomNumber}`
+                          : "Walk-In"}
+                      </div>
+                      <div className="text-gray-700">
+                        <strong>Name:</strong> {ord.guestName || "Guest"}
+                      </div>
+                      <div className="text-gray-700">
+                        <strong>Phone:</strong> {ord.guestMobile || "Not provided"}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-[10.5px] uppercase font-bold text-gray-400 tracking-wide">
+                        Order & Turnaround
+                      </div>
+                      <div className="text-gray-700">
+                        <strong>Order Time:</strong>{" "}
+                        {ord.createdAt
+                          ? new Date(ord.createdAt).toLocaleString("en-IN")
+                          : "—"}
+                      </div>
+                      <div className="text-gray-700">
+                        <strong>Delivery Target:</strong>{" "}
+                        {ord.deliveryDateTime || "Standard"}
+                      </div>
+                      <div className="text-gray-700">
+                        <strong>Speed:</strong>{" "}
+                        {ord.serviceSpeedLabel || speedObj?.label || "Standard"}
+                      </div>
+                      <div className="text-gray-700">
+                        <strong>Staff:</strong> {ord.staffId || "Staff"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items Table */}
+                  <div>
+                    <div className="font-semibold text-gray-800 mb-1.5 flex items-center justify-between">
+                      <span>Itemized Garment Breakdown ({ord.totalGarments || items.length} pcs)</span>
+                      <span className="text-[11px] text-gray-500 font-mono">SAC {LAUNDRY_SAC_CODE}</span>
+                    </div>
+                    <table className="w-full text-xs border border-gray-200 rounded-md overflow-hidden">
+                      <thead className="bg-gray-100 text-gray-700">
+                        <tr>
+                          <th className="py-1.5 px-2.5 text-left font-semibold">Garment</th>
+                          <th className="py-1.5 px-2 text-center font-semibold">Care</th>
+                          <th className="py-1.5 px-2 text-center font-semibold">Qty</th>
+                          <th className="py-1.5 px-2 text-right font-semibold">Rate</th>
+                          <th className="py-1.5 px-2.5 text-right font-semibold">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 bg-white">
+                        {items.map((it, idx) => {
+                          const qty = Number(it.quantity) || 1;
+                          const rate = Number(it.unitRate || it.rate || 0);
+                          const total = Number(it.total || qty * rate);
+                          return (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="py-1.5 px-2.5">
+                                <div className="font-semibold text-gray-800">{it.name}</div>
+                                {it.category && (
+                                  <div className="text-[10px] text-gray-400">{it.category}</div>
+                                )}
+                              </td>
+                              <td className="py-1.5 px-2 text-center">
+                                <CareChip careType={it.careType} />
+                              </td>
+                              <td className="py-1.5 px-2 text-center font-semibold">{qty}</td>
+                              <td className="py-1.5 px-2 text-right text-gray-600">₹{rate.toFixed(2)}</td>
+                              <td className="py-1.5 px-2.5 text-right font-bold text-gray-900">
+                                ₹{total.toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Financial Bill Summary */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-1 text-xs">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Items Subtotal:</span>
+                      <span className="font-medium">₹{Number(ord.itemsSubtotal || 0).toFixed(2)}</span>
+                    </div>
+                    {Number(ord.surchargeAmount || 0) > 0 && (
+                      <div className="flex justify-between text-gray-600">
+                        <span>Delivery Extra ({ord.surchargePercent || 0}% surcharge):</span>
+                        <span className="font-medium">₹{Number(ord.surchargeAmount).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-gray-600">
+                      <span>Taxable Amount:</span>
+                      <span className="font-medium">
+                        ₹{Number(ord.taxableAmount || ord.itemsSubtotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>CGST ({ordCgstRate}%):</span>
+                      <span className="font-medium">₹{Number(ord.cgstAmount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>SGST ({ordSgstRate}%):</span>
+                      <span className="font-medium">₹{Number(ord.sgstAmount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-200 pt-1.5 mt-1">
+                      <span>Grand Total:</span>
+                      <span>₹{Number(ord.grandTotal || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter className="p-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between sm:justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedOrderForDetails(null)}>
+                    Close
+                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => printA4(ord)}
+                      className="text-xs"
+                    >
+                      <FileText className="w-3.5 h-3.5 mr-1" /> Print A4 Bill
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => printSlip(ord)}
+                      className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                    >
+                      <Printer className="w-3.5 h-3.5 mr-1" /> Print {paperSize}mm Slip
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { toast } from "sonner";
 import { Input } from "../../../../../components/ui/input.js";
 import { Label } from "../../../../../components/ui/label.js";
 import { Button } from "../../../../../components/ui/button.js";
@@ -498,17 +499,28 @@ const CheckInForm = ({
 
   const handleRoomSelection = (roomId) => {
     const currentSelectedRoomIds = checkInData.room_id || [];
+    const targetRoom = (rooms || []).find(
+      (r) => String(r.room_id) === String(roomId) || String(r.id) === String(roomId)
+    );
+
+    if (targetRoom && targetRoom.status === "Dirty") {
+      toast.warning(
+        `Room ${targetRoom.room_number || ""} is currently Dirty. Please mark it as Vacant / Clean first before check-in.`
+      );
+      return;
+    }
 
     if (!currentSelectedRoomIds.includes(roomId)) {
       const updatedRoomIds = [...currentSelectedRoomIds, roomId];
       handleInputChange("room_id", updatedRoomIds);
 
       if (onRoomSelectionChange) {
-        const selectedRooms = getVacantRooms.filter((room) =>
+        const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+        const selectedRooms = allKnownRooms.filter((room) =>
           updatedRoomIds.includes(room.room_id)
         );
         const totalTariff = selectedRooms.reduce(
-          (total, room) => total + room.tariff,
+          (total, room) => total + (room.tariff || 0),
           0
         );
         onRoomSelectionChange(updatedRoomIds, totalTariff);
@@ -522,11 +534,12 @@ const CheckInForm = ({
     handleInputChange("room_id", updatedRoomIds);
 
     if (onRoomSelectionChange) {
-      const selectedRooms = getVacantRooms.filter((room) =>
+      const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+      const selectedRooms = allKnownRooms.filter((room) =>
         updatedRoomIds.includes(room.room_id)
       );
       const totalTariff = selectedRooms.reduce(
-        (total, room) => total + room.tariff,
+        (total, room) => total + (room.tariff || 0),
         0
       );
       onRoomSelectionChange(updatedRoomIds, totalTariff);
@@ -540,7 +553,8 @@ const CheckInForm = ({
 
   const getSelectedRooms = () => {
     const selectedRoomIds = checkInData.room_id || [];
-    return getVacantRooms.filter((room) =>
+    const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+    return allKnownRooms.filter((room) =>
       selectedRoomIds.includes(room.room_id)
     );
   };
@@ -554,7 +568,7 @@ const CheckInForm = ({
 
   const getTotalRoomTariff = () => {
     const selectedRooms = getSelectedRooms();
-    return selectedRooms.reduce((total, room) => total + room.tariff, 0);
+    return selectedRooms.reduce((total, room) => total + (room.tariff || 0), 0);
   };
 
   const getSelectedRoomsCount = () => {
@@ -1552,24 +1566,50 @@ const CheckInForm = ({
                         {checkInData.room_id.length > 1 ? "s" : ""}
                       </p>
                       <div className="flex flex-wrap gap-1">
-                        {getSelectedRooms().map((room) => (
-                          <div
-                            key={room.room_id}
-                            className="inline-flex items-center px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs"
-                          >
-                            <span>Room {room.room_number}</span>
-                            <span className="ml-1 text-green-700">
-                              (₹{room.tariff})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeRoom(room.room_id)}
-                              className="ml-1 text-green-600 hover:text-green-800"
+                        {getSelectedRooms().map((room) => {
+                          const s = String(room.status || "").toLowerCase().trim();
+                          const isUnready =
+                            s === "dirty" ||
+                            s.includes("dirty") ||
+                            s.includes("maintenance") ||
+                            s.includes("order") ||
+                            s.includes("block");
+                          return (
+                            <div
+                              key={room.room_id}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                                isUnready
+                                  ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                  : "bg-green-100 text-green-800"
+                              }`}
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
+                              <span>Room {room.room_number}</span>
+                              {isUnready && (
+                                <span className="ml-1 px-1 py-0.2 bg-amber-200 text-amber-900 text-[10px] font-semibold rounded">
+                                  {room.status || "Dirty"}
+                                </span>
+                              )}
+                              <span
+                                className={`ml-1 ${
+                                  isUnready ? "text-amber-800 font-medium" : "text-green-700"
+                                }`}
+                              >
+                                (₹{room.tariff || 0})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeRoom(room.room_id)}
+                                className={`ml-1 ${
+                                  isUnready
+                                    ? "text-amber-700 hover:text-amber-900"
+                                    : "text-green-600 hover:text-green-800"
+                                }`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                       {getSelectedRoomsCount() > 1 && (
                         <div className="mt-1 text-xs text-green-700 font-medium">

@@ -49,6 +49,28 @@ export const getLaundryThermalSlipHTML = ({
   const is58mm = String(paperSize) === "58";
   const maxWidthMm = is58mm ? "54mm" : "74mm";
 
+  const cgstRate =
+    order.cgstRate !== undefined && order.cgstRate !== null
+      ? Number(order.cgstRate)
+      : institutionData?.laundryConfig?.cgstRate !== undefined
+      ? Number(institutionData.laundryConfig.cgstRate)
+      : institutionData?.laundryGst !== undefined
+      ? Number(institutionData.laundryGst) / 2
+      : institutionData?.cgst !== undefined
+      ? Number(institutionData.cgst)
+      : 2.5;
+
+  const sgstRate =
+    order.sgstRate !== undefined && order.sgstRate !== null
+      ? Number(order.sgstRate)
+      : institutionData?.laundryConfig?.sgstRate !== undefined
+      ? Number(institutionData.laundryConfig.sgstRate)
+      : institutionData?.laundryGst !== undefined
+      ? Number(institutionData.laundryGst) / 2
+      : institutionData?.sgst !== undefined
+      ? Number(institutionData.sgst)
+      : 2.5;
+
   // Build items rows
   const itemsHTML = items
     .map(
@@ -195,11 +217,11 @@ export const getLaundryThermalSlipHTML = ({
             : ""
         }
         <tr>
-          <td>CGST (2.5%):</td>
+          <td>CGST (${cgstRate}%):</td>
           <td style="text-align: right;">₹${Number(order.cgstAmount || 0).toFixed(2)}</td>
         </tr>
         <tr>
-          <td>SGST (2.5%):</td>
+          <td>SGST (${sgstRate}%):</td>
           <td style="text-align: right;">₹${Number(order.sgstAmount || 0).toFixed(2)}</td>
         </tr>
         <tr style="border-top: 1px solid #000; font-size: ${is58mm ? "11px" : "13px"}; font-weight: 900;">

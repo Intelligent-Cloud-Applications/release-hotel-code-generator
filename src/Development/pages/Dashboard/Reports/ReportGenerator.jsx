@@ -785,7 +785,11 @@ const ReportGenerator = () => {
       if (saved) rawOrders = JSON.parse(saved);
     } catch (e) {}
 
-    return (rawOrders || []).map((ord) => {
+    const orderIdMap = new Set();
+    const rows = [];
+
+    // 1. Process orders from hotel_laundry_orders
+    (rawOrders || []).forEach((ord) => {
       const allItems = ord.items || [];
       const distinctCare = Array.from(
         new Set(
@@ -802,10 +806,14 @@ const ReportGenerator = () => {
       ).join(", ");
 
       const roomText = ord.roomNumber && ord.roomNumber !== "Walk-In" ? `Room ${ord.roomNumber}` : "Walk-In";
+      const token = ord.token || ord.orderId || ord.id || "LND-000";
+      orderIdMap.add(String(token));
 
-      return {
-        token: ord.token || ord.orderId || "LND-000",
-        date: toYMD(ord.createdAt) || toYMD(new Date()),
+      const dateStr = toYMD(ord.createdAt || ord.created_at || ord.orderDate || ord.date) || toYMD(new Date());
+
+      rows.push({
+        token,
+        date: dateStr,
         guest: `${ord.guestName || "Guest"} (${roomText})`,
         room_number: ord.roomNumber || "",
         garments: ord.totalGarments || allItems.reduce((acc, i) => acc + (Number(i.quantity) || 1), 0),
@@ -815,11 +823,62 @@ const ReportGenerator = () => {
         surcharge: Number(ord.surchargeAmount || 0),
         cgst: Number(ord.cgstAmount || 0),
         sgst: Number(ord.sgstAmount || 0),
-        total_amount: Number(ord.grandTotal || ord.itemsSubtotal || 0),
+        total_amount: Number(ord.grandTotal || ord.totalAmount || ord.itemsSubtotal || 0),
         settlement: ord.settlementType === "ROOM_FOLIO" ? `Room Folio (${ord.roomNumber})` : `Direct (${ord.paymentMethod || "CASH"})`,
         status: ord.status || "Completed",
-      };
-    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+      });
+    });
+
+    // 2. Scan bookings for any folio laundry services not captured in localStorage
+    (bookings || []).forEach((bk) => {
+      const guestName = bk.guest_name || bk.booking_name || bk.name || "In-House Guest";
+      const svcs = bk.services || bk.detailedServices;
+      if (svcs && typeof svcs === "object") {
+        Object.entries(svcs).forEach(([roomKey, byDate]) => {
+          if (!byDate || typeof byDate !== "object") return;
+          Object.entries(byDate).forEach(([dateKey, items]) => {
+            if (Array.isArray(items)) {
+              items.forEach((item) => {
+                const isLaundry =
+                  Number(item.laundry_charges) > 0 ||
+                  item.service_type === "laundry" ||
+                  String(item.order_id || "").startsWith("LND-");
+                if (!isLaundry) return;
+
+                const token = item.token || item.order_id || item.service_id || `LND-${roomKey}-${dateKey}`;
+                if (orderIdMap.has(String(token))) return;
+                orderIdMap.add(String(token));
+
+                const charge = Number(item.laundry_charges || item.totalAmount || item.charge || 0);
+                const subtotal = Number(item.itemsSubtotal || Math.round((charge / 1.05) * 100) / 100);
+                const cgst = Number(item.cgstAmount || Math.round((subtotal * 0.025) * 100) / 100);
+                const sgst = Number(item.sgstAmount || Math.round((subtotal * 0.025) * 100) / 100);
+                const dateStr = toYMD(item.created_at || item.createdAt || dateKey) || toYMD(new Date());
+
+                rows.push({
+                  token,
+                  date: dateStr,
+                  guest: `${item.guestName || guestName} (Room ${roomKey})`,
+                  room_number: roomKey,
+                  garments: Number(item.totalGarments || (Array.isArray(item.items) ? item.items.length : 1)),
+                  care_types: "Laundering",
+                  speed: "Standard",
+                  subtotal,
+                  surcharge: 0,
+                  cgst,
+                  sgst,
+                  total_amount: charge,
+                  settlement: `Room Folio (${roomKey})`,
+                  status: "Completed",
+                });
+              });
+            }
+          });
+        });
+      }
+    });
+
+    return rows.sort((a, b) => new Date(b.date) - new Date(a.date));
   };
 
   // Helper to process stock inventory data

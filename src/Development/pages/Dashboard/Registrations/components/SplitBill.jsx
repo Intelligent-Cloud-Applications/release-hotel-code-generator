@@ -98,49 +98,78 @@ const SplitBill = ({
           Object.keys(detailedServices).forEach((roomNumber) => {
             Object.keys(detailedServices[roomNumber] || {}).forEach((date) => {
               (detailedServices[roomNumber][date] || []).forEach((service) => {
-                const isLaundry =
-                  Number(service.laundry_charges) > 0 ||
-                  service.service_type === "laundry" ||
-                  String(service.order_id || "").startsWith("LND-");
+                const laundryCharge = Number(service.laundry_charges || 0);
+                const foodCharge = Number(service.food_charges || 0);
+                const minibarCharge = Number(service.minibar_charges || 0);
+                const extraBedCharge = Number(service.extra_bed_charges || 0);
+                const manualCharge = Number(service.manual_charges || 0);
 
-                const isMinibar =
-                  Number(service.minibar_charges) > 0 ||
-                  service.service_type === "minibar" ||
-                  service.service_type === "bar";
-
-                const isHousekeeping =
-                  Number(service.extra_bed_charges) > 0 ||
-                  Number(service.manual_charges) > 0 ||
+                const isHousekeepingExplicit =
+                  service.source === "housekeeping" ||
+                  service.service_type === "housekeeping" ||
                   service.service_type === "extra_bed" ||
-                  service.service_type === "manual" ||
-                  service.service_type === "housekeeping";
+                  service.service_type === "manual";
 
-                if (isLaundry) {
+                const isLaundryModule =
+                  !isHousekeepingExplicit &&
+                  (service.service_type === "laundry" ||
+                    String(service.order_id || service.token || "").startsWith("LND-") ||
+                    (Array.isArray(service.items) && service.items.some((it) => it.careType)));
+
+                const isRestaurantModule =
+                  !isHousekeepingExplicit &&
+                  (service.service_type === "restaurant" ||
+                    (service.order_id &&
+                      !String(service.order_id).startsWith("LND-") &&
+                      !String(service.order_id).startsWith("HSK-")));
+
+                if (isLaundryModule) {
+                  const lndId =
+                    service.order_id ||
+                    service.token ||
+                    service.service_id ||
+                    `LND-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`;
                   if (
-                    service.order_id &&
-                    !laundryServices.some((s) => s.order_id === service.order_id)
+                    !laundryServices.some(
+                      (s) => (s.order_id || s.token || s.service_id) === lndId
+                    )
                   ) {
-                    laundryServices.push({ ...service, roomNumber, date });
-                  } else if (!service.order_id) {
-                    laundryServices.push({
-                      ...service,
-                      roomNumber,
-                      date,
-                      order_id: `LND-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`,
-                    });
+                    laundryServices.push({ ...service, roomNumber, date, order_id: lndId });
                   }
-                } else if (isMinibar) {
-                  minibarServices.push({ ...service, roomNumber, date });
-                } else if (isHousekeeping) {
-                  housekeepingServices.push({ ...service, roomNumber, date });
-                } else if (service.order_id) {
-                  const oid = String(service.order_id).trim();
+                } else if (isRestaurantModule && foodCharge > 0) {
+                  const oid = String(
+                    service.order_id || `FNB-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`
+                  ).trim();
                   if (!foodOrderIds.includes(oid)) {
                     foodOrderIds.push(oid);
                   }
-                  fallbackFoodServices.push({ ...service, roomNumber, date });
-                } else if (Number(service.food_charges) > 0) {
-                  fallbackFoodServices.push({ ...service, roomNumber, date });
+                  fallbackFoodServices.push({
+                    ...service,
+                    roomNumber,
+                    date,
+                    order_id: oid,
+                    food_charges: foodCharge,
+                  });
+                } else if (
+                  isHousekeepingExplicit ||
+                  extraBedCharge > 0 ||
+                  manualCharge > 0 ||
+                  (foodCharge > 0 && !isRestaurantModule) ||
+                  (laundryCharge > 0 && !isLaundryModule)
+                ) {
+                  // Housekeeping room services (Food, Laundry, Extra Bed, Manual added through Housekeeping)
+                  housekeepingServices.push({
+                    ...service,
+                    roomNumber,
+                    date,
+                    food_charges: foodCharge,
+                    laundry_charges: laundryCharge,
+                    minibar_charges: minibarCharge,
+                    extra_bed_charges: extraBedCharge,
+                    manual_charges: manualCharge,
+                  });
+                } else if (minibarCharge > 0) {
+                  minibarServices.push({ ...service, roomNumber, date });
                 }
               });
             });
@@ -160,6 +189,27 @@ const SplitBill = ({
                 const roomNumber =
                   entry.roomNumber || billData?.bookingDetails?.roomNumber || "N/A";
                 const ch = entry.charges || {};
+
+                // Food from daily service breakdown
+                const foodAmt = Number(ch.foodCharges || ch.food_charges || 0);
+                if (foodAmt > 0) {
+                  const already = fallbackFoodServices.some(
+                    (s) => s.roomNumber === roomNumber && s.date === date
+                  );
+                  if (!already) {
+                    const foodOid = `FNB-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`;
+                    if (!foodOrderIds.includes(foodOid)) {
+                      foodOrderIds.push(foodOid);
+                    }
+                    fallbackFoodServices.push({
+                      roomNumber,
+                      date,
+                      food_charges: foodAmt,
+                      name: "In-Room Dining / Food Service",
+                      order_id: foodOid,
+                    });
+                  }
+                }
 
                 // Minibar
                 if (Number(ch.minibarCharges || ch.minibar_charges) > 0) {
@@ -400,33 +450,41 @@ const SplitBill = ({
                   },
                 ];
 
-          const subtotal =
+          const grossCharge = Number(service.laundry_charges || service.totalAmount || 0);
+          let subtotal =
             service.itemsSubtotal !== undefined
               ? Number(service.itemsSubtotal)
               : foundLaundryOrder?.itemsSubtotal !== undefined
               ? Number(foundLaundryOrder.itemsSubtotal)
-              : Number(service.laundry_charges) || 0;
+              : 0;
 
-          const cgst =
+          let cgst =
             service.cgstAmount !== undefined
               ? Number(service.cgstAmount)
               : foundLaundryOrder?.cgstAmount !== undefined
               ? Number(foundLaundryOrder.cgstAmount)
-              : (subtotal * 2.5) / 100;
+              : 0;
 
-          const sgst =
+          let sgst =
             service.sgstAmount !== undefined
               ? Number(service.sgstAmount)
               : foundLaundryOrder?.sgstAmount !== undefined
               ? Number(foundLaundryOrder.sgstAmount)
-              : (subtotal * 2.5) / 100;
+              : 0;
+
+          // If subtotal was not explicitly recorded, back-calculate from gross charge (which includes 5% GST)
+          if (!subtotal && grossCharge > 0) {
+            subtotal = Math.round((grossCharge / 1.05) * 100) / 100;
+            cgst = Math.round((subtotal * 0.025) * 100) / 100;
+            sgst = Math.round((subtotal * 0.025) * 100) / 100;
+          }
 
           const total =
             service.totalAmount !== undefined
               ? Number(service.totalAmount)
               : foundLaundryOrder?.grandTotal !== undefined
               ? Number(foundLaundryOrder.grandTotal)
-              : Math.round(subtotal + cgst + sgst);
+              : grossCharge || Math.round(subtotal + cgst + sgst);
 
           const exactLaundryDate =
             foundLaundryOrder?.createdAt ||
@@ -503,11 +561,16 @@ const SplitBill = ({
           });
         });
 
-        // 5. Add Housekeeping & Extra Bed / Room Services (SAC 996311)
+        // 5. Add Housekeeping & Room Services (SAC 996311)
         housekeepingServices.forEach((service, index) => {
           const extraBed = Number(service.extra_bed_charges || 0);
           const manual = Number(service.manual_charges || 0);
-          const charge = extraBed + manual;
+          const food = Number(service.food_charges || 0);
+          const laundry = Number(service.laundry_charges || 0);
+          const minibar = Number(service.minibar_charges || 0);
+          const charge = extraBed + manual + food + laundry + minibar;
+          if (charge <= 0) return;
+
           const cgstRate = Number(institutionData?.cgst ?? 2.5);
           const sgstRate = Number(institutionData?.sgst ?? 2.5);
           const cgst = (charge * cgstRate) / 100;
@@ -519,6 +582,26 @@ const SplitBill = ({
               .replace(/[^a-zA-Z0-9]/g, "")}`;
 
           const items = [];
+          if (food > 0) {
+            items.push({
+              name: "Room Service Dining / Food",
+              itemName: "Room Service Dining / Food",
+              price: food,
+              quantity: 1,
+              type: "housekeeping",
+              category: "Food Service",
+            });
+          }
+          if (laundry > 0) {
+            items.push({
+              name: "Room Service Laundry",
+              itemName: "Room Service Laundry",
+              price: laundry,
+              quantity: 1,
+              type: "housekeeping",
+              category: "Laundry Service",
+            });
+          }
           if (extraBed > 0) {
             items.push({
               name: "Extra Bed & Linen Service",
@@ -539,6 +622,16 @@ const SplitBill = ({
               category: "Housekeeping",
             });
           }
+          if (minibar > 0) {
+            items.push({
+              name: "Room Service Refreshments",
+              itemName: "Room Service Refreshments",
+              price: minibar,
+              quantity: 1,
+              type: "housekeeping",
+              category: "Minibar",
+            });
+          }
 
           bills.push({
             orderId,
@@ -556,8 +649,8 @@ const SplitBill = ({
                 ? items
                 : [
                     {
-                      name: "Housekeeping & Support Services",
-                      itemName: "Housekeeping & Support Services",
+                      name: "Housekeeping & Room Service",
+                      itemName: "Housekeeping & Room Service",
                       price: charge,
                       quantity: 1,
                       type: "housekeeping",
@@ -605,23 +698,38 @@ const SplitBill = ({
           const updatedRoomEntries = (roomEntries || []).map((roomEntry) => {
             const charges = { ...roomEntry.charges };
 
-            if (separatedTypes.has("restaurant")) charges.foodCharges = 0;
-            if (separatedTypes.has("minibar")) charges.minibarCharges = 0;
-            if (separatedTypes.has("laundry")) charges.laundryCharges = 0;
+            if (separatedTypes.has("restaurant")) {
+              charges.foodCharges = 0;
+              charges.food_charges = 0;
+            }
+            if (separatedTypes.has("minibar")) {
+              charges.minibarCharges = 0;
+              charges.minibar_charges = 0;
+            }
+            if (separatedTypes.has("laundry")) {
+              charges.laundryCharges = 0;
+              charges.laundry_charges = 0;
+            }
             if (separatedTypes.has("housekeeping")) {
               charges.extraBedCharges = 0;
+              charges.extra_bed_charges = 0;
               charges.manualCharges = 0;
+              charges.manual_charges = 0;
+              charges.foodCharges = 0;
+              charges.food_charges = 0;
+              charges.laundryCharges = 0;
+              charges.laundry_charges = 0;
             }
 
             charges.dailyTotal =
               (charges.roomCharges || 0) +
               (charges.ratePlanCharges || 0) +
               (charges.extraPaxCharges || 0) +
-              (charges.foodCharges || 0) +
-              (charges.minibarCharges || 0) +
-              (charges.laundryCharges || 0) +
-              (charges.extraBedCharges || 0) +
-              (charges.manualCharges || 0);
+              (charges.foodCharges || charges.food_charges || 0) +
+              (charges.minibarCharges || charges.minibar_charges || 0) +
+              (charges.laundryCharges || charges.laundry_charges || 0) +
+              (charges.extraBedCharges || charges.extra_bed_charges || 0) +
+              (charges.manualCharges || charges.manual_charges || 0);
 
             return { ...roomEntry, charges };
           });
@@ -647,33 +755,32 @@ const SplitBill = ({
           totalRatePlanFromBreakdown += ch.ratePlanCharges || 0;
           totalExtraPaxFromBreakdown += ch.extraPaxCharges || 0;
           totalServiceCharges +=
-            (ch.foodCharges || 0) +
-            (ch.laundryCharges || 0) +
-            (ch.minibarCharges || 0) +
-            (ch.extraBedCharges || 0) +
-            (ch.manualCharges || 0);
+            (ch.foodCharges || ch.food_charges || 0) +
+            (ch.laundryCharges || ch.laundry_charges || 0) +
+            (ch.minibarCharges || ch.minibar_charges || 0) +
+            (ch.extraBedCharges || ch.extra_bed_charges || 0) +
+            (ch.manualCharges || ch.manual_charges || 0);
         });
       });
     }
 
-    const effectiveRoomTariff = totalRoomCharges + totalRatePlanFromBreakdown;
-    const cgstAmount = Math.round((effectiveRoomTariff * 6) / 100);
-    const sgstAmount = Math.round((effectiveRoomTariff * 6) / 100);
+    const discountAmount = Number(hotelBill.billingSummary?.totalDiscount || 0);
+    const advanceReceived = Number(hotelBill.billingSummary?.partialPayment || 0);
+    const effectiveTariff = totalRoomCharges + totalRatePlanFromBreakdown + totalExtraPaxFromBreakdown;
+
+    // Calculate tax on the discounted amount (room charges after discount) matching Bill.jsx
+    const discountedRoomCharges = Math.max(0, effectiveTariff - discountAmount);
+    const cgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
+    const sgstAmount = Math.round((discountedRoomCharges * 2.5) / 100);
     const totalTaxAmount = cgstAmount + sgstAmount;
 
-    const subTotal =
-      effectiveRoomTariff +
-      totalExtraPaxFromBreakdown +
-      totalServiceCharges -
-      (hotelBill.billingSummary?.totalDiscount || 0);
-
+    const subTotal = effectiveTariff + totalServiceCharges - discountAmount;
     const grandTotal = subTotal + totalTaxAmount;
-    const balanceDue =
-      grandTotal - (hotelBill.billingSummary?.partialPayment || 0);
+    const balanceDue = grandTotal - advanceReceived;
 
     hotelBill.billingSummary = {
       ...hotelBill.billingSummary,
-      totalRoomServices: effectiveRoomTariff,
+      totalRoomServices: effectiveTariff,
       totalServiceCharges: totalServiceCharges,
       subTotal: subTotal,
       cgstAmount: cgstAmount,

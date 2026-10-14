@@ -110,6 +110,10 @@ const RoomServicesAndComplementaryDialog = ({ roomNumber, booking = {} }) => {
       minibar_charges: parseFloat(newServiceFields.minibar_charges) || 0,
       extra_bed_charges: parseFloat(newServiceFields.extra_bed_charges) || 0,
       manual_charges: parseFloat(newServiceFields.manual_charges) || 0,
+      service_type: "housekeeping",
+      source: "housekeeping",
+      name: "Housekeeping Service",
+      created_at: Date.now(),
     };
 
     setNewServices([...newServices, serviceEntry]);
@@ -525,12 +529,12 @@ const RoomServicesAndComplementaryDialog = ({ roomNumber, booking = {} }) => {
           <LaundryManager
             initialRoomNumber={roomNumber}
             onOrderCreated={(order) => {
-              if (order?.grandTotal) {
-                setNewServiceFields((prev) => ({
-                  ...prev,
-                  laundry_charges: String(order.grandTotal),
-                }));
-              }
+              // LaundryManager has already posted the service entry to the room folio or settled it directly.
+              // Clear laundry_charges so Housekeeping never adds it a second time.
+              setNewServiceFields((prev) => ({
+                ...prev,
+                laundry_charges: "",
+              }));
               setIsLaundryModalOpen(false);
             }}
           />

@@ -1223,6 +1223,8 @@ const Bill = () => {
         booking.breakdown.charges.serviceCharges.serviceChargesByRoomAndDate ||
         {};
 
+      const detailedServicesData = getDetailedServices();
+
       // Get all dates from room usage and service charges
       const roomUsageByDate =
         booking.breakdown.stayDetails.roomUsageByDate || {};
@@ -1236,6 +1238,15 @@ const Bill = () => {
           datesFromServiceCharges.add(date);
         });
       });
+      if (detailedServicesData && typeof detailedServicesData === "object") {
+        Object.keys(detailedServicesData).forEach((rKey) => {
+          if (detailedServicesData[rKey] && typeof detailedServicesData[rKey] === "object") {
+            Object.keys(detailedServicesData[rKey]).forEach((d) => {
+              datesFromServiceCharges.add(d);
+            });
+          }
+        });
+      }
 
       // Use the actual room usage dates from API response (these already respect grace period)
       const stayDates = new Set(Object.keys(roomUsageByDate));
@@ -1316,6 +1327,130 @@ const Bill = () => {
       // Use the number of nights from API response (already calculated with grace period)
       let numberOfNights = booking.breakdown.stayDetails.numberOfNights;
 
+      // Helper to compute service charges for a room on a date, deduplicating any duplicate order folio entries
+      const getServiceChargesForRoomDate = (roomNumber, dateStr) => {
+        const roomServices = serviceChargesByRoom[roomNumber] || {};
+        const formattedDate = dateStr
+          ? new Date(dateStr).toISOString().split("T")[0]
+          : "";
+        const raw =
+          roomServices[formattedDate] ||
+          roomServices[dateStr] || {
+            food_charges: 0,
+            laundry_charges: 0,
+            minibar_charges: 0,
+            extra_bed_charges: 0,
+            manual_charges: 0,
+            extra_pax_charges: 0,
+            daily_total: 0,
+          };
+
+        const detailed = getDetailedServices();
+        const roomKey = String(roomNumber).trim();
+        const dRoom =
+          detailed && typeof detailed === "object"
+            ? detailed[roomKey] || detailed[roomNumber]
+            : null;
+
+        if (dRoom && typeof dRoom === "object") {
+          const items = dRoom[formattedDate] || dRoom[dateStr];
+          if (Array.isArray(items) && items.length > 0) {
+            let food = 0,
+              laundry = 0,
+              minibar = 0,
+              extraBed = 0,
+              manual = 0;
+            let hasFood = false,
+              hasLaundry = false,
+              hasMinibar = false,
+              hasExtraBed = false,
+              hasManual = false;
+            let extraPax = raw.extra_pax_charges || 0;
+            const seenIds = new Set();
+
+            items.forEach((it) => {
+              const id =
+                it.order_id || it.token || it.barcode || it.service_id;
+              if (id) {
+                const key = String(id).trim();
+                if (seenIds.has(key)) {
+                  return; // Skip duplicate order/folio entry
+                }
+                seenIds.add(key);
+              }
+
+              if (it.food_charges !== undefined) {
+                food += Number(it.food_charges || 0);
+                hasFood = true;
+              } else if (it.service_type === "food" || it.service_type === "restaurant") {
+                food += Number(it.total_amount || 0);
+                hasFood = true;
+              }
+
+              if (it.laundry_charges !== undefined) {
+                laundry += Number(it.laundry_charges || 0);
+                hasLaundry = true;
+              } else if (it.service_type === "laundry") {
+                laundry += Number(it.total_amount || 0);
+                hasLaundry = true;
+              }
+
+              if (it.minibar_charges !== undefined) {
+                minibar += Number(it.minibar_charges || 0);
+                hasMinibar = true;
+              } else if (it.service_type === "minibar") {
+                minibar += Number(it.total_amount || 0);
+                hasMinibar = true;
+              }
+
+              if (it.extra_bed_charges !== undefined) {
+                extraBed += Number(it.extra_bed_charges || 0);
+                hasExtraBed = true;
+              } else if (it.service_type === "extra_bed") {
+                extraBed += Number(it.total_amount || 0);
+                hasExtraBed = true;
+              }
+
+              if (it.manual_charges !== undefined) {
+                manual += Number(it.manual_charges || 0);
+                hasManual = true;
+              } else if (it.service_type === "manual" || it.service_type === "housekeeping") {
+                manual += Number(it.total_amount || 0);
+                hasManual = true;
+              }
+
+              if (it.extra_pax_charges !== undefined) {
+                extraPax += Number(it.extra_pax_charges || 0);
+              }
+            });
+
+            const finalFood = hasFood ? food : Number(raw.food_charges) || 0;
+            const finalLaundry = hasLaundry ? laundry : Number(raw.laundry_charges) || 0;
+            const finalMinibar = hasMinibar ? minibar : Number(raw.minibar_charges) || 0;
+            const finalExtraBed = hasExtraBed ? extraBed : Number(raw.extra_bed_charges) || 0;
+            const finalManual = hasManual ? manual : Number(raw.manual_charges) || 0;
+
+            return {
+              food_charges: finalFood,
+              laundry_charges: finalLaundry,
+              minibar_charges: finalMinibar,
+              extra_bed_charges: finalExtraBed,
+              manual_charges: finalManual,
+              extra_pax_charges: extraPax,
+              daily_total:
+                finalFood +
+                finalLaundry +
+                finalMinibar +
+                finalExtraBed +
+                finalManual +
+                extraPax,
+            };
+          }
+        }
+
+        return raw;
+      };
+
       // Handle the new API structure with room usage by date
       const dailyCharges = allDates.map((date) => {
         // Get rooms used on this specific date
@@ -1340,17 +1475,8 @@ const Bill = () => {
             // Convert date format to match the API response format (YYYY-MM-DD)cal
             const formattedDate = new Date(date).toISOString().split("T")[0];
 
-            // Also try the original date format in case there's a mismatch
-            const dateServices = roomServices[formattedDate] ||
-              roomServices[date] || {
-                food_charges: 0,
-                laundry_charges: 0,
-                minibar_charges: 0,
-                extra_bed_charges: 0,
-                manual_charges: 0,
-                extra_pax_charges: 0, // Add extra_pax_charges to default object
-                daily_total: 0,
-              };
+            // Reconciled service charges (deduplicating any duplicate order folios)
+            const dateServices = getServiceChargesForRoomDate(roomNumber, date);
 
             // Calculate daily room charges - prioritize from services object if available
             let dailyRoomCharges = roomUsage.tariff || 0;
@@ -1438,17 +1564,8 @@ const Bill = () => {
             // Convert date format to match the API response format (YYYY-MM-DD)
             const formattedDate = new Date(date).toISOString().split("T")[0];
 
-            // Get service charges for this date
-            const dateServices = roomServices[formattedDate] ||
-              roomServices[date] || {
-                food_charges: 0,
-                laundry_charges: 0,
-                minibar_charges: 0,
-                extra_bed_charges: 0,
-                manual_charges: 0,
-                extra_pax_charges: 0, // Add extra_pax_charges to default object
-                daily_total: 0,
-              };
+            // Get service charges for this date (deduplicated)
+            const dateServices = getServiceChargesForRoomDate(roomNumber, date);
 
             // For dates without room usage, use the room's base tariff
             // Show full room charges for all dates in bill display
@@ -1564,7 +1681,13 @@ const Bill = () => {
         // Only process dates up to current date
         const currentDate = new Date().toISOString().split("T")[0];
         if (date <= currentDate) {
-          Object.keys(serviceChargesByRoom).forEach((roomNumber) => {
+          const allServiceRoomKeys = Array.from(
+            new Set([
+              ...Object.keys(serviceChargesByRoom),
+              ...(detailedServicesData ? Object.keys(detailedServicesData) : []),
+            ])
+          );
+          allServiceRoomKeys.forEach((roomNumber) => {
             // Skip rooms that are not in active selected rooms
             if (!activeRoomNumbers.has(String(roomNumber))) {
               return;
@@ -1572,34 +1695,30 @@ const Bill = () => {
 
             // Skip rooms that are already processed in roomEntries
             const alreadyProcessed = roomEntries.some(
-              (entry) => entry.roomNumber === roomNumber,
+              (entry) => String(entry.roomNumber).trim() === String(roomNumber).trim(),
             );
 
             if (!alreadyProcessed) {
-              const roomServices = serviceChargesByRoom[roomNumber];
               const formattedDate = new Date(date).toISOString().split("T")[0];
+              const dateServices = getServiceChargesForRoomDate(roomNumber, date);
+              const hasServices =
+                (dateServices.food_charges || 0) > 0 ||
+                (dateServices.laundry_charges || 0) > 0 ||
+                (dateServices.minibar_charges || 0) > 0 ||
+                (dateServices.extra_bed_charges || 0) > 0 ||
+                (dateServices.manual_charges || 0) > 0 ||
+                (dateServices.extra_pax_charges || 0) > 0;
 
-              if (roomServices[formattedDate] || roomServices[date]) {
+              if (hasServices) {
                 // Find the room details from booking rooms or create a default entry
                 const roomDetails = booking.breakdown.rooms.find(
-                  (r) => r.room_number === roomNumber,
+                  (r) => String(r.room_number) === String(roomNumber),
                 ) || {
                   room_number: roomNumber,
                   room_type: "Standard", // Default room type
                   finalRoomTariff: 0,
                   baseTariff: 0,
                 };
-
-                const dateServices = roomServices[formattedDate] ||
-                  roomServices[date] || {
-                    food_charges: 0,
-                    laundry_charges: 0,
-                    minibar_charges: 0,
-                    extra_bed_charges: 0,
-                    manual_charges: 0,
-                    extra_pax_charges: 0, // Add extra_pax_charges to default object
-                    daily_total: 0,
-                  };
 
                 // Show full room charges for all dates in bill display
                 // Use the room's tariff for this date

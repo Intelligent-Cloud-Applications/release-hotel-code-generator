@@ -89,7 +89,7 @@ const DashboardNavbar = () => {
       const bagCount = getLaundryOrderCount();
       return [
         { id: "laundry_new_order", tab: "new_order", label: "New Order (Billing)", hasDropdown: false },
-        { id: "laundry_deliveries", tab: "deliveries", label: "Room Deliveries", hasDropdown: false },
+        { id: "laundry_deliveries", tab: "deliveries", label: "Deliveries", hasDropdown: false },
         { id: "laundry_tracker", tab: "tracker", label: bagCount > 0 ? `Order Tracker (${bagCount})` : "Order Tracker", hasDropdown: false },
         { id: "laundry_price_sheet", tab: "price_sheet", label: "Rate Sheet & Prices", hasDropdown: false },
         { id: "laundry_statistics", tab: "statistics", label: "Shift Stats & Revenue", hasDropdown: false },
