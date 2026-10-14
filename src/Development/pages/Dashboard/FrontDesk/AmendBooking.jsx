@@ -234,29 +234,124 @@ const AmendBooking = () => {
       gst_no: booking.gst_no
     };
   };
-  // Get room details for a room ID
+  // Get room details for a room ID or room number
   const getRoomDetails = (roomId) => {
-    return rooms?.find(room =>
-      room.room_id === roomId ||
-      room.id === roomId ||
-      room._id === roomId
+    if (!roomId) return {};
+    const str = String(roomId).trim();
+    return (rooms || []).find(room =>
+      String(room.room_id || "").trim() === str ||
+      String(room.id || "").trim() === str ||
+      String(room._id || "").trim() === str ||
+      String(room.room_number || "").trim() === str
     ) || {};
   };
+
+  // Helper to determine if a room is currently occupied by another checked-in guest
+  const isRoomOccupied = (roomOrId, currentBookingId = null) => {
+    if (!roomOrId) return false;
+    const room = typeof roomOrId === "object" ? roomOrId : getRoomDetails(roomOrId);
+    const roomIdStr = String(room?.room_id || room?.id || roomOrId || "").trim();
+    const roomNumStr = String(room?.room_number || roomOrId || "").trim();
+
+    const checkMatch = (val) => {
+      if (!val) return false;
+      if (Array.isArray(val)) return val.some(checkMatch);
+      const str = String(val).trim();
+      return (
+        (roomIdStr && str === roomIdStr) ||
+        (roomNumStr && str === roomNumStr)
+      );
+    };
+
+    const bookingMatchesRoom = (b) => {
+      if (!b) return false;
+      return (
+        checkMatch(b.room_id) ||
+        checkMatch(b.room_ids) ||
+        checkMatch(b.room_number) ||
+        checkMatch(b.room_numbers) ||
+        checkMatch(b.roomNo) ||
+        (Array.isArray(b.rooms) && b.rooms.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number))) ||
+        (Array.isArray(b.rooms_config) && b.rooms_config.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)))
+      );
+    };
+
+    // If currentBookingId (or editingBooking) already owns this room, it is THEIR OWN room!
+    if (currentBookingId) {
+      if (
+        editingBooking &&
+        String(editingBooking.booking_id).trim() === String(currentBookingId).trim() &&
+        bookingMatchesRoom(editingBooking)
+      ) {
+        return false;
+      }
+      const myBooking = (bookings || []).find(
+        (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+      );
+      if (myBooking && bookingMatchesRoom(myBooking)) {
+        return false;
+      }
+    }
+
+    // Check if any OTHER checked-in booking occupies this room
+    const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
+      if (b.status !== "Checked-in") return false;
+      if (
+        currentBookingId &&
+        String(b.booking_id).trim() === String(currentBookingId).trim()
+      ) {
+        return false;
+      }
+      return bookingMatchesRoom(b);
+    });
+
+    if (isOccupiedByAnotherBooking) return true;
+
+    // Finally, if room status is Occupied in the DB and this booking does not own it
+    const s = String(room?.status || "").toLowerCase().trim();
+    if (s === "occupied" || s.includes("occup")) {
+      return true;
+    }
+
+    return false;
+  };
+
   // Get available rooms (status = "Vacant") and current room
   const getAvailableRooms = (currentRoomId) => {
-    const availableRooms = rooms?.filter(room => room.status === "Vacant") || [];
-    const currentRoom = rooms?.find(room => room.room_id === currentRoomId);
-    if (currentRoom && !availableRooms.find(room => room.room_id === currentRoomId)) {
+    const availableRooms = (rooms || []).filter(room => 
+      (room.status === "Vacant" || room.status === "Clean") && 
+      !isRoomOccupied(room, editingBooking?.booking_id)
+    );
+    const currentRoom = (rooms || []).find(room => 
+      String(room.room_id) === String(currentRoomId) || 
+      String(room.room_number) === String(currentRoomId)
+    );
+    if (currentRoom && !availableRooms.find(room => String(room.room_id) === String(currentRoom.room_id))) {
       return [currentRoom, ...availableRooms];
     }
     return availableRooms;
   };
-  // Get array of room IDs from booking
+
+  // Get array of room IDs from booking (supports multi-room bookings)
   const getCurrentRoomIds = (booking) => {
-    if (Array.isArray(booking.room_id)) {
+    if (!booking) return [];
+    if (Array.isArray(booking.room_ids) && booking.room_ids.length > 0) {
+      return booking.room_ids;
+    }
+    if (Array.isArray(booking.room_id) && booking.room_id.length > 0) {
       return booking.room_id;
     }
-    return booking.room_id ? [booking.room_id] : [];
+    if (Array.isArray(booking.rooms_config) && booking.rooms_config.length > 0) {
+      const fromConfig = booking.rooms_config.map((r) => r.room_id || r.room_number).filter(Boolean);
+      if (fromConfig.length > 0) return fromConfig;
+    }
+    if (Array.isArray(booking.rooms) && booking.rooms.length > 0) {
+      const fromRooms = booking.rooms.map((r) => r.room_id || r.room_number).filter(Boolean);
+      if (fromRooms.length > 0) return fromRooms;
+    }
+    if (booking.room_id) return [booking.room_id];
+    if (booking.room_number) return [booking.room_number];
+    return [];
   };
   // Convert services object to use room numbers as keys instead of UUIDs
   const convertServicesToRoomNumbers = (services, roomId) => {
@@ -313,22 +408,54 @@ const AmendBooking = () => {
   // ----------- MULTI-ROOM DROPDOWN LOGIC START -----------
   // Helper: Get available rooms for a given dropdown index, removing rooms already picked in other dropdowns (except its own)
   const getAvailableRoomsForDropdown = (currentRoomIds, idx) => {
-    const selectedRoomIds = currentRoomIds.filter((rid, i) => i !== idx);
-    return rooms.filter(room => {
-      if (room.room_id === currentRoomIds[idx]) return true;
-      if (room.status === "Vacant" && !selectedRoomIds.includes(room.room_id)) return true;
-      return false;
+    const selectedRoomIds = (currentRoomIds || []).filter((rid, i) => i !== idx);
+    const thisDropdownRoomId = currentRoomIds?.[idx];
+
+    return (rooms || []).filter(room => {
+      const isThisRoomCurrent =
+        String(room.room_id).trim() === String(thisDropdownRoomId || "").trim() ||
+        String(room.id || "").trim() === String(thisDropdownRoomId || "").trim() ||
+        String(room.room_number || "").trim() === String(thisDropdownRoomId || "").trim();
+
+      if (isThisRoomCurrent) return true;
+
+      // Don't show rooms picked in another dropdown of this same booking
+      if (selectedRoomIds.some(rid =>
+        String(room.room_id).trim() === String(rid).trim() ||
+        String(room.id || "").trim() === String(rid).trim() ||
+        String(room.room_number || "").trim() === String(rid).trim()
+      )) {
+        return false;
+      }
+
+      // Check if room is occupied by another guest
+      if (isRoomOccupied(room, editingBooking?.booking_id)) {
+        return false;
+      }
+
+      const s = String(room.status || "").toLowerCase().trim();
+      if (s === "dirty" || s.includes("maintenance") || s.includes("order") || s.includes("block")) {
+        return false;
+      }
+
+      return true;
     });
   };
   // Change handler: update room_ids and ensure uniqueness
   const handleRoomIdChange = (index, value) => {
+    if (isRoomOccupied(value, editingBooking?.booking_id)) {
+      const r = getRoomDetails(value);
+      toast.error(`Room ${r.room_number || value} is currently Occupied by another guest. Please select a vacant room.`);
+      return;
+    }
+
     setFormData(prev => {
       const newRoomIds = [...(prev.room_ids || [])];
       // Prevent duplicate selection
       setIsRoomChanged({
         oldRoom: newRoomIds[index],
         newRoom: value
-      })
+      });
       if (newRoomIds.includes(value) && newRoomIds[index] !== value) return prev;
       newRoomIds[index] = value;
       
@@ -483,6 +610,20 @@ const AmendBooking = () => {
               }
             }
           }
+        }
+      }
+      if (field === 'no_of_rooms') {
+        const count = parseInt(value, 10);
+        if (count && count > 0) {
+          const currentRooms = Array.isArray(prev.room_ids) ? [...prev.room_ids] : [];
+          if (currentRooms.length < count) {
+            while (currentRooms.length < count) {
+              currentRooms.push('');
+            }
+          } else if (currentRooms.length > count) {
+            currentRooms.splice(count);
+          }
+          next.room_ids = currentRooms;
         }
       }
       return next;
@@ -1214,6 +1355,19 @@ const AmendBooking = () => {
     } else {
       bookingPayload.rate_plan_id = formData.rate_plan_id;
     }
+    // Verify none of the rooms in formData.room_ids are occupied by another guest
+    const occupiedInAmend = [];
+    (formData.room_ids || []).forEach((rid) => {
+      if (isRoomOccupied(rid, editingBooking?.booking_id)) {
+        const r = getRoomDetails(rid);
+        occupiedInAmend.push(r.room_number || rid);
+      }
+    });
+    if (occupiedInAmend.length > 0) {
+      toast.error(`Cannot save amendment: Room ${occupiedInAmend.join(", ")} is currently Occupied by another guest. Please assign a vacant room.`);
+      return;
+    }
+
     setLoading(true);
     try {
       await amendBooking({
@@ -1239,12 +1393,18 @@ const AmendBooking = () => {
       }
       // Handle room status changes for all rooms
       const originalRoomIds = getCurrentRoomIds(editingBooking);
-      const newRoomIds = formData.room_ids;
+      const newRoomIds = formData.room_ids || [];
       if (updateRoomStatus) {
-        for (let i = 0; i < originalRoomIds.length; i++) {
-          if (originalRoomIds[i] !== newRoomIds[i]) {
-            await updateRoomStatus(originalRoomIds[i], "Under Maintenance");
-            await updateRoomStatus(newRoomIds[i], "Occupied");
+        // Free up old rooms that are no longer assigned
+        for (const oldRid of originalRoomIds) {
+          if (!newRoomIds.includes(oldRid)) {
+            await updateRoomStatus(oldRid, "Dirty");
+          }
+        }
+        // Mark all active rooms in the amended booking as Occupied
+        for (const newRid of newRoomIds) {
+          if (newRid) {
+            await updateRoomStatus(newRid, "Occupied");
           }
         }
         if (fetchRooms) await fetchRooms();

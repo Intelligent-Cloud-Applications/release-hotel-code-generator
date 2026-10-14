@@ -254,10 +254,19 @@ const RoomList = () => {
   };
 
   const getRoomStatus = (room) => {
-    if (isToday) {
-      return room.status;
-    }
     const bookingInfo = roomOccupancyMap[room.room_id];
+    if (bookingInfo && bookingInfo.status === "Checked-in") {
+      return "Occupied";
+    }
+    if (isToday) {
+      if (room.status && room.status !== "Vacant" && room.status !== "Clean") {
+        return room.status;
+      }
+      if (bookingInfo) {
+        return bookingInfo.status === "Reserved" ? "Reserved" : "Occupied";
+      }
+      return room.status || "Vacant";
+    }
     if (bookingInfo) {
       return bookingInfo.status === "Checked-in" ? "Occupied" : "Reserved";
     }

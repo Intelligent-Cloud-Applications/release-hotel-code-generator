@@ -177,6 +177,28 @@ export const getLaundryA4BillHTML = ({ order = {}, institutionData = {} }) => {
   const speedSurcharge =
     order.surchargePercent > 0 ? `Express (${order.surchargePercent}% surcharge)` : "Standard";
 
+  const cgstRate =
+    order.cgstRate !== undefined && order.cgstRate !== null
+      ? Number(order.cgstRate)
+      : institutionData?.laundryConfig?.cgstRate !== undefined
+      ? Number(institutionData.laundryConfig.cgstRate)
+      : institutionData?.laundryGst !== undefined
+      ? Number(institutionData.laundryGst) / 2
+      : institutionData?.cgst !== undefined
+      ? Number(institutionData.cgst)
+      : 2.5;
+
+  const sgstRate =
+    order.sgstRate !== undefined && order.sgstRate !== null
+      ? Number(order.sgstRate)
+      : institutionData?.laundryConfig?.sgstRate !== undefined
+      ? Number(institutionData.laundryConfig.sgstRate)
+      : institutionData?.laundryGst !== undefined
+      ? Number(institutionData.laundryGst) / 2
+      : institutionData?.sgst !== undefined
+      ? Number(institutionData.sgst)
+      : 2.5;
+
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#000000;background:#ffffff;padding:20px 24px;max-width:760px;margin:0 auto;box-sizing:border-box;line-height:1.45;">
 
@@ -279,7 +301,7 @@ export const getLaundryA4BillHTML = ({ order = {}, institutionData = {} }) => {
             <div style="font-size:9px;color:#333333;line-height:1.5;">
               <div style="font-weight:700;margin-bottom:2px;">GST Compliance Notes:</div>
               <div>&#8226; SAC Code: <b>${LAUNDRY_SAC_CODE}</b> — Laundry, Cleaning &amp; Dyeing Services</div>
-              <div>&#8226; CGST @ 2.5% &amp; SGST @ 2.5% applicable as per GST hotel guest amenities notification</div>
+              <div>&#8226; CGST @ ${cgstRate}% &amp; SGST @ ${sgstRate}% applicable as per GST hotel guest amenities notification</div>
               <div>&#8226; All charges are inclusive of applicable taxes as shown</div>
             </div>
           </td>
@@ -306,11 +328,11 @@ export const getLaundryA4BillHTML = ({ order = {}, institutionData = {} }) => {
                   : ""
               }
               <tr style="border-bottom:1px solid #cccccc;">
-                <td style="padding:5px 8px;font-size:10px;border-right:1px solid #cccccc;">CGST @ 2.5%</td>
+                <td style="padding:5px 8px;font-size:10px;border-right:1px solid #cccccc;">CGST @ ${cgstRate}%</td>
                 <td style="padding:5px 8px;text-align:right;font-size:10px;">&#8377;${Number(order.cgstAmount || 0).toFixed(2)}</td>
               </tr>
               <tr style="border-bottom:1px solid #cccccc;">
-                <td style="padding:5px 8px;font-size:10px;border-right:1px solid #cccccc;">SGST @ 2.5%</td>
+                <td style="padding:5px 8px;font-size:10px;border-right:1px solid #cccccc;">SGST @ ${sgstRate}%</td>
                 <td style="padding:5px 8px;text-align:right;font-size:10px;">&#8377;${Number(order.sgstAmount || 0).toFixed(2)}</td>
               </tr>
               <tr style="background:#000000;color:#ffffff;">

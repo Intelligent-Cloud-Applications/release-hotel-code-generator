@@ -63,6 +63,7 @@ const CheckOut = () => {
     fetchGuests,
     fetchRooms,
     addExpense,
+    updateRoomStatus,
   } = useAppContext();
   const { userData } = useAuthContext();
   const [searchTerm, setSearchTerm] = useState("");
@@ -122,6 +123,145 @@ const CheckOut = () => {
     return c ? getCompanyGst(c) : "";
   };
 
+// Helper to format room numbers without stray commas or UUIDs, displaying current active rooms
+const formatBookingRoomNumbers = (booking, rooms = []) => {
+  if (!booking) return "";
+
+  const resolveItem = (item) => {
+    if (!item) return null;
+    const str = String(item).replace(/^,+|,+$/g, "").trim();
+    if (!str) return null;
+
+    // Check if matching room_id or id in rooms
+    const foundById = (rooms || []).find(
+      (r) => String(r.room_id) === str || String(r.id) === str
+    );
+    if (foundById?.room_number) {
+      return String(foundById.room_number).trim();
+    }
+
+    // Check if matching room_number directly
+    const foundByNum = (rooms || []).find(
+      (r) => String(r.room_number) === str
+    );
+    if (foundByNum?.room_number) {
+      return String(foundByNum.room_number).trim();
+    }
+
+    // Check cached localStorage rooms
+    try {
+      const cached = localStorage.getItem("hotel_rooms");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const hit = (parsed || []).find(
+          (r) => String(r.room_id) === str || String(r.room_number) === str
+        );
+        if (hit?.room_number) {
+          return String(hit.room_number).trim();
+        }
+      }
+    } catch (e) {}
+
+    // If it's a UUID and wasn't resolved, do NOT return raw UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    if (!isUuid) {
+      return str;
+    }
+    return null;
+  };
+
+  const collectItems = (val) => {
+    const list = [];
+    if (!val) return list;
+    if (Array.isArray(val)) {
+      val.forEach((v) => list.push(...collectItems(v)));
+    } else if (typeof val === "string") {
+      val.split(",").forEach((s) => {
+        const t = s.trim();
+        if (t) list.push(t);
+      });
+    } else if (typeof val === "number") {
+      list.push(String(val));
+    }
+    return list;
+  };
+
+  // 1. Primary sources: Current active rooms from booking
+  const primaryRaw = [
+    ...collectItems(booking.room_id),
+    ...collectItems(booking.room_ids),
+    ...collectItems(booking.room_number),
+    ...collectItems(booking.room_numbers),
+    ...collectItems(booking.roomNo),
+  ];
+
+  const primaryResolved = [];
+  primaryRaw.forEach((item) => {
+    const res = resolveItem(item);
+    if (res && !primaryResolved.includes(res)) {
+      primaryResolved.push(res);
+    }
+  });
+
+  // If primary rooms are resolved, return them (these are the current active rooms!)
+  if (primaryResolved.length > 0) {
+    return primaryResolved.join(", ");
+  }
+
+  // 2. Fallback: If primary room is missing or was a deleted room that couldn't be resolved
+  const fallbackResolved = [];
+
+  // Check booking.rooms or booking.rooms_config
+  if (Array.isArray(booking.rooms)) {
+    booking.rooms.forEach((r) => {
+      const res = resolveItem(r?.room_number || r?.room_id);
+      if (res && !fallbackResolved.includes(res)) {
+        fallbackResolved.push(res);
+      }
+    });
+  }
+  if (fallbackResolved.length === 0 && Array.isArray(booking.rooms_config)) {
+    booking.rooms_config.forEach((r) => {
+      const res = resolveItem(r?.room_number || r?.room_id);
+      if (res && !fallbackResolved.includes(res)) {
+        fallbackResolved.push(res);
+      }
+    });
+  }
+
+  // Check booking.services: if room was transferred or deleted, find the current/latest room in services
+  if (fallbackResolved.length === 0 && booking.services && typeof booking.services === "object") {
+    // Sort room keys by their latest date entry to find the most recent room
+    const serviceRoomsWithDates = Object.keys(booking.services).map((rKey) => {
+      const dates = Object.keys(booking.services[rKey] || {}).sort();
+      const latestDate = dates.length > 0 ? dates[dates.length - 1] : "";
+      return { roomKey: rKey, latestDate };
+    }).sort((a, b) => b.latestDate.localeCompare(a.latestDate));
+
+    const targetRoomCount = parseInt(booking.no_of_rooms || booking.number_of_rooms || 1, 10) || 1;
+    const latestServiceRooms = serviceRoomsWithDates.slice(0, targetRoomCount);
+
+    latestServiceRooms.forEach(({ roomKey }) => {
+      const res = resolveItem(roomKey);
+      if (res && !fallbackResolved.includes(res)) {
+        fallbackResolved.push(res);
+      }
+    });
+  }
+
+  // Check booking.room_charges
+  if (fallbackResolved.length === 0 && booking.room_charges && typeof booking.room_charges === "object") {
+    Object.keys(booking.room_charges).forEach((k) => {
+      const res = resolveItem(k);
+      if (res && !fallbackResolved.includes(res)) {
+        fallbackResolved.push(res);
+      }
+    });
+  }
+
+  return fallbackResolved.filter(Boolean).join(", ");
+};
+
   // Get checked-in bookings
   const checkedInBookings =
     bookings?.filter((booking) => booking.status === "Checked-in") || [];
@@ -129,15 +269,13 @@ const CheckOut = () => {
   // Filter bookings based on search
   const filteredBookings = checkedInBookings.filter((booking) => {
     const guest = guests?.find((g) => g.guest_id === booking.guest_id);
-    const room = rooms?.find(
-      (r) => String(r.room_id) === String(booking.room_id)
-    );
+    const bookingRoomNumbers = formatBookingRoomNumbers(booking, rooms);
     const searchLower = searchTerm.toLowerCase();
     return (
       booking.booking_id?.toLowerCase().includes(searchLower) ||
       guest?.full_name?.toLowerCase().includes(searchLower) ||
       guest?.mobile?.includes(searchTerm) ||
-      room?.room_number?.includes(searchTerm) ||
+      bookingRoomNumbers.toLowerCase().includes(searchLower) ||
       booking.room_type?.toLowerCase().includes(searchLower)
     );
   });
@@ -844,7 +982,7 @@ const CheckOut = () => {
     }
   };
 
-  const processCheckout = () => {
+  const processCheckout = async () => {
     if (!selectedBooking) return;
 
     // Check if booking can be checked out
@@ -954,7 +1092,56 @@ const CheckOut = () => {
     console.log("=== END DEBUG ===");
 
     // Call the checkout API
-    checkoutGuest({ bookingDetails: checkoutData });
+    await checkoutGuest({ bookingDetails: checkoutData });
+
+    // Update checked out room(s) status to Dirty so they become available for housekeeping cleaning
+    try {
+      const checkoutRoomIds = new Set();
+      const addRoomId = (val) => {
+        if (!val) return;
+        if (Array.isArray(val)) {
+          val.forEach(addRoomId);
+          return;
+        }
+        const valStr = String(val).trim();
+        const rObj = (rooms || []).find((r) => 
+          String(r.room_id) === valStr || 
+          String(r.id) === valStr || 
+          String(r.room_number) === valStr
+        );
+        if (rObj) {
+          checkoutRoomIds.add(rObj.room_id || rObj.id);
+        } else if (valStr) {
+          checkoutRoomIds.add(valStr);
+        }
+      };
+
+      addRoomId(selectedBooking.room_id);
+      addRoomId(selectedBooking.room_ids);
+      addRoomId(selectedBooking.room_number);
+      addRoomId(selectedBooking.room_numbers);
+      if (Array.isArray(selectedBooking.rooms)) {
+        selectedBooking.rooms.forEach((r) => addRoomId(r?.room_id || r?.room_number));
+      }
+      if (Array.isArray(selectedBooking.rooms_config)) {
+        selectedBooking.rooms_config.forEach((r) => addRoomId(r?.room_id || r?.room_number));
+      }
+
+      if (typeof updateRoomStatus === "function") {
+        for (const rid of checkoutRoomIds) {
+          try {
+            await updateRoomStatus(rid, "Dirty");
+          } catch (statusErr) {
+            console.warn("Could not update room status to Dirty:", statusErr);
+          }
+        }
+      }
+      if (typeof fetchRooms === "function") {
+        fetchRooms().catch((err) => console.error("Error refreshing rooms:", err));
+      }
+    } catch (roomErr) {
+      console.error("Error updating rooms to Dirty on checkout:", roomErr);
+    }
 
     // If payment is cash, add the amount to cash drawer as received
     if (checkoutFormData.payment_mode === "Cash") {
@@ -1171,19 +1358,7 @@ const CheckOut = () => {
     );
   };
 
-  const roomNumbers = selectedBooking?.room_id
-    ? Array.isArray(selectedBooking.room_id)
-      ? selectedBooking.room_id
-          .map(
-            (rid) =>
-              rooms?.find((r) => String(r.room_id) === String(rid))?.room_number
-          )
-          .filter(Boolean)
-          .join(", ")
-      : rooms?.find(
-          (r) => String(r.room_id) === String(selectedBooking.room_id)
-        )?.room_number
-    : "";
+  const roomNumbers = formatBookingRoomNumbers(selectedBooking, rooms);
 
   const ErrorMessage = ({ error }) => {
     if (!error) return null;
@@ -1315,15 +1490,7 @@ const CheckOut = () => {
                     return (
                       <TableRow key={booking.booking_id}>
                         <TableCell className="font-medium">
-                          {(() => {
-                            return booking?.room_id
-                              ?.map(
-                                (rid) =>
-                                  rooms?.find((room) => rid === room.room_id)
-                                    ?.room_number
-                              )
-                              ?.join(", ");
-                          })()}
+                          {formatBookingRoomNumbers(booking, rooms) || "N/A"}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">

@@ -16,9 +16,84 @@ import { useAppContext } from "../../../context/AppContext.jsx";
 import RefreshButton from "../../../components/ui/RefreshButton.jsx";
 
 const NewBooking = () => {
-  const { createBooking, rooms, fetchRooms, fetchBookings } = useAppContext();
+  const { createBooking, rooms, bookings, fetchRooms, fetchBookings } = useAppContext();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const toTimestamp = (val) => {
+    if (!val) return null;
+    if (typeof val === "number") {
+      return val < 10000000000 ? val * 1000 : val;
+    }
+    const num = Number(val);
+    if (!isNaN(num) && num > 0) {
+      return num < 10000000000 ? num * 1000 : num;
+    }
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? null : parsed;
+  };
+
+  // Helper to determine if a room is occupied or booked for the specified dates
+  // Allows booking occupied rooms for upcoming future dates after current checkout
+  const isRoomOccupiedForDates = (roomOrId, targetCheckin, targetCheckout) => {
+    if (!roomOrId) return false;
+    const room = typeof roomOrId === "object"
+      ? roomOrId
+      : (rooms || []).find((r) =>
+          String(r.room_id || "").trim() === String(roomOrId).trim() ||
+          String(r.id || "").trim() === String(roomOrId).trim() ||
+          String(r.room_number || "").trim() === String(roomOrId).trim()
+        ) || { room_id: roomOrId, room_number: roomOrId };
+
+    const roomIdStr = String(room?.room_id || room?.id || roomOrId || "").trim();
+    const roomNumStr = String(room?.room_number || roomOrId || "").trim();
+
+    // Maintenance / blocked rooms cannot be booked
+    const s = String(room?.status || "").toLowerCase().trim();
+    if (s.includes("maintenance") || s.includes("block") || s.includes("order")) {
+      return true;
+    }
+
+    const tIn = toTimestamp(targetCheckin);
+    const tOut = toTimestamp(targetCheckout);
+
+    // If target dates are not yet chosen, allow room selection for advance bookings
+    if (!tIn || !tOut) return false;
+
+    // Check overlap with active bookings (both Checked-in and Reserved)
+    return (bookings || []).some((b) => {
+      if (b.status !== "Checked-in" && b.status !== "Reserved") return false;
+
+      const checkMatch = (val) => {
+        if (!val) return false;
+        if (Array.isArray(val)) return val.some(checkMatch);
+        const str = String(val).trim();
+        return (
+          (roomIdStr && str === roomIdStr) ||
+          (roomNumStr && str === roomNumStr)
+        );
+      };
+
+      const matchesRoom =
+        checkMatch(b.room_id) ||
+        checkMatch(b.room_ids) ||
+        checkMatch(b.room_number) ||
+        checkMatch(b.room_numbers) ||
+        checkMatch(b.roomNo) ||
+        (Array.isArray(b.rooms) && b.rooms.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number))) ||
+        (Array.isArray(b.rooms_config) && b.rooms_config.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)));
+
+      if (!matchesRoom) return false;
+
+      const bIn = toTimestamp(b.checkin_date);
+      const bOut = toTimestamp(b.checkout_date);
+      if (!bIn || !bOut) return true;
+
+      // Intervals [tIn, tOut] and [bIn, bOut] overlap if:
+      // (tIn < bOut) and (tOut > bIn)
+      return tIn < bOut && tOut > bIn;
+    });
+  };
 
   const [guestData, setGuestData] = useState({
     full_name: "",
@@ -325,10 +400,14 @@ const NewBooking = () => {
   }, [searchParams]);
 
   const vacantRooms = useMemo(() => {
-    return (rooms || []).filter(
-      (r) => r.status === "Clean" || r.status === "Vacant"
-    );
-  }, [rooms]);
+    return (rooms || []).filter((r) => {
+      const s = String(r.status || "").toLowerCase().trim();
+      if (s.includes("maintenance") || s.includes("block") || s.includes("order")) {
+        return false;
+      }
+      return !isRoomOccupiedForDates(r, bookingData.checkin_date, bookingData.checkout_date);
+    });
+  }, [rooms, bookings, bookingData.checkin_date, bookingData.checkout_date]);
 
   const getVacantRoomsForCategory = (category) => {
     if (!category) return [];
@@ -604,6 +683,31 @@ const NewBooking = () => {
         ...prev,
         no_of_persons: "Number of persons must be at least 1",
       }));
+      setIsValidating(false);
+      return;
+    }
+
+    // Check if any assigned room is occupied for the requested dates
+    const occupiedAssignedRooms = [];
+    roomsConfig.forEach((rc, i) => {
+      if (rc.room_id) {
+        if (isRoomOccupiedForDates(rc.room_id, bookingData.checkin_date, bookingData.checkout_date)) {
+          const rObj = (rooms || []).find(
+            (r) =>
+              String(r.room_id || "").trim() === String(rc.room_id).trim() ||
+              String(r.id || "").trim() === String(rc.room_id).trim() ||
+              String(r.room_number || "").trim() === String(rc.room_id).trim()
+          );
+          occupiedAssignedRooms.push(rObj?.room_number || rc.room_number || `Room ${i + 1}`);
+        }
+      }
+    });
+
+    if (occupiedAssignedRooms.length > 0) {
+      toast.error(
+        `Room ${occupiedAssignedRooms.join(", ")} is already booked or occupied for the selected dates. Please choose another room.`,
+        { duration: 5000 }
+      );
       setIsValidating(false);
       return;
     }

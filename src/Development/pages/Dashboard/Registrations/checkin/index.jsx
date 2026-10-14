@@ -33,6 +33,7 @@ const CheckIn = () => {
     createCompany,
     fetchCompanies,
     listTotalBill,
+    updateRoomStatus,
   } = useAppContext();
   
   const navigate = useNavigate();
@@ -55,6 +56,89 @@ const CheckIn = () => {
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [roomAutoSelected, setRoomAutoSelected] = useState(false);
+
+  // Helper to find a room by room_id, id, or room_number
+  const findRoom = (idOrNum) => {
+    if (!idOrNum) return null;
+    if (typeof idOrNum === "object") return idOrNum;
+    const str = String(idOrNum).trim();
+    return (rooms || []).find(
+      (r) =>
+        String(r.room_id || "").trim() === str ||
+        String(r.id || "").trim() === str ||
+        String(r.room_number || "").trim() === str
+    );
+  };
+
+  // Helper to determine if a room is currently occupied by another checked-in guest
+  const isRoomOccupied = (roomOrId, currentBookingId = null) => {
+    if (!roomOrId) return false;
+    const room = typeof roomOrId === "object" ? roomOrId : findRoom(roomOrId);
+    const roomIdStr = String(room?.room_id || room?.id || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+    const roomNumStr = String(room?.room_number || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+
+    const checkMatch = (val) => {
+      if (!val) return false;
+      if (Array.isArray(val)) return val.some(checkMatch);
+      const str = String(val).trim();
+      return (
+        (roomIdStr && str === roomIdStr) ||
+        (roomNumStr && str === roomNumStr)
+      );
+    };
+
+    const bookingMatchesRoom = (b) => {
+      if (!b) return false;
+      return (
+        checkMatch(b.room_id) ||
+        checkMatch(b.room_ids) ||
+        checkMatch(b.room_number) ||
+        checkMatch(b.room_numbers) ||
+        checkMatch(b.roomNo) ||
+        (Array.isArray(b.rooms) && b.rooms.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number))) ||
+        (Array.isArray(b.rooms_config) && b.rooms_config.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)))
+      );
+    };
+
+    // If currentBookingId (or selectedBooking) owns this room, it's this booking's own room
+    if (currentBookingId) {
+      if (
+        selectedBooking &&
+        String(selectedBooking.booking_id).trim() === String(currentBookingId).trim() &&
+        bookingMatchesRoom(selectedBooking)
+      ) {
+        return false;
+      }
+      const myBooking = (bookings || []).find(
+        (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+      );
+      if (myBooking && bookingMatchesRoom(myBooking)) {
+        return false;
+      }
+    }
+
+    // Check if any OTHER checked-in booking occupies this room
+    const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
+      if (b.status !== "Checked-in") return false;
+      if (
+        currentBookingId &&
+        String(b.booking_id).trim() === String(currentBookingId).trim()
+      ) {
+        return false;
+      }
+      return bookingMatchesRoom(b);
+    });
+
+    if (isOccupiedByAnotherBooking) return true;
+
+    // Finally, if room status is Occupied in DB and not owned by current booking
+    const s = String(room?.status || "").toLowerCase().trim();
+    if (s === "occupied" || s.includes("occup")) {
+      return true;
+    }
+
+    return false;
+  };
 
   const formatToLocalDateTime = (timestamp) => {
     if (!timestamp) return "";
@@ -214,40 +298,50 @@ const CheckIn = () => {
       !roomAutoSelected && 
       (!checkInData.room_id || checkInData.room_id.length === 0)
     ) {
-      // Filter vacant/clean rooms inline (to avoid dependency on getVacantRooms)
-      const vacantRooms = rooms.filter(
-        (room) => room.status === "Clean" || room.status === "Vacant"
-      );
-      
-      // Find the room in the vacant rooms list
-      const roomToSelect = vacantRooms.find(room => {
-        const roomIdStr = String(room.room_id);
+      // Find the room in all rooms first
+      const targetRoom = rooms.find(room => {
+        const roomIdStr = String(room.room_id || room.id);
         const urlRoomIdStr = String(roomIdFromUrl);
         return roomIdStr === urlRoomIdStr;
       });
 
-      if (roomToSelect) {
-        // Room is already validated as Vacant or Clean by the filter above
-        // Auto-select the room by updating state directly (avoid dependency on handleInputChange)
-        setCheckInData(prev => ({
-          ...prev,
-          room_id: [roomToSelect.room_id]
-        }));
-        
-        // Mark as auto-selected to prevent re-selection
-        setRoomAutoSelected(true);
-        
-        // Clear the URL parameter after a short delay to allow state updates
+      if (targetRoom) {
+        if (isRoomOccupied(targetRoom)) {
+          toast.error(
+            `Room ${targetRoom.room_number} is currently Occupied by another guest and cannot be checked in.`
+          );
+        } else {
+          const s = String(targetRoom.status || "").toLowerCase().trim();
+          const isNotReady =
+            s === "dirty" ||
+            s.includes("dirty") ||
+            s.includes("maintenance") ||
+            s.includes("order") ||
+            s.includes("block");
+
+          if (isNotReady) {
+            toast.warning(
+              `Warning: Room ${targetRoom.room_number} was selected, but is currently ${targetRoom.status || "Dirty"} (Dirty / Under Maintenance). Please clean/maintain it or select an alternate clean room.`,
+              { duration: 7000 }
+            );
+          } else {
+            // Room is Vacant and Clean
+            setCheckInData(prev => ({
+              ...prev,
+              room_id: [targetRoom.room_id]
+            }));
+            setRoomAutoSelected(true);
+            toast.success(`Room ${targetRoom.room_number} has been auto-selected for check-in`);
+          }
+        }
+
         setTimeout(() => {
           const newSearchParams = new URLSearchParams(searchParams);
           newSearchParams.delete('room_id');
           setSearchParams(newSearchParams, { replace: true });
         }, 100);
-        
-        // Show success message
-        toast.success(`Room ${roomToSelect.room_number} has been auto-selected for check-in`);
       } else {
-        // Room not found in vacant rooms, clear URL parameter
+        // Room not found in rooms list, clear URL parameter
         toast.error("Room not found or not available for check-in");
         const newSearchParams = new URLSearchParams(searchParams);
         newSearchParams.delete('room_id');
@@ -309,6 +403,74 @@ const CheckIn = () => {
         checkoutDate = new Date(currentDateTime + 24 * 60 * 60 * 1000).getTime();
       }
 
+      const rawAssignedRoomIds = (Array.isArray(selectedBooking.room_id) && selectedBooking.room_id.length > 0)
+        ? selectedBooking.room_id
+        : (typeof selectedBooking.room_id === "string" && selectedBooking.room_id.trim())
+        ? [selectedBooking.room_id.trim()]
+        : (Array.isArray(selectedBooking.rooms_config) && selectedBooking.rooms_config.length > 0)
+        ? selectedBooking.rooms_config.map((r) => r.room_id || r.room_number).filter((id) => id && id !== "none")
+        : (Array.isArray(selectedBooking.rooms) && selectedBooking.rooms.length > 0)
+        ? selectedBooking.rooms.map((r) => r.room_id || r.room_number).filter((id) => id && id !== "none")
+        : (selectedBooking.room_number ? [selectedBooking.room_number] : []);
+
+      const validSelectableRoomIds = [];
+      const notReadyRoomsFound = [];
+      const occupiedRoomsFound = [];
+
+      rawAssignedRoomIds.forEach((rid) => {
+        const rObj = findRoom(rid);
+        const roomNumber = rObj?.room_number || rid;
+
+        if (isRoomOccupied(rObj || rid, selectedBooking.booking_id)) {
+          occupiedRoomsFound.push({
+            roomNumber,
+            status: "Occupied",
+          });
+          return;
+        }
+
+        if (rObj) {
+          const s = String(rObj.status || "").toLowerCase().trim();
+          const isNotReady =
+            s === "dirty" ||
+            s.includes("dirty") ||
+            s.includes("maintenance") ||
+            s.includes("order") ||
+            s.includes("block");
+
+          if (isNotReady) {
+            notReadyRoomsFound.push({
+              roomNumber,
+              status: rObj.status || "Dirty",
+            });
+            return;
+          }
+          validSelectableRoomIds.push(rObj.room_id || rid);
+        } else {
+          validSelectableRoomIds.push(rid);
+        }
+      });
+
+      if (occupiedRoomsFound.length > 0) {
+        const details = occupiedRoomsFound
+          .map((r) => `Room ${r.roomNumber}`)
+          .join(", ");
+        toast.error(
+          `Alert: ${details} was assigned to this reservation, but is currently OCCUPIED by another guest. It has been unselected. Please select a vacant room.`,
+          { duration: 8000 }
+        );
+      }
+
+      if (notReadyRoomsFound.length > 0) {
+        const details = notReadyRoomsFound
+          .map((r) => `Room ${r.roomNumber} (${r.status})`)
+          .join(", ");
+        toast.warning(
+          `Notice: ${details} was assigned at booking, but is currently not ready (Dirty / Under Maintenance). Please clean or maintain it, or select an alternate clean room before check-in.`,
+          { duration: 8000 }
+        );
+      }
+
       setCheckInData({
         // Guest Details
         full_name: guest?.full_name || "",
@@ -335,13 +497,7 @@ const CheckIn = () => {
         checkin_date: currentDateTime,
         checkout_date: checkoutDate,
         room_type: selectedBooking.room_category || selectedBooking.room_type || "",
-        room_id: (Array.isArray(selectedBooking.room_id) && selectedBooking.room_id.length > 0)
-          ? selectedBooking.room_id
-          : (typeof selectedBooking.room_id === "string" && selectedBooking.room_id.trim())
-          ? [selectedBooking.room_id.trim()]
-          : (Array.isArray(selectedBooking.rooms_config)
-              ? selectedBooking.rooms_config.map((r) => r.room_id).filter((id) => id && id !== "none")
-              : []),
+        room_id: validSelectableRoomIds,
         no_of_adults: selectedBooking.no_of_persons || selectedBooking.no_of_adults || 1,
         no_of_children: selectedBooking.no_of_children || 0,
         company_id: selectedBooking.company_id || "",
@@ -365,9 +521,11 @@ const CheckIn = () => {
   // Get vacant rooms for assignment - memoized to prevent unnecessary recalculations
   const getVacantRooms = useMemo(() => {
     return rooms.filter(
-      (room) => room.status === "Clean" || room.status === "Vacant"
+      (room) =>
+        (room.status === "Clean" || room.status === "Vacant") &&
+        !isRoomOccupied(room, selectedBooking?.booking_id)
     );
-  }, [rooms]);
+  }, [rooms, bookings, selectedBooking?.booking_id]);
 
   const reservedBookings = useMemo(() => 
     bookings.filter((booking) => booking.status === "Reserved"),
@@ -595,6 +753,18 @@ const CheckIn = () => {
     // 19. Room(s) *
     if (!data.room_id || (Array.isArray(data.room_id) && data.room_id.length === 0)) {
       errors.room_id = "Please assign at least one room";
+    } else {
+      const selectedIds = Array.isArray(data.room_id) ? data.room_id : [data.room_id];
+      const occupiedSelected = [];
+      selectedIds.forEach((rid) => {
+        if (isRoomOccupied(rid, selectedBooking?.booking_id)) {
+          const rObj = findRoom(rid);
+          occupiedSelected.push(rObj?.room_number || rid);
+        }
+      });
+      if (occupiedSelected.length > 0) {
+        errors.room_id = `Room ${occupiedSelected.join(", ")} is currently Occupied by another guest. Please select a vacant room.`;
+      }
     }
 
     if (
@@ -895,9 +1065,26 @@ const CheckIn = () => {
       // Generate services data for each selected room
       const services = {};
       const selectedRoomIds = checkInData.room_id || [];
+
+      // Check if any selected room is currently occupied
+      const occupiedInSelection = [];
+      (selectedRoomIds || []).forEach((rid) => {
+        if (isRoomOccupied(rid, selectedBooking?.booking_id)) {
+          const rObj = findRoom(rid);
+          occupiedInSelection.push(rObj?.room_number || rid);
+        }
+      });
+      if (occupiedInSelection.length > 0) {
+        toast.error(
+          `Cannot check in: Room ${occupiedInSelection.join(", ")} is currently Occupied by another guest. Please assign a vacant room.`
+        );
+        setIsSubmitting(false);
+        isProcessingRef.current = false;
+        return;
+      }
       
       selectedRoomIds.forEach(roomId => {
-        const room = rooms.find(r => r.room_id === roomId);
+        const room = findRoom(roomId);
         if (room) {
           services[room.room_number] = {};
           
@@ -993,6 +1180,20 @@ const CheckIn = () => {
       
       // Wait for the API call to complete
       await checkInGuest({ checkInData: finalCheckInData });
+
+      // Update room statuses to Occupied in rooms table
+      if (typeof updateRoomStatus === "function" && Array.isArray(finalCheckInData.room_id)) {
+        for (const rid of finalCheckInData.room_id) {
+          try {
+            await updateRoomStatus(rid, "Occupied");
+          } catch (statusErr) {
+            console.warn("Could not update room status to Occupied:", statusErr);
+          }
+        }
+      }
+      if (typeof fetchRooms === "function") {
+        fetchRooms().catch((err) => console.error("Error refreshing rooms:", err));
+      }
       
       // If payment is cash and partial payment amount > 0, add to cash drawer as received
       if (finalCheckInData.advance_payment_mode === "Cash" && finalCheckInData.partial_payment_amount > 0) {

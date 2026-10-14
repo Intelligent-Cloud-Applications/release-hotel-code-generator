@@ -168,6 +168,9 @@ export async function fetchLaundryCatalogBackend(customInstId) {
 export async function saveLaundryConfigToBackend({
   catalog,
   serviceSpeeds = null,
+  gstRate = null,
+  cgstRate = null,
+  sgstRate = null,
   institutionData = null,
   updateInstitutionData = null,
 }) {
@@ -180,6 +183,29 @@ export async function saveLaundryConfigToBackend({
     institutionData?.laundryConfig?.serviceSpeeds ||
     DEFAULT_SERVICE_SPEEDS;
 
+  const effectiveGstRate =
+    gstRate !== null && gstRate !== undefined
+      ? Number(gstRate)
+      : institutionData?.laundryConfig?.gstRate !== undefined
+      ? Number(institutionData.laundryConfig.gstRate)
+      : institutionData?.laundryGst !== undefined
+      ? Number(institutionData.laundryGst)
+      : 5;
+
+  const effectiveCgstRate =
+    cgstRate !== null && cgstRate !== undefined
+      ? Number(cgstRate)
+      : institutionData?.laundryConfig?.cgstRate !== undefined
+      ? Number(institutionData.laundryConfig.cgstRate)
+      : effectiveGstRate / 2;
+
+  const effectiveSgstRate =
+    sgstRate !== null && sgstRate !== undefined
+      ? Number(sgstRate)
+      : institutionData?.laundryConfig?.sgstRate !== undefined
+      ? Number(institutionData.laundryConfig.sgstRate)
+      : effectiveGstRate / 2;
+
   // Persist locally immediately so changes never disappear on reload
   try {
     if (Array.isArray(catalog)) {
@@ -188,6 +214,10 @@ export async function saveLaundryConfigToBackend({
     if (Array.isArray(speedsToSave)) {
       localStorage.setItem("hotel_laundry_speeds_cache", JSON.stringify(speedsToSave));
     }
+    localStorage.setItem(
+      "hotel_laundry_gst_cache",
+      JSON.stringify({ gstRate: effectiveGstRate, cgstRate: effectiveCgstRate, sgstRate: effectiveSgstRate })
+    );
   } catch (e) {}
 
   let backendSuccess = false;
@@ -203,7 +233,9 @@ export async function saveLaundryConfigToBackend({
           catalog: catalog || [],
           serviceSpeeds: speedsToSave,
           sacCode: LAUNDRY_SAC_CODE,
-          gstRate: 5,
+          gstRate: effectiveGstRate,
+          cgstRate: effectiveCgstRate,
+          sgstRate: effectiveSgstRate,
         },
         queryParams: { institutionId: instId },
       },
@@ -220,11 +252,15 @@ export async function saveLaundryConfigToBackend({
     try {
       const updatedInstitution = {
         ...institutionData,
+        laundryGst: effectiveGstRate,
         laundryConfig: {
           ...(institutionData.laundryConfig || {}),
           catalog: catalog || [],
           serviceSpeeds: speedsToSave,
           sacCode: LAUNDRY_SAC_CODE,
+          gstRate: effectiveGstRate,
+          cgstRate: effectiveCgstRate,
+          sgstRate: effectiveSgstRate,
           updatedAt: new Date().toISOString(),
         },
       };
@@ -310,9 +346,16 @@ export function calculateLaundryTotals(
   // Taxable amount before GST
   const taxableAmount = itemsSubtotal + surchargeAmount;
 
-  // GST rates
-  const cgstAmount = (taxableAmount * (Number(cgstPct) || 2.5)) / 100;
-  const sgstAmount = (taxableAmount * (Number(sgstPct) || 2.5)) / 100;
+  // GST rates - safely handle 0% rate without fallback to 2.5%
+  const cgstRateNum = typeof cgstPct === "number" && !isNaN(cgstPct)
+    ? cgstPct
+    : (!isNaN(Number(cgstPct)) && Number(cgstPct) >= 0 ? Number(cgstPct) : 2.5);
+  const sgstRateNum = typeof sgstPct === "number" && !isNaN(sgstPct)
+    ? sgstPct
+    : (!isNaN(Number(sgstPct)) && Number(sgstPct) >= 0 ? Number(sgstPct) : 2.5);
+
+  const cgstAmount = (taxableAmount * cgstRateNum) / 100;
+  const sgstAmount = (taxableAmount * sgstRateNum) / 100;
   const totalTax = cgstAmount + sgstAmount;
 
   // Net total
@@ -326,6 +369,8 @@ export function calculateLaundryTotals(
     extraCharge,
     surchargeAmount: Number(surchargeAmount.toFixed(2)),
     taxableAmount: Number(taxableAmount.toFixed(2)),
+    cgstRate: cgstRateNum,
+    sgstRate: sgstRateNum,
     cgstAmount: Number(cgstAmount.toFixed(2)),
     sgstAmount: Number(sgstAmount.toFixed(2)),
     totalTax: Number(totalTax.toFixed(2)),

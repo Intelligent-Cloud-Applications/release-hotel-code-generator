@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "../../../../../components/ui/dialog.js";
-import { Edit, Bed, User, Phone, Users, Calendar } from "lucide-react";
+import { Edit, Bed, User, Phone, Users, Calendar, AlertTriangle } from "lucide-react";
 import { useAppContext } from "../../../../../context/AppContext.jsx";
 import { toast } from "sonner";
 
@@ -63,6 +63,36 @@ const SelectedBookingInfo = ({
     ];
     return Array.from(new Set([...fromBooking, ...dynamicCategories, ...standardCategories]));
   }, [rooms, selectedBooking, formData?.room_category]);
+
+  const unreadyAssignedRooms = useMemo(() => {
+    if (!selectedBooking || !rooms || rooms.length === 0) return [];
+    const assignedIds = (Array.isArray(selectedBooking.room_id) && selectedBooking.room_id.length > 0)
+      ? selectedBooking.room_id
+      : (typeof selectedBooking.room_id === "string" && selectedBooking.room_id.trim())
+      ? [selectedBooking.room_id.trim()]
+      : (Array.isArray(selectedBooking.rooms_config)
+          ? selectedBooking.rooms_config.map((r) => r.room_id).filter((id) => id && id !== "none")
+          : []);
+
+    return assignedIds
+      .map((rid) => {
+        const rObj = rooms.find((r) => String(r.room_id) === String(rid) || String(r.id) === String(rid));
+        if (!rObj) return null;
+        const s = String(rObj.status || "").toLowerCase().trim();
+        const isUnready =
+          s === "dirty" ||
+          s.includes("dirty") ||
+          s.includes("maintenance") ||
+          s.includes("order") ||
+          s.includes("block");
+        if (isUnready) {
+          return { roomNumber: rObj.room_number || rid, status: rObj.status || "Dirty" };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [selectedBooking, rooms]);
+
 
   const handleOpenEdit = () => {
     const currentCategory =
@@ -213,7 +243,24 @@ const SelectedBookingInfo = ({
             </p>
           </div>
         </div>
+
+        {unreadyAssignedRooms.length > 0 && (
+          <div className="mt-3 p-2.5 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-2 text-xs text-amber-900 shadow-xs">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-950">Room Status Notice:</p>
+              <p className="mt-0.5 leading-relaxed">
+                {unreadyAssignedRooms.map((r) => `Room ${r.roomNumber}`).join(", ")} was assigned at booking, but is currently{" "}
+                <strong className="underline text-amber-900">
+                  {unreadyAssignedRooms.map((r) => r.status).join(", ")}
+                </strong>
+                . Please mark it as Vacant / Clean first or choose an alternate clean room before check-in.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
+
 
       {/* Edit Booking Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>

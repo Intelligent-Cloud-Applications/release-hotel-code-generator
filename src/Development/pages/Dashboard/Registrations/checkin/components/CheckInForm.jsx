@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { toast } from "sonner";
 import { Input } from "../../../../../components/ui/input.js";
 import { Label } from "../../../../../components/ui/label.js";
 import { Button } from "../../../../../components/ui/button.js";
@@ -58,11 +59,13 @@ const CheckInForm = ({
     createCompany,
     guests: contextGuests = [],
     rooms = [],
+    bookings = [],
   } = useAppContext?.() || {
     companies: [],
     createCompany: null,
     guests: [],
     rooms: [],
+    bookings: [],
   };
 
   // Auto-create company control
@@ -496,19 +499,125 @@ const CheckInForm = ({
     }
   };
 
+  // Helper to find a room by room_id, id, or room_number
+  const findRoom = useCallback(
+    (idOrNum) => {
+      if (!idOrNum) return null;
+      if (typeof idOrNum === "object") return idOrNum;
+      const str = String(idOrNum).trim();
+      return (rooms || []).find(
+        (r) =>
+          String(r.room_id || "").trim() === str ||
+          String(r.id || "").trim() === str ||
+          String(r.room_number || "").trim() === str
+      );
+    },
+    [rooms]
+  );
+
+  // Helper to determine if a room is currently occupied by another checked-in guest
+  const isRoomOccupied = useCallback(
+    (roomOrId, currentBookingId = null) => {
+      if (!roomOrId) return false;
+      const room = typeof roomOrId === "object" ? roomOrId : findRoom(roomOrId);
+      const roomIdStr = String(room?.room_id || room?.id || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+      const roomNumStr = String(room?.room_number || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+
+      const checkMatch = (val) => {
+        if (!val) return false;
+        if (Array.isArray(val)) return val.some(checkMatch);
+        const str = String(val).trim();
+        return (
+          (roomIdStr && str === roomIdStr) ||
+          (roomNumStr && str === roomNumStr)
+        );
+      };
+
+      const bookingMatchesRoom = (b) => {
+        if (!b) return false;
+        return (
+          checkMatch(b.room_id) ||
+          checkMatch(b.room_ids) ||
+          checkMatch(b.room_number) ||
+          checkMatch(b.room_numbers) ||
+          checkMatch(b.roomNo) ||
+          (Array.isArray(b.rooms) && b.rooms.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number))) ||
+          (Array.isArray(b.rooms_config) && b.rooms_config.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)))
+        );
+      };
+
+      // If currentBookingId (or selectedBooking) owns this room, it's this booking's own room
+      if (currentBookingId) {
+        if (
+          selectedBooking &&
+          String(selectedBooking.booking_id).trim() === String(currentBookingId).trim() &&
+          bookingMatchesRoom(selectedBooking)
+        ) {
+          return false;
+        }
+        const myBooking = (bookings || []).find(
+          (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+        );
+        if (myBooking && bookingMatchesRoom(myBooking)) {
+          return false;
+        }
+      }
+
+      // Check if any OTHER checked-in booking occupies this room
+      const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
+        if (b.status !== "Checked-in") return false;
+        if (
+          currentBookingId &&
+          String(b.booking_id).trim() === String(currentBookingId).trim()
+        ) {
+          return false;
+        }
+        return bookingMatchesRoom(b);
+      });
+
+      if (isOccupiedByAnotherBooking) return true;
+
+      // Finally, if room status is Occupied in DB and not owned by current booking
+      const s = String(room?.status || "").toLowerCase().trim();
+      if (s === "occupied" || s.includes("occup")) {
+        return true;
+      }
+
+      return false;
+    },
+    [bookings, findRoom, selectedBooking]
+  );
+
   const handleRoomSelection = (roomId) => {
     const currentSelectedRoomIds = checkInData.room_id || [];
+    const targetRoom = findRoom(roomId);
+    const roomNum = targetRoom?.room_number || roomId;
+
+    if (isRoomOccupied(targetRoom || roomId, selectedBooking?.booking_id)) {
+      toast.error(
+        `Room ${roomNum} is currently Occupied by another guest. Cannot assign an occupied room.`
+      );
+      return;
+    }
+
+    if (targetRoom && targetRoom.status === "Dirty") {
+      toast.warning(
+        `Room ${roomNum} is currently Dirty. Please mark it as Vacant / Clean first before check-in.`
+      );
+      return;
+    }
 
     if (!currentSelectedRoomIds.includes(roomId)) {
       const updatedRoomIds = [...currentSelectedRoomIds, roomId];
       handleInputChange("room_id", updatedRoomIds);
 
       if (onRoomSelectionChange) {
-        const selectedRooms = getVacantRooms.filter((room) =>
+        const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+        const selectedRooms = allKnownRooms.filter((room) =>
           updatedRoomIds.includes(room.room_id)
         );
         const totalTariff = selectedRooms.reduce(
-          (total, room) => total + room.tariff,
+          (total, room) => total + (room.tariff || 0),
           0
         );
         onRoomSelectionChange(updatedRoomIds, totalTariff);
@@ -522,11 +631,12 @@ const CheckInForm = ({
     handleInputChange("room_id", updatedRoomIds);
 
     if (onRoomSelectionChange) {
-      const selectedRooms = getVacantRooms.filter((room) =>
+      const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+      const selectedRooms = allKnownRooms.filter((room) =>
         updatedRoomIds.includes(room.room_id)
       );
       const totalTariff = selectedRooms.reduce(
-        (total, room) => total + room.tariff,
+        (total, room) => total + (room.tariff || 0),
         0
       );
       onRoomSelectionChange(updatedRoomIds, totalTariff);
@@ -540,21 +650,24 @@ const CheckInForm = ({
 
   const getSelectedRooms = () => {
     const selectedRoomIds = checkInData.room_id || [];
-    return getVacantRooms.filter((room) =>
+    const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+    return allKnownRooms.filter((room) =>
       selectedRoomIds.includes(room.room_id)
     );
   };
 
   const getAvailableRooms = () => {
     const selectedRoomIds = checkInData.room_id || [];
-    return getVacantRooms.filter(
-      (room) => !selectedRoomIds.includes(room.room_id)
+    return (getVacantRooms || []).filter(
+      (room) =>
+        !selectedRoomIds.includes(room.room_id) &&
+        !isRoomOccupied(room, selectedBooking?.booking_id)
     );
   };
 
   const getTotalRoomTariff = () => {
     const selectedRooms = getSelectedRooms();
-    return selectedRooms.reduce((total, room) => total + room.tariff, 0);
+    return selectedRooms.reduce((total, room) => total + (room.tariff || 0), 0);
   };
 
   const getSelectedRoomsCount = () => {
@@ -627,12 +740,14 @@ const CheckInForm = ({
 
   const matchingVacantRooms = useMemo(() => {
     if (!targetCategories.length || !getVacantRooms) return [];
-    return getVacantRooms.filter((room) =>
-      targetCategories.some(
-        (cat) => (room.room_type || "").toLowerCase() === cat.toLowerCase()
-      )
+    return getVacantRooms.filter(
+      (room) =>
+        !isRoomOccupied(room, selectedBooking?.booking_id) &&
+        targetCategories.some(
+          (cat) => (room.room_type || "").toLowerCase() === cat.toLowerCase()
+        )
     );
-  }, [getVacantRooms, targetCategories]);
+  }, [getVacantRooms, targetCategories, isRoomOccupied, selectedBooking?.booking_id]);
 
   const getSortedAvailableRooms = () => {
     const available = getAvailableRooms();
@@ -1552,24 +1667,50 @@ const CheckInForm = ({
                         {checkInData.room_id.length > 1 ? "s" : ""}
                       </p>
                       <div className="flex flex-wrap gap-1">
-                        {getSelectedRooms().map((room) => (
-                          <div
-                            key={room.room_id}
-                            className="inline-flex items-center px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs"
-                          >
-                            <span>Room {room.room_number}</span>
-                            <span className="ml-1 text-green-700">
-                              (₹{room.tariff})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeRoom(room.room_id)}
-                              className="ml-1 text-green-600 hover:text-green-800"
+                        {getSelectedRooms().map((room) => {
+                          const s = String(room.status || "").toLowerCase().trim();
+                          const isUnready =
+                            s === "dirty" ||
+                            s.includes("dirty") ||
+                            s.includes("maintenance") ||
+                            s.includes("order") ||
+                            s.includes("block");
+                          return (
+                            <div
+                              key={room.room_id}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                                isUnready
+                                  ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                  : "bg-green-100 text-green-800"
+                              }`}
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
+                              <span>Room {room.room_number}</span>
+                              {isUnready && (
+                                <span className="ml-1 px-1 py-0.2 bg-amber-200 text-amber-900 text-[10px] font-semibold rounded">
+                                  {room.status || "Dirty"}
+                                </span>
+                              )}
+                              <span
+                                className={`ml-1 ${
+                                  isUnready ? "text-amber-800 font-medium" : "text-green-700"
+                                }`}
+                              >
+                                (₹{room.tariff || 0})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeRoom(room.room_id)}
+                                className={`ml-1 ${
+                                  isUnready
+                                    ? "text-amber-700 hover:text-amber-900"
+                                    : "text-green-600 hover:text-green-800"
+                                }`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                       {getSelectedRoomsCount() > 1 && (
                         <div className="mt-1 text-xs text-green-700 font-medium">
