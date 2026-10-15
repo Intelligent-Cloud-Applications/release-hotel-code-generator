@@ -518,7 +518,8 @@ export async function fetchDeliveriesBackend(customInstId) {
   }
 }
 
-export async function markDeliveryDeliveredBackend(orderId, deliverData = {}) {
+export async function markDeliveryDeliveredBackend(orderId, deliverData = {}, customInstId) {
+  const instId = customInstId || deliverData?.institutionId || institutionId;
   try {
     const { body } = await patch({
       apiName: "housekeeping",
@@ -526,9 +527,9 @@ export async function markDeliveryDeliveredBackend(orderId, deliverData = {}) {
       options: {
         body: {
           ...deliverData,
-          institutionId,
+          institutionId: instId,
         },
-        queryParams: { institutionId },
+        queryParams: { institutionId: instId },
       },
     }).response;
     const res = await body.json();
@@ -539,13 +540,14 @@ export async function markDeliveryDeliveredBackend(orderId, deliverData = {}) {
   }
 }
 
-export async function fetchLaundryRevenueBackend(dateStr) {
+export async function fetchLaundryRevenueBackend(dateStr, customInstId) {
+  const instId = customInstId || institutionId;
   try {
     const { body } = await get({
       apiName: "housekeeping",
       path: "/laundry/revenue",
       options: {
-        queryParams: { institutionId, ...(dateStr ? { date: dateStr } : {}) },
+        queryParams: { institutionId: instId, ...(dateStr ? { date: dateStr } : {}) },
       },
     }).response;
     const res = await body.json();
