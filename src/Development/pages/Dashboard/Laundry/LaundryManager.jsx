@@ -833,11 +833,25 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
 
   /* Statistics: one pass, grouped by day ----------------------------------- */
   const getOrderDate = (order) => {
+    if (!order) return "";
+    // 1. Explicit business date attributes
+    if (order.created_date && typeof order.created_date === "string" && order.created_date.includes("-")) {
+      return order.created_date.trim();
+    }
+    if (order.orderDate && typeof order.orderDate === "string" && order.orderDate.includes("-")) {
+      return order.orderDate.trim();
+    }
+    if (order.date && typeof order.date === "string" && order.date.includes("-")) {
+      return order.date.trim();
+    }
+    // 2. Token-embedded date: LND-YYYYMMDD-XXXX
+    const tokenStr = String(order.token || order.barcode || order.orderId || "");
+    const tokenMatch = tokenStr.match(/LND-(\d{4})(\d{2})(\d{2})/i);
+    if (tokenMatch) {
+      return `${tokenMatch[1]}-${tokenMatch[2]}-${tokenMatch[3]}`;
+    }
+    // 3. Fallback to createdAt / created_at converted to local date via ymd()
     if (order.createdAt) {
-      if (typeof order.createdAt === "string") {
-        const parts = order.createdAt.split("T");
-        if (parts[0] && parts[0].includes("-")) return parts[0];
-      }
       const d = new Date(order.createdAt);
       if (!isNaN(d.getTime())) return ymd(d);
     }
@@ -845,8 +859,6 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       const d = new Date(order.created_at);
       if (!isNaN(d.getTime())) return ymd(d);
     }
-    if (order.orderDate) return order.orderDate;
-    if (order.date) return order.date;
     return "";
   };
 
@@ -894,8 +906,10 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
           });
         }
 
-        const deliveredDate = order.delivered_at
-          ? (typeof order.delivered_at === "string" ? order.delivered_at.split("T")[0] : ymd(new Date(order.delivered_at)))
+        const deliveredDate = order.delivered_date
+          ? order.delivered_date
+          : order.delivered_at
+          ? ymd(new Date(order.delivered_at))
           : orderDate;
 
         if (isDelivered && (deliveredDate === currentDateStr || orderDate === currentDateStr)) {
