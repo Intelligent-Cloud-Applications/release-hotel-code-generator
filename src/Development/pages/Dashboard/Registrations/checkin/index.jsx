@@ -844,18 +844,18 @@ const CheckIn = () => {
     // Always set room tariff, even when no rooms are selected (set to 0)
     setRoomTariff(roomPrice);
 
-    let nights = 0;
+    let nights = 1;
     if (checkInData.checkin_date && checkInData.checkout_date) {
-      const checkinDate = new Date(checkInData.checkin_date);
-      const checkoutDate = new Date(checkInData.checkout_date);
-      const timeDiff = checkoutDate.getTime() - checkinDate.getTime();
-      nights = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-
-      if (nights < 1) {
-        nights = 1;
-      }
-    } else {
-      nights = 1;
+      const cin = new Date(
+        new Date(checkInData.checkin_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const cout = new Date(
+        new Date(checkInData.checkout_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const cinDay = new Date(cin.getFullYear(), cin.getMonth(), cin.getDate());
+      const coutDay = new Date(cout.getFullYear(), cout.getMonth(), cout.getDate());
+      const dayDiff = Math.round((coutDay.getTime() - cinDay.getTime()) / (1000 * 60 * 60 * 24));
+      nights = Math.max(1, dayDiff);
     }
     setNumberOfNights(nights);
 
@@ -1083,17 +1083,39 @@ const CheckIn = () => {
         return;
       }
       
+      // Generate services for each day of stay using Indian calendar dates
+      const cinDate = new Date(
+        new Date(checkInData.checkin_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const coutDate = new Date(
+        new Date(checkInData.checkout_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const cinDay = new Date(cinDate.getFullYear(), cinDate.getMonth(), cinDate.getDate());
+      const coutDay = new Date(coutDate.getFullYear(), coutDate.getMonth(), coutDate.getDate());
+
+      const stayDates = [];
+      let curr = new Date(cinDay);
+      if (curr >= coutDay) {
+        const y = curr.getFullYear();
+        const m = String(curr.getMonth() + 1).padStart(2, "0");
+        const d = String(curr.getDate()).padStart(2, "0");
+        stayDates.push(`${y}-${m}-${d}`);
+      } else {
+        while (curr < coutDay) {
+          const y = curr.getFullYear();
+          const m = String(curr.getMonth() + 1).padStart(2, "0");
+          const d = String(curr.getDate()).padStart(2, "0");
+          stayDates.push(`${y}-${m}-${d}`);
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+
       selectedRoomIds.forEach(roomId => {
         const room = findRoom(roomId);
         if (room) {
           services[room.room_number] = {};
           
-          // Generate services for each day of stay
-          const checkinDate = new Date(checkInData.checkin_date);
-          const checkoutDate = new Date(checkInData.checkout_date);
-          
-          for (let d = new Date(checkinDate); d < checkoutDate; d.setDate(d.getDate() + 1)) {
-            const dateKey = d.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+          stayDates.forEach((dateKey) => {
             services[room.room_number][dateKey] = {
               extra_bed_charges: 0,
               food_charges: 0,
@@ -1101,7 +1123,7 @@ const CheckIn = () => {
               manual_charges: 0,
               minibar_charges: 0
             };
-          }
+          });
         }
       });
 
