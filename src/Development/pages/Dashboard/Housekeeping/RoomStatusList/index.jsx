@@ -16,6 +16,7 @@ import { Filter, Search, Users, ClipboardList, Unlock, X, RefreshCw } from "luci
 import { useAppContext } from "@/Development/context/AppContext.jsx";
 import { useEffect, useState } from "react";
 import { Button } from "@/Development/components/ui/button.tsx";
+import { toast } from "sonner";
 import RoomServiceDialog from "@/Development/pages/Dashboard/Housekeeping/RoomStatusList/RoomServiceDialog.jsx";
 
 const roomStatus = [
@@ -72,20 +73,26 @@ function formatEpochDate(epoch) {
 }
 
 const RoomStatusCard = ({ room, booking, onCardClick }) => {
-  console.log("booking", booking);
   const { updateRoomStatus, freeHold } = useAppContext();
   const [stat, setStat] = useState(room.status);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isFreeing, setIsFreeing] = useState(false);
   const [showServiceDialog, setShowServiceDialog] = useState(false);
 
+  useEffect(() => {
+    setStat(room.status);
+  }, [room.status]);
+
   const handleStatusChange = async (value) => {
     setIsUpdating(true);
     setStat(value);
     try {
       await updateRoomStatus(room.room_id, value);
+      toast.success(`Room ${room.room_number} status updated to ${value}`);
     } catch (error) {
       console.error("Error updating room status:", error);
+      toast.error(`Failed to update Room ${room.room_number} status`);
+      setStat(room.status);
     } finally {
       setIsUpdating(false);
     }
@@ -97,8 +104,10 @@ const RoomStatusCard = ({ room, booking, onCardClick }) => {
     setIsFreeing(true);
     try {
       await freeHold(booking.booking_id);
+      toast.success(`Hold released on Room ${room.room_number}`);
     } catch (error) {
       console.error("Error freeing hold:", error);
+      toast.error(`Failed to release hold on Room ${room.room_number}`);
     } finally {
       setIsFreeing(false);
     }
@@ -106,7 +115,7 @@ const RoomStatusCard = ({ room, booking, onCardClick }) => {
 
   const statusConfig = statusStyles[stat] || statusStyles["Vacant"];
   // Show hold controls when hold is not explicitly false (i.e., when hold is true or undefined)
-  const shouldShowHoldControls = booking && booking.hold !== false;
+  const shouldShowHoldControls = booking && booking.hold !== false && (stat === "Occupied" || stat === "Reserved");
   const isOnHold = booking?.hold === true;
 
   // Check if room has special requests for border styling
@@ -148,8 +157,8 @@ const RoomStatusCard = ({ room, booking, onCardClick }) => {
         </div>
       </div>
 
-      {/* Guest Info - Ultra Compact */}
-      {booking && (
+      {/* Guest Info - Ultra Compact (Only when Occupied or Reserved) */}
+      {booking && (stat === "Occupied" || stat === "Reserved") && (
         <div className="mb-1 p-1 bg-gray-50 rounded text-xs flex items-start justify-between ">
           <div>
             <div className="flex items-center gap-1 mb-0.5">
@@ -265,19 +274,42 @@ const RoomStatusList = () => {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Ensure rooms and bookings are loaded on component mount
+  useEffect(() => {
+    fetchRooms();
+    if (fetchBookings) fetchBookings();
+  }, []);
+
   useEffect(() => {
     let map = {};
-    for (let booking of bookings) {
+    for (let booking of (bookings || [])) {
       if (booking.status === "Checked-in") {
-        if (Array.isArray(booking.room_id))
-          for (let id of booking.room_id) {
-            map[id] = booking;
+        const rawIds = Array.isArray(booking.room_id)
+          ? booking.room_id
+          : booking.room_id
+          ? [booking.room_id]
+          : [];
+        rawIds.forEach((id) => {
+          if (!id) return;
+          const cleanId = String(id).trim();
+          map[cleanId] = booking;
+          const rObj = (rooms || []).find(
+            (r) =>
+              String(r.room_id).trim() === cleanId ||
+              String(r.room_number).trim() === cleanId
+          );
+          if (rObj) {
+            map[String(rObj.room_id).trim()] = booking;
+            map[String(rObj.room_number).trim()] = booking;
           }
-        else map[booking.room_id] = booking;
+        });
+        if (booking.room_number) {
+          map[String(booking.room_number).trim()] = booking;
+        }
       }
     }
     setRoomBookingMap(map);
-  }, [bookings]);
+  }, [bookings, rooms]);
 
   const [filters, setFilters] = useState({
     Vacant: true,
@@ -312,10 +344,12 @@ const RoomStatusList = () => {
       // Refresh both rooms and bookings data
       await Promise.all([
         fetchRooms(),
-        fetchBookings()
+        fetchBookings ? fetchBookings() : Promise.resolve(),
       ]);
+      toast.success("Room statuses refreshed successfully");
     } catch (error) {
       console.error("Error refreshing data:", error);
+      toast.error("Failed to refresh room statuses");
     } finally {
       setIsRefreshing(false);
     }
@@ -362,10 +396,15 @@ const RoomStatusList = () => {
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="h-7 px-2 text-xs"
+            className="h-8 px-3 text-xs flex items-center gap-1.5 font-medium border-gray-300 hover:bg-gray-100 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Refresh room statuses and bookings"
           >
-            <RefreshCw className={`w-3 h-3 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${
+                isRefreshing ? "animate-spin text-blue-600" : "text-gray-600"
+              }`}
+            />
+            <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
           </Button>
 
           {/* Search */}

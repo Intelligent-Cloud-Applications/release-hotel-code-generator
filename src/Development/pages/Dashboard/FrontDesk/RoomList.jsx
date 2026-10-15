@@ -103,8 +103,20 @@ const RoomList = () => {
 
   const isBookingActiveOnDate = (b, targetDayTs) => {
     if (!b || !targetDayTs) return false;
-    const st = String(b.status || "").toLowerCase();
-    if (st.includes("cancel")) return false;
+    const st = String(b.status || "").toLowerCase().trim();
+    // Exclude cancelled and checked-out bookings completely
+    if (
+      st.includes("cancel") ||
+      st.includes("checkout") ||
+      st.includes("checked-out") ||
+      st === "checked out"
+    ) {
+      return false;
+    }
+    // Only active bookings (Checked-in or Reserved) can occupy/reserve a room
+    if (b.status !== "Checked-in" && b.status !== "Reserved") {
+      return false;
+    }
     const cin = normalizeDate(b.checkin_date);
     const cout = normalizeDate(b.checkout_date);
     if (!cin) return false;
@@ -155,6 +167,16 @@ const RoomList = () => {
 
     // 1. Explicit room matches (room_id, room_number, rooms_config, rooms)
     (rooms || []).forEach((room) => {
+      // If room is under maintenance, dirty, or out of order on today's view, it cannot be occupied
+      if (
+        isToday &&
+        (room.status === "Under Maintenance" ||
+          room.status === "Dirty" ||
+          room.status === "Out of Order")
+      ) {
+        return;
+      }
+
       const matchedBooking = activeBookings.find((b) => doesBookingMatchRoom(b, room));
 
       if (matchedBooking) {
@@ -175,11 +197,15 @@ const RoomList = () => {
       }
     });
 
-    // 2. Unallocated bookings matching room category/type
+    // 2. Unallocated bookings matching room category/type (only candidate rooms that are clean/vacant)
     const unassigned = activeBookings.filter(
       (b) => !assignedBookingIds.has(b.booking_id)
     );
-    const unassignedRooms = (rooms || []).filter((r) => !map[r.room_id]);
+    const unassignedRooms = (rooms || []).filter(
+      (r) =>
+        !map[r.room_id] &&
+        (r.status === "Vacant" || r.status === "Clean")
+    );
 
     unassigned.forEach((b) => {
       const bCat = (b.room_category || b.room_type || "").trim().toLowerCase();
@@ -206,7 +232,7 @@ const RoomList = () => {
     });
 
     return map;
-  }, [rooms, bookings, guests, selectedDayTs]);
+  }, [rooms, bookings, guests, selectedDayTs, isToday]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -254,32 +280,45 @@ const RoomList = () => {
   };
 
   const getRoomStatus = (room) => {
-    const bookingInfo = roomOccupancyMap[room.room_id];
-    if (bookingInfo && bookingInfo.status === "Checked-in") {
-      return "Occupied";
-    }
+    // If today, maintenance/dirty/out of order always take precedence
     if (isToday) {
-      if (room.status && room.status !== "Vacant" && room.status !== "Clean") {
+      if (
+        room.status === "Under Maintenance" ||
+        room.status === "Dirty" ||
+        room.status === "Out of Order"
+      ) {
         return room.status;
       }
-      if (bookingInfo) {
-        return bookingInfo.status === "Reserved" ? "Reserved" : "Occupied";
-      }
-      return room.status || "Vacant";
     }
+
+    const bookingInfo = roomOccupancyMap[room.room_id];
     if (bookingInfo) {
-      return bookingInfo.status === "Checked-in" ? "Occupied" : "Reserved";
+      if (bookingInfo.status === "Checked-in") {
+        return "Occupied";
+      }
+      if (bookingInfo.status === "Reserved") {
+        return "Reserved";
+      }
     }
-    return "Vacant";
+
+    if (room.status === "Vacant" || room.status === "Clean") {
+      return "Vacant";
+    }
+
+    return room.status || "Vacant";
   };
 
   // Filter and sort rooms based on selected status and room number
   const filteredAndSortedRooms = rooms
-    .map((room) => ({
-      ...room,
-      status: getRoomStatus(room),
-      bookingInfo: roomOccupancyMap[room.room_id] || null,
-    }))
+    .map((room) => {
+      const status = getRoomStatus(room);
+      const isOccupiedOrReserved = status === "Occupied" || status === "Reserved";
+      return {
+        ...room,
+        status: status,
+        bookingInfo: isOccupiedOrReserved ? (roomOccupancyMap[room.room_id] || null) : null,
+      };
+    })
     .filter((room) => {
       if (statusFilter === "all") return true;
       return room.status === statusFilter;
