@@ -1046,33 +1046,63 @@ const Bill = () => {
       }
 
       const allStayDates = [];
-      const checkinDateObj = new Date(checkinTimestamp);
-      const today = new Date();
-      const checkoutDateOnly = new Date(rawBookingData?.checkout_date || checkoutTimestamp);
-      checkoutDateOnly.setHours(0, 0, 0, 0);
+      const getIndianDate = (ts) => {
+        if (!ts) return new Date();
+        const d = new Date(ts);
+        return new Date(d.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      };
+      const formatIndianYMD = (dt) => {
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, "0");
+        const d = String(dt.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      };
 
-      while (checkinDateObj <= today) {
-        const dateStr = `${checkinDateObj.getFullYear()}-${String(
-          checkinDateObj.getMonth() + 1,
-        ).padStart(2, "0")}-${String(checkinDateObj.getDate()).padStart(2, "0")}`;
-        allStayDates.push(dateStr);
-        checkinDateObj.setDate(checkinDateObj.getDate() + 1);
+      const cinIndian = getIndianDate(checkinTimestamp);
+      const checkinDateStr = formatIndianYMD(cinIndian);
+      const cinDayStart = new Date(cinIndian.getFullYear(), cinIndian.getMonth(), cinIndian.getDate());
+
+      const nowIndian = getIndianDate(Date.now());
+      const todayDayStart = new Date(nowIndian.getFullYear(), nowIndian.getMonth(), nowIndian.getDate());
+
+      const coutIndian = getIndianDate(rawBookingData?.checkout_date || checkoutTimestamp);
+      const coutDayStart = new Date(coutIndian.getFullYear(), coutIndian.getMonth(), coutIndian.getDate());
+
+      const isStillCheckedIn =
+        rawBookingData?.status === "Checked-in" ||
+        booking?.breakdown?.booking?.status === "Checked-in";
+      const effectiveEnd =
+        isStillCheckedIn && todayDayStart > coutDayStart
+          ? todayDayStart
+          : coutDayStart;
+
+      let curr = new Date(cinDayStart);
+      if (cinDayStart >= effectiveEnd) {
+        allStayDates.push(checkinDateStr);
+      } else {
+        while (curr < effectiveEnd) {
+          allStayDates.push(formatIndianYMD(curr));
+          curr.setDate(curr.getDate() + 1);
+        }
       }
 
-      if (today > checkoutDateOnly) {
-        const todayStr = `${today.getFullYear()}-${String(
-          today.getMonth() + 1,
-        ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      if (todayDayStart > coutDayStart && isStillCheckedIn) {
+        const todayStr = formatIndianYMD(todayDayStart);
         if (!allStayDates.includes(todayStr)) {
           allStayDates.push(todayStr);
         }
       }
 
-      // Ensure all dates present in services are in allStayDates
+      // Ensure all dates present in services are in allStayDates,
+      // ignoring erroneous dates strictly before the check-in date
       Object.keys(allServicesObj).forEach((rKey) => {
         if (allServicesObj[rKey] && typeof allServicesObj[rKey] === "object") {
           Object.keys(allServicesObj[rKey]).forEach((d) => {
             if (d && !allStayDates.includes(d)) {
+              if (checkinDateStr && d < checkinDateStr) {
+                // Ignore dates before arrival (e.g. UTC shift artifacts like 14/10 when arrived on 15/10)
+                return;
+              }
               allStayDates.push(d);
             }
           });
@@ -1081,16 +1111,11 @@ const Bill = () => {
 
       const allDates = Array.from(new Set(allStayDates)).sort();
 
-      const checkinDayStart = new Date(checkinTimestamp);
-      checkinDayStart.setHours(0, 0, 0, 0);
-      const checkoutDayStart = new Date(checkoutTimestamp);
-      checkoutDayStart.setHours(0, 0, 0, 0);
       const diffStayDays = Math.max(
         1,
-        Math.round((checkoutDayStart.getTime() - checkinDayStart.getTime()) / (1000 * 60 * 60 * 24))
+        Math.round((coutDayStart.getTime() - cinDayStart.getTime()) / (1000 * 60 * 60 * 24))
       );
-      const apiNights = booking?.breakdown?.stayDetails?.numberOfNights || 1;
-      const numberOfNights = Math.max(apiNights, diffStayDays, allDates.length);
+      const numberOfNights = allDates.length > 0 ? allDates.length : Math.max(1, diffStayDays);
 
       // Calculate extra pax charges if present (supporting multiple sources & multiple pax per room)
       const targetBId = String(
@@ -1345,12 +1370,22 @@ const Bill = () => {
         return timeDifferenceHours > 2;
       };
 
+      const toIndianYMD = (val) => {
+        if (!val) return "";
+        if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return String(val);
+        const ind = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+        const y = ind.getFullYear();
+        const m = String(ind.getMonth() + 1).padStart(2, "0");
+        const day = String(ind.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      };
+
       // Helper to compute service charges for a room on a date, deduplicating any duplicate order folio entries
       const getServiceChargesForRoomDate = (roomNumber, dateStr) => {
         const roomServices = serviceChargesByRoom[roomNumber] || allServicesObj[roomNumber] || {};
-        const formattedDate = dateStr
-          ? new Date(dateStr).toISOString().split("T")[0]
-          : "";
+        const formattedDate = toIndianYMD(dateStr);
         const rawServicesFromAll =
           allServicesObj[roomNumber]?.[formattedDate] ||
           allServicesObj[roomNumber]?.[dateStr] ||
@@ -1491,7 +1526,7 @@ const Bill = () => {
 
       // Construct daily charges mapping, reconstructing per-room allocation from services or room usage
       const dailyCharges = allDates.map((date) => {
-        const formattedDate = new Date(date).toISOString().split("T")[0];
+        const formattedDate = toIndianYMD(date);
 
         // 1. Check if services has rooms with entries for this date
         // In room transfer cases, services[oldRoom][date] has room_charges from checkin to transfer date,

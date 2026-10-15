@@ -787,20 +787,22 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
     return !hkHold && !rstHold;
   };
 
-  // Helper function to check if booking is overdue (after 1.5 hours grace period)
+  // Helper function to check if booking is overdue (after 2 hours grace period)
   const isBookingOverdue = (checkoutDate) => {
+    if (!checkoutDate) return false;
     const now = getCurrentIndianTime();
     const checkout = toIndianTime(new Date(checkoutDate));
-    const gracePeriodMs = 1.5 * 60 * 60 * 1000; // 1.5 hours in milliseconds
+    const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
     const overdueThreshold = new Date(checkout.getTime() + gracePeriodMs);
     return now > overdueThreshold;
   };
 
-  // Calculate checkout date with grace period logic
+  // Calculate checkout date with grace period logic (2 hours grace)
   const calculateCheckoutDateWithGracePeriod = (booking) => {
+    if (!booking || !booking.checkout_date) return new Date().toISOString();
     const now = getCurrentIndianTime();
     const originalCheckoutDate = toIndianTime(new Date(booking.checkout_date));
-    const gracePeriodMs = 1.5 * 60 * 60 * 1000; // 1.5 hours in milliseconds
+    const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
     const gracePeriodEnd = new Date(
       originalCheckoutDate.getTime() + gracePeriodMs
     );
@@ -808,9 +810,9 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
     // If current time is within grace period, use original checkout date
     // If current time is beyond grace period, use current time
     if (now <= gracePeriodEnd) {
-      return originalCheckoutDate.toISOString();
+      return new Date(booking.checkout_date).toISOString();
     } else {
-      return now.toISOString();
+      return new Date().toISOString();
     }
   };
 
@@ -1354,7 +1356,7 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
         selectedBooking.rate_plan_id
       }&checkin_date=${
         selectedBooking.checkin_date
-      }&checkout_date=${getCurrentIndianTime().toISOString()}`
+      }&checkout_date=${calculateCheckoutDateWithGracePeriod(selectedBooking)}`
     );
   };
 
@@ -1578,7 +1580,7 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
                                     booking.rate_plan_id
                                   }&checkin_date=${
                                     booking.checkin_date
-                                  }&checkout_date=${getCurrentIndianTime().toISOString()}`
+                                  }&checkout_date=${calculateCheckoutDateWithGracePeriod(booking)}`
                                 );
                               }}
                               disabled={!isCheckoutEnabled}
@@ -1678,7 +1680,7 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
                     const originalCheckoutDate = toIndianTime(
                       new Date(selectedBooking.checkout_date)
                     );
-                    const gracePeriodMs = 1.5 * 60 * 60 * 1000; // 1.5 hours in milliseconds
+                    const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
                     const gracePeriodEnd = new Date(
                       originalCheckoutDate.getTime() + gracePeriodMs
                     );
