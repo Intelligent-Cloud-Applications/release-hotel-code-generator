@@ -139,7 +139,14 @@ export const getLaundryThermalSlipHTML = ({
         <tr>
           <td style="font-weight: bold; width: 35%;">Room / Type:</td>
           <td style="font-weight: 900; font-size: ${is58mm ? "10px" : "12px"};">
-            ${order.roomNumber && order.roomNumber !== "Walk-In" ? `ROOM ${order.roomNumber}` : "WALK-IN GUEST"}
+            ${(() => {
+              const clean = String(order.roomNumber || "")
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s))
+                .join(", ");
+              return clean && clean !== "Walk-In" ? `ROOM ${clean}` : order.roomNumber === "Walk-In" ? "WALK-IN GUEST" : (order.roomNumber ? `ROOM ${order.roomNumber}` : "WALK-IN GUEST");
+            })()}
           </td>
         </tr>
         <tr>

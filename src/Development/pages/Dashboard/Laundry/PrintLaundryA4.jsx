@@ -165,8 +165,15 @@ export const getLaundryA4BillHTML = ({ order = {}, institutionData = {} }) => {
     settlementDesc = `Direct Payment — ${order.paymentMethod || "Cash"}`;
   }
 
+  const cleanRoom = String(order.roomNumber || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s))
+    .join(", ");
   const roomDisplay =
-    order.roomNumber && order.roomNumber !== "Walk-In"
+    cleanRoom && cleanRoom !== "Walk-In"
+      ? `Room No. ${cleanRoom}`
+      : order.roomNumber && order.roomNumber !== "Walk-In"
       ? `Room No. ${order.roomNumber}`
       : "Walk-In Guest";
 
