@@ -1215,14 +1215,21 @@ const CheckIn = () => {
       const checkInSequenceNumber = nextCheckInNumber;
       const billSequenceNumber = nextBillNumber;
 
+      const selectedRoomNumbers = (selectedRoomIds || []).map(rid => findRoom(rid)?.room_number || rid);
+      const roomCount = (selectedRoomIds && selectedRoomIds.length > 0) ? selectedRoomIds.length : (selectedBooking?.no_of_rooms || 1);
+
       const finalCheckInData = {
         ...checkInData,
         mobile: normalizedMobile || checkInData.mobile,
         status: "Checked-in",
         room_type: checkInData.room_type || selectedBooking?.room_category || selectedBooking?.room_type || "",
         room_category: checkInData.room_type || selectedBooking?.room_category || selectedBooking?.room_type || "",
-        no_of_rooms: Array.isArray(checkInData.room_id) && checkInData.room_id.length > 0 ? checkInData.room_id.length : (selectedBooking?.no_of_rooms || 1),
-        no_of_persons: checkInData.no_of_adults || selectedBooking?.no_of_persons || 1,
+        room_id: selectedRoomIds,
+        room_ids: selectedRoomIds,
+        room_numbers: selectedRoomNumbers,
+        room_number: selectedRoomNumbers.join(", "),
+        no_of_rooms: roomCount,
+        number_of_rooms: roomCount,
         company_id: companyId || checkInData.company_id || "",
         company_name: checkInData.company_name || "N/A",
         gst_no: checkInData.gst_no || "N/A",

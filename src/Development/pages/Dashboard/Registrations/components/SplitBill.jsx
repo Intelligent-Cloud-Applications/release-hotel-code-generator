@@ -123,7 +123,31 @@ const SplitBill = ({
                       !String(service.order_id).startsWith("LND-") &&
                       !String(service.order_id).startsWith("HSK-")));
 
-                if (isLaundryModule) {
+                // Minibar charge (SAC 996332) - dedicated Minibar Folio
+                if (minibarCharge > 0) {
+                  const mnbId =
+                    service.order_id ||
+                    `MNB-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`;
+                  if (
+                    !minibarServices.some(
+                      (s) =>
+                        (s.order_id && s.order_id === mnbId) ||
+                        (s.roomNumber === roomNumber && s.date === date)
+                    )
+                  ) {
+                    minibarServices.push({
+                      ...service,
+                      roomNumber,
+                      date,
+                      order_id: mnbId,
+                      minibar_charges: minibarCharge,
+                      name: service.name || "In-Room Minibar Refreshments",
+                    });
+                  }
+                }
+
+                // Laundry charge (SAC 996312) - dedicated Laundry Folio
+                if (isLaundryModule || laundryCharge > 0) {
                   const lndId =
                     service.order_id ||
                     service.token ||
@@ -131,45 +155,84 @@ const SplitBill = ({
                     `LND-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`;
                   if (
                     !laundryServices.some(
-                      (s) => (s.order_id || s.token || s.service_id) === lndId
+                      (s) =>
+                        (s.order_id || s.token || s.service_id) === lndId ||
+                        (s.roomNumber === roomNumber && s.date === date)
                     )
                   ) {
-                    laundryServices.push({ ...service, roomNumber, date, order_id: lndId });
+                    laundryServices.push({
+                      ...service,
+                      roomNumber,
+                      date,
+                      order_id: lndId,
+                      laundry_charges: laundryCharge,
+                      name: service.name || "Laundry Service",
+                    });
                   }
-                } else if (isRestaurantModule && foodCharge > 0) {
+                }
+
+                // Food / Restaurant charge (SAC 996331) - dedicated F&B Folio
+                if (isRestaurantModule || foodCharge > 0) {
                   const oid = String(
-                    service.order_id || `FNB-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`
+                    service.order_id ||
+                      `FNB-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`
                   ).trim();
                   if (!foodOrderIds.includes(oid)) {
                     foodOrderIds.push(oid);
                   }
-                  fallbackFoodServices.push({
-                    ...service,
-                    roomNumber,
-                    date,
-                    order_id: oid,
-                    food_charges: foodCharge,
-                  });
-                } else if (
-                  isHousekeepingExplicit ||
-                  extraBedCharge > 0 ||
-                  manualCharge > 0 ||
-                  (foodCharge > 0 && !isRestaurantModule) ||
-                  (laundryCharge > 0 && !isLaundryModule)
-                ) {
-                  // Housekeeping room services (Food, Laundry, Extra Bed, Manual added through Housekeeping)
-                  housekeepingServices.push({
-                    ...service,
-                    roomNumber,
-                    date,
-                    food_charges: foodCharge,
-                    laundry_charges: laundryCharge,
-                    minibar_charges: minibarCharge,
-                    extra_bed_charges: extraBedCharge,
-                    manual_charges: manualCharge,
-                  });
-                } else if (minibarCharge > 0) {
-                  minibarServices.push({ ...service, roomNumber, date });
+                  if (
+                    !fallbackFoodServices.some(
+                      (s) =>
+                        s.order_id === oid ||
+                        (s.roomNumber === roomNumber && s.date === date)
+                    )
+                  ) {
+                    fallbackFoodServices.push({
+                      ...service,
+                      roomNumber,
+                      date,
+                      order_id: oid,
+                      food_charges: foodCharge,
+                      name: service.name || "In-Room Dining / Food Service",
+                    });
+                  }
+                }
+
+                // Housekeeping (SAC 996311) - Extra Bed & Linen, Manual Charges ONLY
+                const pureManual =
+                  manualCharge ||
+                  (isHousekeepingExplicit &&
+                  !foodCharge &&
+                  !laundryCharge &&
+                  !minibarCharge &&
+                  !extraBedCharge
+                    ? Number(service.charge || 0)
+                    : 0);
+
+                if (extraBedCharge > 0 || pureManual > 0) {
+                  const hskId =
+                    service.order_id ||
+                    `HSK-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`;
+                  if (
+                    !housekeepingServices.some(
+                      (s) =>
+                        (s.order_id && s.order_id === hskId) ||
+                        (s.roomNumber === roomNumber && s.date === date)
+                    )
+                  ) {
+                    housekeepingServices.push({
+                      ...service,
+                      roomNumber,
+                      date,
+                      order_id: hskId,
+                      extra_bed_charges: extraBedCharge,
+                      manual_charges: pureManual,
+                      name:
+                        extraBedCharge > 0
+                          ? "Extra Bed & Linen Service"
+                          : service.name || "Housekeeping & Manual Adjustments",
+                    });
+                  }
                 }
               });
             });
@@ -255,19 +318,21 @@ const SplitBill = ({
                 }
 
                 // Laundry
-                if (
-                  Number(ch.laundryCharges || ch.laundry_charges) > 0 &&
-                  laundryServices.length === 0
-                ) {
-                  laundryServices.push({
-                    roomNumber,
-                    date,
-                    laundry_charges: Number(
-                      ch.laundryCharges || ch.laundry_charges
-                    ),
-                    name: "Laundry Service",
-                    order_id: `LND-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`,
-                  });
+                if (Number(ch.laundryCharges || ch.laundry_charges) > 0) {
+                  const already = laundryServices.some(
+                    (s) => s.roomNumber === roomNumber && s.date === date
+                  );
+                  if (!already) {
+                    laundryServices.push({
+                      roomNumber,
+                      date,
+                      laundry_charges: Number(
+                        ch.laundryCharges || ch.laundry_charges
+                      ),
+                      name: "Laundry Service",
+                      order_id: `LND-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`,
+                    });
+                  }
                 }
               });
             }
@@ -565,10 +630,7 @@ const SplitBill = ({
         housekeepingServices.forEach((service, index) => {
           const extraBed = Number(service.extra_bed_charges || 0);
           const manual = Number(service.manual_charges || 0);
-          const food = Number(service.food_charges || 0);
-          const laundry = Number(service.laundry_charges || 0);
-          const minibar = Number(service.minibar_charges || 0);
-          const charge = extraBed + manual + food + laundry + minibar;
+          const charge = extraBed + manual;
           if (charge <= 0) return;
 
           const cgstRate = Number(institutionData?.cgst ?? 2.5);
@@ -582,26 +644,6 @@ const SplitBill = ({
               .replace(/[^a-zA-Z0-9]/g, "")}`;
 
           const items = [];
-          if (food > 0) {
-            items.push({
-              name: "Room Service Dining / Food",
-              itemName: "Room Service Dining / Food",
-              price: food,
-              quantity: 1,
-              type: "housekeeping",
-              category: "Food Service",
-            });
-          }
-          if (laundry > 0) {
-            items.push({
-              name: "Room Service Laundry",
-              itemName: "Room Service Laundry",
-              price: laundry,
-              quantity: 1,
-              type: "housekeeping",
-              category: "Laundry Service",
-            });
-          }
           if (extraBed > 0) {
             items.push({
               name: "Extra Bed & Linen Service",
@@ -620,16 +662,6 @@ const SplitBill = ({
               quantity: 1,
               type: "housekeeping",
               category: "Housekeeping",
-            });
-          }
-          if (minibar > 0) {
-            items.push({
-              name: "Room Service Refreshments",
-              itemName: "Room Service Refreshments",
-              price: minibar,
-              quantity: 1,
-              type: "housekeeping",
-              category: "Minibar",
             });
           }
 
@@ -715,10 +747,6 @@ const SplitBill = ({
               charges.extra_bed_charges = 0;
               charges.manualCharges = 0;
               charges.manual_charges = 0;
-              charges.foodCharges = 0;
-              charges.food_charges = 0;
-              charges.laundryCharges = 0;
-              charges.laundry_charges = 0;
             }
 
             charges.dailyTotal =
