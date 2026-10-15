@@ -123,7 +123,38 @@ const CheckOut = () => {
     return c ? getCompanyGst(c) : "";
   };
 
-// Helper to format room numbers without stray commas or UUIDs, displaying current active rooms
+// Helper to extract all active room IDs for a booking
+const getBookingAllRoomIds = (booking) => {
+  if (!booking) return [];
+  const ids = [];
+  const add = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach(add);
+    } else if (typeof val === "string") {
+      val.split(",").forEach((s) => {
+        const t = s.trim();
+        if (t && !ids.includes(t)) ids.push(t);
+      });
+    } else if (typeof val === "number") {
+      const s = String(val);
+      if (!ids.includes(s)) ids.push(s);
+    }
+  };
+  add(booking.room_ids);
+  add(booking.room_id);
+  if (Array.isArray(booking.rooms_config)) {
+    booking.rooms_config.forEach((r) => add(r?.room_id || r?.room_number));
+  }
+  if (Array.isArray(booking.rooms)) {
+    booking.rooms.forEach((r) => add(r?.room_id || r?.room_number));
+  }
+  return ids.length > 0
+    ? ids
+    : (Array.isArray(booking.room_id) ? booking.room_id : [booking.room_id]).filter(Boolean);
+};
+
+// Helper to format room numbers without stray commas or UUIDs, displaying all active rooms
 const formatBookingRoomNumbers = (booking, rooms = []) => {
   if (!booking) return "";
 
@@ -186,80 +217,46 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
     return list;
   };
 
-  const targetRoomCount =
-    parseInt(booking.no_of_rooms || booking.number_of_rooms || 1, 10) || 1;
-
-  // 1. Primary sources: Current active room_id / room_ids
-  const activeRoomIdItems = [
-    ...collectItems(booking.room_id),
+  // 1. Primary sources: Current active room_id / room_ids / room_numbers / room_number
+  const activeRoomItems = [
     ...collectItems(booking.room_ids),
-  ];
-
-  const primaryResolved = [];
-  activeRoomIdItems.forEach((item) => {
-    const res = resolveItem(item);
-    if (res && !primaryResolved.includes(res)) {
-      primaryResolved.push(res);
-    }
-  });
-
-  // If primary room_ids are resolved, return them (these are the current active rooms!)
-  if (primaryResolved.length > 0) {
-    return primaryResolved.slice(0, targetRoomCount).join(", ");
-  }
-
-  // 2. Secondary source: room_number / room_numbers only if room_id was not resolved
-  const roomNumberItems = [
-    ...collectItems(booking.room_number),
+    ...collectItems(booking.room_id),
     ...collectItems(booking.room_numbers),
+    ...collectItems(booking.room_number),
     ...collectItems(booking.roomNo),
   ];
-  roomNumberItems.forEach((item) => {
+
+  if (Array.isArray(booking.rooms_config)) {
+    booking.rooms_config.forEach((r) => {
+      activeRoomItems.push(...collectItems(r?.room_number || r?.room_id));
+    });
+  }
+  if (Array.isArray(booking.rooms)) {
+    booking.rooms.forEach((r) => {
+      activeRoomItems.push(...collectItems(r?.room_number || r?.room_id));
+    });
+  }
+
+  const primaryResolved = [];
+  activeRoomItems.forEach((item) => {
     const res = resolveItem(item);
     if (res && !primaryResolved.includes(res)) {
       primaryResolved.push(res);
     }
   });
 
+  // If primary rooms are resolved, return all of them
   if (primaryResolved.length > 0) {
-    return primaryResolved.slice(0, targetRoomCount).join(", ");
+    return primaryResolved.join(", ");
   }
 
   // 2. Fallback: If primary room is missing or was a deleted room that couldn't be resolved
   const fallbackResolved = [];
 
-  // Check booking.rooms or booking.rooms_config
-  if (Array.isArray(booking.rooms)) {
-    booking.rooms.forEach((r) => {
-      const res = resolveItem(r?.room_number || r?.room_id);
-      if (res && !fallbackResolved.includes(res)) {
-        fallbackResolved.push(res);
-      }
-    });
-  }
-  if (fallbackResolved.length === 0 && Array.isArray(booking.rooms_config)) {
-    booking.rooms_config.forEach((r) => {
-      const res = resolveItem(r?.room_number || r?.room_id);
-      if (res && !fallbackResolved.includes(res)) {
-        fallbackResolved.push(res);
-      }
-    });
-  }
-
-  // Check booking.services: if room was transferred or deleted, find the current/latest room in services
-  if (fallbackResolved.length === 0 && booking.services && typeof booking.services === "object") {
-    // Sort room keys by their latest date entry to find the most recent room
-    const serviceRoomsWithDates = Object.keys(booking.services).map((rKey) => {
-      const dates = Object.keys(booking.services[rKey] || {}).sort();
-      const latestDate = dates.length > 0 ? dates[dates.length - 1] : "";
-      return { roomKey: rKey, latestDate };
-    }).sort((a, b) => b.latestDate.localeCompare(a.latestDate));
-
-    const targetRoomCount = parseInt(booking.no_of_rooms || booking.number_of_rooms || 1, 10) || 1;
-    const latestServiceRooms = serviceRoomsWithDates.slice(0, targetRoomCount);
-
-    latestServiceRooms.forEach(({ roomKey }) => {
-      const res = resolveItem(roomKey);
+  // Check booking.services: if room was transferred or deleted, find all rooms in services
+  if (booking.services && typeof booking.services === "object") {
+    Object.keys(booking.services).forEach((rKey) => {
+      const res = resolveItem(rKey);
       if (res && !fallbackResolved.includes(res)) {
         fallbackResolved.push(res);
       }
@@ -913,12 +910,11 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
 
     // Fetch complete bill data and log it
     try {
+      const allRoomIds = getBookingAllRoomIds(booking);
       const bookingData = {
         booking_id: booking.booking_id,
         guest_id: booking.guest_id,
-        room_id: Array.isArray(booking.room_id)
-          ? booking.room_id
-          : [booking.room_id],
+        room_id: allRoomIds,
         rate_plan_id: booking.rate_plan_id,
         checkin_date: booking.checkin_date,
         checkout_date: calculateCheckoutDateWithGracePeriod(booking),
@@ -1030,10 +1026,12 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
 
     const billDataExtracted = extractBillData();
 
+    const allRoomIds = getBookingAllRoomIds(selectedBooking);
     const checkoutData = {
       booking_id: selectedBooking.booking_id,
       guest_id: selectedBooking.guest_id,
-      room_id: selectedBooking.room_id,
+      room_id: allRoomIds,
+      room_ids: allRoomIds,
       payment_mode: checkoutFormData.payment_mode,
       upi_platform:
         checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
@@ -1385,11 +1383,12 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
 
   const generateBill = () => {
     // Navigate to bill page or generate PDF
+    const allRoomIds = getBookingAllRoomIds(selectedBooking);
     navigate(
       `/dashboard/registrations/bill?booking_id=${
         selectedBooking.booking_id
       }&guest_id=${selectedBooking.guest_id}&room_id=${
-        selectedBooking.room_id
+        allRoomIds.join(",")
       }&gst_type="IGST"&rate_plan_id=${
         selectedBooking.rate_plan_id
       }&checkin_date=${
@@ -1607,13 +1606,14 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
                                 isCheckoutEnabled ? "default" : "secondary"
                               }
                               onClick={() => {
+                                const allRoomIds = getBookingAllRoomIds(booking);
                                 navigate(
                                   `/dashboard/registrations/bill?booking_id=${
                                     booking.booking_id
                                   }&guest_id=${
                                     booking.guest_id
                                   }&room_id=${
-                                    booking.room_id
+                                    allRoomIds.join(",")
                                   }&gst_type="IGST"&rate_plan_id=${
                                     booking.rate_plan_id
                                   }&checkin_date=${
