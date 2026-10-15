@@ -9,6 +9,17 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/D
 import {useAppContext} from "@/Development/context/AppContext.jsx";
 import {toast} from "sonner"; // For loading spinner
 
+const DEFAULT_ROOM_TYPES = [
+  "Single",
+  "Double",
+  "Triple",
+  "Suite",
+  "Deluxe",
+  "Standard",
+  "Family",
+  "Executive",
+];
+
 const RoomModal = ({ isOpen, onClose, onSubmit, mode = "create", isSubmitting = false, initialData }) => {
   const { rooms } = useAppContext();
   const [formData, setFormData] = React.useState(((mode === "edit") && initialData) ? initialData : {
@@ -20,34 +31,56 @@ const RoomModal = ({ isOpen, onClose, onSubmit, mode = "create", isSubmitting = 
   });
   const [servicesInput, setServicesInput] = React.useState(""); // New state for services input
 
-  // useEffect(() => {
-  //   if (initialData) {
-  //     // Handle different service formats when editing
-  //     const displayServices = initialData.services ?
-  //       initialData.services.map(s => typeof s === 'object' ? s.productType : s).join(", ")
-  //       : "";
-  //
-  //     setFormData({
-  //       ...initialData,
-  //       // Ensure status is lowercase for backend validation
-  //       status: initialData.status ? initialData.status.toLowerCase() : "available",
-  //       services: initialData.services || [],
-  //     });
-  //
-  //     setServicesInput(displayServices);
-  //   } else {
-  //     setFormData({
-  //       room_number: "",
-  //       specification: "",
-  //       status: "available", // Changed to lowercase
-  //       services: [],
-  //       floor: "",
-  //       currentDetails: "",
-  //       maintenanceRequired: false,
-  //     });
-  //     setServicesInput("");
-  //   }
-  // }, [initialData, isOpen]);
+  const [customRoomTypes, setCustomRoomTypes] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("hotel_custom_room_types");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [isAddingCustom, setIsAddingCustom] = React.useState(false);
+  const [customTypeInput, setCustomTypeInput] = React.useState("");
+
+  const availableRoomTypes = React.useMemo(() => {
+    const list = new Set([
+      ...DEFAULT_ROOM_TYPES,
+      ...(rooms || []).map((r) => r.room_type).filter(Boolean),
+      ...customRoomTypes,
+    ]);
+    if (formData.room_type && formData.room_type !== "__custom__") {
+      list.add(formData.room_type);
+    }
+    return Array.from(list);
+  }, [rooms, customRoomTypes, formData.room_type]);
+
+  const handleAddCustomType = (e) => {
+    if (e) e.preventDefault();
+    const trimmed = (customTypeInput || "").trim();
+    if (!trimmed) {
+      toast.warning("Please enter a room type name.");
+      return;
+    }
+    const updated = Array.from(new Set([...customRoomTypes, trimmed]));
+    setCustomRoomTypes(updated);
+    try {
+      localStorage.setItem("hotel_custom_room_types", JSON.stringify(updated));
+    } catch (err) {}
+    setFormData((prev) => ({ ...prev, room_type: trimmed }));
+    setIsAddingCustom(false);
+    setCustomTypeInput("");
+    toast.success(`"${trimmed}" added to Room Types.`);
+  };
+
+  const handleRoomTypeChange = (v) => {
+    if (v === "__custom__") {
+      setIsAddingCustom(true);
+    } else {
+      setIsAddingCustom(false);
+      setFormData((prev) => ({ ...prev, room_type: v }));
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -57,47 +90,39 @@ const RoomModal = ({ isOpen, onClose, onSubmit, mode = "create", isSubmitting = 
     }));
   };
 
-  // const handleServicesChange = (e) => {
-  //   const value = e.target.value;
-  //   setServicesInput(value); // Update the input field value
-  //
-  //   // Convert services to object format with productType property
-  //   const services = value
-  //     .split(",")
-  //     .map((s) => s.trim())
-  //     .filter((s) => s)
-  //     .map(service => ({ productType: service })); // Convert each service to object format
-  //
-  //   setFormData((prev) => ({ ...prev, services }));
-  // };
-
-  // const handleStatusChange = (e) => {
-  //   setFormData((prev) => ({ ...prev, status: e.target.value }));
-  // };
-
-  // const handleMaintenanceChange = (checked) => {
-  //   setFormData((prev) => ({ ...prev, maintenanceRequired: checked }));
-  // };
-
   const handleSubmit = (e) => {
     e.preventDefault();
     if (rooms.some(room => room.room_number.toString() === formData.room_number.toString() && mode === "create")) {
       toast.error(`Room ${ formData.room_number } already exists!`);
       return;
     }
-    onSubmit(formData, mode);
+    let finalRoomType = formData.room_type;
+    if (isAddingCustom && customTypeInput.trim()) {
+      const trimmed = customTypeInput.trim();
+      const updated = Array.from(new Set([...customRoomTypes, trimmed]));
+      setCustomRoomTypes(updated);
+      try {
+        localStorage.setItem("hotel_custom_room_types", JSON.stringify(updated));
+      } catch (err) {}
+      finalRoomType = trimmed;
+    }
+    onSubmit({ ...formData, room_type: finalRoomType }, mode);
   };
 
   const handleOpenChange = (open) => {
-    if (!open) setFormData({
-      room_number: "",
-      floor: "",
-      room_type: "Single",
-      tariff: 0,
-      rate_plan: "RP1001"
-    });
+    if (!open) {
+      setFormData({
+        room_number: "",
+        floor: "",
+        room_type: "Single",
+        tariff: 0,
+        rate_plan: "RP1001"
+      });
+      setIsAddingCustom(false);
+      setCustomTypeInput("");
+    }
     if (!isSubmitting) onClose();
-  }
+  };
 
   useEffect(() => {
     if (initialData)
@@ -112,7 +137,7 @@ const RoomModal = ({ isOpen, onClose, onSubmit, mode = "create", isSubmitting = 
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden rounded-md inter">
+      <DialogContent className="sm:max-w-[560px] p-0 overflow-hidden rounded-md inter">
         <div className="bg-white border-b relative">
           <h2 className="text-xl font-semibold p-5">
             {mode === "create" ? "Add New Room" : "Edit Room"}
@@ -149,26 +174,77 @@ const RoomModal = ({ isOpen, onClose, onSubmit, mode = "create", isSubmitting = 
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className={`space-y-1.5 ${isAddingCustom ? "md:col-span-2" : ""}`}>
               <Label htmlFor="room_type" className="text-sm text-gray-700">Room Type</Label>
-              <Select id="room_type" name="room_type" value={formData.room_type} onValueChange={(v) => setFormData({...formData, room_type: v})} required>
+              <Select
+                id="room_type"
+                name="room_type"
+                value={isAddingCustom ? "__custom__" : (formData.room_type || "Single")}
+                onValueChange={handleRoomTypeChange}
+                required
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Room type" />
+                  <SelectValue placeholder="Select room type" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Single">Single</SelectItem>
-                  <SelectItem value="Double">Double</SelectItem>
-                  <SelectItem value="Triple">Triple</SelectItem>
-                  <SelectItem value="Suite">Suite</SelectItem>
-                  <SelectItem value="Deluxe">Deluxe</SelectItem>
-                  <SelectItem value="Standard">Standard</SelectItem>
-                  <SelectItem value="Family">Family</SelectItem>
-                  <SelectItem value="Executive">Executive</SelectItem>
+                <SelectContent className="max-h-60">
+                  {availableRoomTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__custom__" className="text-blue-600 font-semibold border-t border-gray-100 mt-1 pt-1.5">
+                    + Add Custom Room Type...
+                  </SelectItem>
                 </SelectContent>
               </Select>
+
+              {isAddingCustom && (
+                <div className="space-y-2 pt-2 pb-1 px-3 bg-blue-50/70 rounded-lg border border-blue-200 mt-2">
+                  <Label className="text-xs text-blue-900 font-semibold">Enter New Room Type Name</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={customTypeInput}
+                      onChange={(e) => setCustomTypeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCustomType();
+                        }
+                      }}
+                      placeholder="e.g. Presidential Suite, Deluxe Ocean View, etc."
+                      className="h-10 text-sm flex-1 bg-white border-blue-300 focus:border-blue-500 shadow-sm"
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddCustomType}
+                      className="h-10 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shrink-0 shadow-sm"
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsAddingCustom(false);
+                        setCustomTypeInput("");
+                        setFormData((prev) => ({
+                          ...prev,
+                          room_type: availableRoomTypes[0] || "Single",
+                        }));
+                      }}
+                      className="h-10 px-3 text-xs text-gray-700 hover:text-gray-900 shrink-0 border-gray-300 bg-white hover:bg-gray-100"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-1.5">
+            <div className={`space-y-1.5 ${isAddingCustom ? "md:col-span-2" : ""}`}>
               <Label htmlFor="tariff" className="text-sm text-gray-700">Tariff</Label>
               <Input
                 id="tariff"

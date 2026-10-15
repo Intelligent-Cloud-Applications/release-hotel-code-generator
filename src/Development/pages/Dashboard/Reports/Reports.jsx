@@ -102,17 +102,47 @@ const Reports = () => {
 
     checkedOutBookings.forEach((booking) => {
       // Calculate service charges
-      if (booking.services) {
-        Object.keys(booking.services).forEach((date) => {
-          if (Array.isArray(booking.services[date])) {
-            booking.services[date].forEach((service) => {
+      if (booking.services && typeof booking.services === "object") {
+        Object.values(booking.services).forEach((val) => {
+          if (!val) return;
+          if (Array.isArray(val)) {
+            val.forEach((service) => {
               serviceRevenue +=
-                (service.food_charges || 0) +
-                (service.minibar_charges || 0) +
-                (service.laundry_charges || 0) +
-                (service.extra_bed_charges || 0) +
-                (service.manual_charges || 0);
+                (Number(service?.food_charges) || 0) +
+                (Number(service?.minibar_charges) || 0) +
+                (Number(service?.laundry_charges) || 0) +
+                (Number(service?.extra_bed_charges) || 0) +
+                (Number(service?.manual_charges) || 0);
             });
+          } else if (typeof val === "object") {
+            if (val.food_charges !== undefined || val.laundry_charges !== undefined) {
+              serviceRevenue +=
+                (Number(val.food_charges) || 0) +
+                (Number(val.minibar_charges) || 0) +
+                (Number(val.laundry_charges) || 0) +
+                (Number(val.extra_bed_charges) || 0) +
+                (Number(val.manual_charges) || 0);
+            } else {
+              Object.values(val).forEach((dayService) => {
+                if (Array.isArray(dayService)) {
+                  dayService.forEach((service) => {
+                    serviceRevenue +=
+                      (Number(service?.food_charges) || 0) +
+                      (Number(service?.minibar_charges) || 0) +
+                      (Number(service?.laundry_charges) || 0) +
+                      (Number(service?.extra_bed_charges) || 0) +
+                      (Number(service?.manual_charges) || 0);
+                  });
+                } else if (dayService && typeof dayService === "object") {
+                  serviceRevenue +=
+                    (Number(dayService.food_charges) || 0) +
+                    (Number(dayService.minibar_charges) || 0) +
+                    (Number(dayService.laundry_charges) || 0) +
+                    (Number(dayService.extra_bed_charges) || 0) +
+                    (Number(dayService.manual_charges) || 0);
+                }
+              });
+            }
           }
         });
       }

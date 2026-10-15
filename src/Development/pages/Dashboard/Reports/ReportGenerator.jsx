@@ -49,6 +49,10 @@ import autoTable from "jspdf-autotable";
 import { get } from "aws-amplify/api";
 import { useInstitutionContext } from "../../../context/InstitutionContext.jsx";
 import { institutionId as defaultInstitutionId } from "../../../../Operation/data.json";
+import {
+  fetchLaundryOrdersBackend,
+  fetchDeliveriesBackend,
+} from "../Laundry/laundryCatalog.js";
 
 const ReportGenerator = () => {
   const {
@@ -135,6 +139,73 @@ const ReportGenerator = () => {
     department: "all",
     category: "all",
   });
+
+  // Dedicated backend laundry orders state
+  const [backendLaundryOrders, setBackendLaundryOrders] = useState([]);
+
+  const loadBackendLaundryData = async () => {
+    try {
+      const instId = institutionData?.institutionId || defaultInstitutionId;
+      const [remoteOrders, remoteDeliveries] = await Promise.all([
+        fetchLaundryOrdersBackend(instId).catch(() => []),
+        fetchDeliveriesBackend(instId).catch(() => []),
+      ]);
+
+      const ordersMap = new Map();
+      (remoteOrders || []).forEach((o) => {
+        const k = o.orderId || o.order_id || o.service_id || o.token || o.id;
+        if (k) ordersMap.set(String(k), o);
+        if (o.token && String(o.token) !== String(k)) ordersMap.set(String(o.token), o);
+      });
+
+      (remoteDeliveries || []).forEach((del) => {
+        const k = del.order_id || del.service_id || del.token || del.id;
+        const matched = ordersMap.get(String(k)) || (del.token ? ordersMap.get(String(del.token)) : null);
+        if (matched) {
+          const merged = {
+            ...matched,
+            status: del.status || matched.status,
+            delivery_status: del.delivery_status || matched.delivery_status,
+            is_delivered: del.is_delivered ?? matched.is_delivered,
+            delivered_to_room: del.delivered_to_room ?? del.is_delivered ?? matched.delivered_to_room,
+            delivered_at: del.delivered_at || matched.delivered_at,
+            delivered_by: del.delivered_by || matched.delivered_by,
+          };
+          ordersMap.set(String(k), merged);
+          if (del.token) ordersMap.set(String(del.token), merged);
+        } else if (k) {
+          ordersMap.set(String(k), {
+            orderId: del.order_id || del.token,
+            token: del.token,
+            roomNumber: del.room_number || "Walk-In",
+            guestName: del.guest_name || "Guest",
+            totalGarments: del.total_garments || 1,
+            grandTotal: del.grand_total || 0,
+            totalAmount: del.grand_total || 0,
+            status: del.status || "collected",
+            delivery_status: del.delivery_status || (del.is_delivered ? "delivered_to_room" : "pending_delivery"),
+            is_delivered: Boolean(del.is_delivered),
+            delivered_to_room: Boolean(del.is_delivered),
+            delivered_at: del.delivered_at || null,
+            delivered_by: del.delivered_by || null,
+            createdAt: del.created_at || new Date().toISOString(),
+            items: [],
+          });
+        }
+      });
+
+      const uniqueList = Array.from(new Set(ordersMap.values()));
+      setBackendLaundryOrders(uniqueList);
+    } catch (err) {
+      console.warn("Could not load backend laundry data for reports:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedReport === "laundry") {
+      loadBackendLaundryData();
+    }
+  }, [selectedReport, institutionData?.institutionId]);
 
   const getUniqueCompanyNames = () => {
     if (!companies || companies.length === 0) return [];
@@ -779,19 +850,37 @@ const ReportGenerator = () => {
 
   // Helper to process laundry orders and room services
   const processLaundryReportData = () => {
-    let rawOrders = [];
-    try {
-      const saved = localStorage.getItem("hotel_laundry_orders");
-      if (saved) rawOrders = JSON.parse(saved);
-    } catch (e) {}
-
     const orderIdMap = new Set();
     const rows = [];
 
-    // 1. Process orders from hotel_laundry_orders
-    (rawOrders || []).forEach((ord) => {
-      const allItems = ord.items || [];
-      const distinctCare = Array.from(
+    // Candidate orders collected from backend and local cache
+    const candidateOrders = [];
+
+    // 1. Backend laundry orders and deliveries
+    (backendLaundryOrders || []).forEach((o) => candidateOrders.push(o));
+
+    // 2. Local storage cache fallback
+    try {
+      const savedOrders = localStorage.getItem("hotel_laundry_orders");
+      if (savedOrders) {
+        JSON.parse(savedOrders).forEach((o) => candidateOrders.push(o));
+      }
+      const savedDeliveries = localStorage.getItem("hotel_laundry_deliveries");
+      if (savedDeliveries) {
+        JSON.parse(savedDeliveries).forEach((o) => candidateOrders.push(o));
+      }
+    } catch (e) {}
+
+    // Process candidate orders
+    candidateOrders.forEach((ord) => {
+      const token = ord.token || ord.order_id || ord.orderId || ord.barcode || ord.id;
+      if (!token) return;
+      const tokenStr = String(token);
+      if (orderIdMap.has(tokenStr)) return;
+      orderIdMap.add(tokenStr);
+
+      const allItems = Array.isArray(ord.items) ? ord.items : [];
+      let distinctCare = Array.from(
         new Set(
           allItems.map((i) =>
             i.careType === "wash_and_press"
@@ -800,67 +889,113 @@ const ReportGenerator = () => {
               ? "Iron Only"
               : i.careType === "dry_clean"
               ? "Dry Clean"
-              : "Care"
+              : i.careType === "wash_only"
+              ? "Wash"
+              : i.name || "Care"
           )
         )
       ).join(", ");
 
-      const roomText = ord.roomNumber && ord.roomNumber !== "Walk-In" ? `Room ${ord.roomNumber}` : "Walk-In";
-      const token = ord.token || ord.orderId || ord.id || "LND-000";
-      orderIdMap.add(String(token));
+      const roomNum = ord.roomNumber || ord.room_number || "";
+      const roomText = roomNum && roomNum !== "Walk-In" ? `Room ${roomNum}` : "Walk-In";
 
-      const dateStr = toYMD(ord.createdAt || ord.created_at || ord.orderDate || ord.date) || toYMD(new Date());
+      // Robust date extraction
+      let dateStr = "";
+      if (ord.created_date && typeof ord.created_date === "string" && ord.created_date.includes("-")) {
+        dateStr = ord.created_date.trim();
+      } else if (ord.orderDate && typeof ord.orderDate === "string" && ord.orderDate.includes("-")) {
+        dateStr = ord.orderDate.trim();
+      } else if (ord.date && typeof ord.date === "string" && ord.date.includes("-")) {
+        dateStr = ord.date.trim();
+      } else {
+        const tokenMatch = tokenStr.match(/LND-(\d{4})(\d{2})(\d{2})/i);
+        if (tokenMatch) {
+          dateStr = `${tokenMatch[1]}-${tokenMatch[2]}-${tokenMatch[3]}`;
+        } else {
+          dateStr = toYMD(ord.createdAt || ord.created_at || ord.timestamp || new Date());
+        }
+      }
+
+      const totalGarments = Number(
+        ord.totalGarments ||
+        ord.total_garments ||
+        (allItems.length > 0 ? allItems.reduce((acc, i) => acc + (Number(i.quantity) || 1), 0) : 1)
+      );
+
+      const totalAmt = Number(ord.grandTotal || ord.totalAmount || ord.total_amount || ord.itemsSubtotal || ord.subtotal || 0);
+      const subtotal = Number(ord.itemsSubtotal || ord.subtotal || Math.round((totalAmt / 1.05) * 100) / 100);
+      const cgst = Number(ord.cgstAmount || ord.tax?.cgstAmount || Math.round(subtotal * 0.025 * 100) / 100);
+      const sgst = Number(ord.sgstAmount || ord.tax?.sgstAmount || Math.round(subtotal * 0.025 * 100) / 100);
+
+      const isDelivered =
+        ord.is_delivered === true ||
+        ord.delivered_to_room === true ||
+        String(ord.delivery_status || "").toLowerCase().includes("delivered") ||
+        String(ord.status || "").toLowerCase().includes("delivered");
+
+      const settlementLabel =
+        ord.settlementType === "ROOM_FOLIO" ||
+        ord.settlementType === "room_folio" ||
+        ord.paymentMethod === "ROOM_FOLIO" ||
+        ord.paymentMethod === "folio" ||
+        Boolean(roomNum && roomNum !== "Walk-In")
+          ? `Room Folio (${roomNum || ""})`
+          : `Direct (${ord.paymentMethod || "CASH"})`;
 
       rows.push({
-        token,
+        token: tokenStr,
         date: dateStr,
-        guest: `${ord.guestName || "Guest"} (${roomText})`,
-        room_number: ord.roomNumber || "",
-        garments: ord.totalGarments || allItems.reduce((acc, i) => acc + (Number(i.quantity) || 1), 0),
+        guest: `${ord.guestName || ord.guest_name || ord.name || "Guest"} (${roomText})`,
+        room_number: roomNum,
+        garments: totalGarments,
         care_types: distinctCare || "Laundering",
-        speed: ord.serviceSpeedLabel || "Standard",
-        subtotal: Number(ord.itemsSubtotal || 0),
+        speed: ord.serviceSpeedLabel || ord.turnaroundSpeed || ord.turnaround_speed || "Standard",
+        subtotal: subtotal,
         surcharge: Number(ord.surchargeAmount || 0),
-        cgst: Number(ord.cgstAmount || 0),
-        sgst: Number(ord.sgstAmount || 0),
-        total_amount: Number(ord.grandTotal || ord.totalAmount || ord.itemsSubtotal || 0),
-        settlement: ord.settlementType === "ROOM_FOLIO" ? `Room Folio (${ord.roomNumber})` : `Direct (${ord.paymentMethod || "CASH"})`,
-        status: ord.status || "Completed",
+        cgst: cgst,
+        sgst: sgst,
+        total_amount: totalAmt,
+        settlement: settlementLabel,
+        status: isDelivered ? "Delivered" : (ord.status || "Completed"),
       });
     });
 
-    // 2. Scan bookings for any folio laundry services not captured in localStorage
+    // 3. Scan bookings for any folio laundry services in detailedServices
     (bookings || []).forEach((bk) => {
       const guestName = bk.guest_name || bk.booking_name || bk.name || "In-House Guest";
-      const svcs = bk.services || bk.detailedServices;
-      if (svcs && typeof svcs === "object") {
-        Object.entries(svcs).forEach(([roomKey, byDate]) => {
+      
+      // A. Scan detailedServices
+      if (bk.detailedServices && typeof bk.detailedServices === "object") {
+        Object.entries(bk.detailedServices).forEach(([roomKey, byDate]) => {
           if (!byDate || typeof byDate !== "object") return;
           Object.entries(byDate).forEach(([dateKey, items]) => {
             if (Array.isArray(items)) {
               items.forEach((item) => {
                 const isLaundry =
-                  Number(item.laundry_charges) > 0 ||
-                  item.service_type === "laundry" ||
-                  String(item.order_id || "").startsWith("LND-");
+                  item &&
+                  (item.service_type === "laundry" ||
+                   item.serviceType === "laundry" ||
+                   Number(item.laundry_charges) > 0 ||
+                   String(item.order_id || item.token || "").startsWith("LND-"));
                 if (!isLaundry) return;
 
                 const token = item.token || item.order_id || item.service_id || `LND-${roomKey}-${dateKey}`;
                 if (orderIdMap.has(String(token))) return;
                 orderIdMap.add(String(token));
 
-                const charge = Number(item.laundry_charges || item.totalAmount || item.charge || 0);
+                const charge = Number(item.totalAmount || item.laundry_charges || item.charge || 0);
                 const subtotal = Number(item.itemsSubtotal || Math.round((charge / 1.05) * 100) / 100);
                 const cgst = Number(item.cgstAmount || Math.round((subtotal * 0.025) * 100) / 100);
                 const sgst = Number(item.sgstAmount || Math.round((subtotal * 0.025) * 100) / 100);
-                const dateStr = toYMD(item.created_at || item.createdAt || dateKey) || toYMD(new Date());
+                const tokenMatch = String(token).match(/LND-(\d{4})(\d{2})(\d{2})/i);
+                const dateStr = tokenMatch ? `${tokenMatch[1]}-${tokenMatch[2]}-${tokenMatch[3]}` : (toYMD(item.created_at || item.createdAt || dateKey) || toYMD(new Date()));
 
                 rows.push({
-                  token,
+                  token: String(token),
                   date: dateStr,
                   guest: `${item.guestName || guestName} (Room ${roomKey})`,
                   room_number: roomKey,
-                  garments: Number(item.totalGarments || (Array.isArray(item.items) ? item.items.length : 1)),
+                  garments: Number(item.totalGarments || (item.items || []).length || 1),
                   care_types: "Laundering",
                   speed: "Standard",
                   subtotal,
@@ -869,8 +1004,45 @@ const ReportGenerator = () => {
                   sgst,
                   total_amount: charge,
                   settlement: `Room Folio (${roomKey})`,
-                  status: "Completed",
+                  status: item.is_delivered || item.delivery_status === "delivered_to_room" || item.status === "Delivered" ? "Delivered" : "Completed",
                 });
+              });
+            }
+          });
+        });
+      }
+
+      // B. Scan standard booking.services
+      if (bk.services && typeof bk.services === "object") {
+        Object.entries(bk.services).forEach(([roomKey, byDate]) => {
+          if (!byDate || typeof byDate !== "object") return;
+          Object.entries(byDate).forEach(([dateKey, serviceObj]) => {
+            if (!serviceObj) return;
+            const laundryCharge = Number(serviceObj.laundry_charges || (Array.isArray(serviceObj) ? serviceObj.reduce((s, x) => s + Number(x?.laundry_charges || 0), 0) : 0));
+            if (laundryCharge > 0) {
+              const token = `LND-${roomKey}-${dateKey}`;
+              if (orderIdMap.has(String(token))) return;
+              orderIdMap.add(String(token));
+
+              const subtotal = Math.round((laundryCharge / 1.05) * 100) / 100;
+              const cgst = Math.round((subtotal * 0.025) * 100) / 100;
+              const sgst = Math.round((subtotal * 0.025) * 100) / 100;
+
+              rows.push({
+                token,
+                date: toYMD(dateKey) || dateKey,
+                guest: `${guestName} (Room ${roomKey})`,
+                room_number: roomKey,
+                garments: 1,
+                care_types: "Laundering",
+                speed: "Standard",
+                subtotal,
+                surcharge: 0,
+                cgst,
+                sgst,
+                total_amount: laundryCharge,
+                settlement: `Room Folio (${roomKey})`,
+                status: "Delivered",
               });
             }
           });
@@ -1012,6 +1184,7 @@ const ReportGenerator = () => {
           case "laundry":
             await fetchBookings();
             await listTotalBill();
+            await loadBackendLaundryData();
             break;
           case "rooms":
             await fetchRooms();
