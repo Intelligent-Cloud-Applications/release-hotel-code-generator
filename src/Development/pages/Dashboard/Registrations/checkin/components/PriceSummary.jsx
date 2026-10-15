@@ -49,7 +49,10 @@ const PriceSummary = ({
 
             {baseTariff > 0 && (
               <div className="flex justify-between text-sm items-center">
-                <span>Rate Plan Tariff (per night):</span>
+                <span>
+                  Rate Plan Tariff (per night)
+                  {selectedRoomsCount > 1 ? ` (${selectedRoomsCount} rooms)` : ""}:
+                </span>
                 <div className="flex items-center gap-2">
                   <span>₹</span>
                   <Input

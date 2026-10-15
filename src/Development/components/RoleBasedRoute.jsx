@@ -15,22 +15,25 @@ const RoleBasedRoute = ({ children, allowedRoles = [] }) => {
   }
 
   // Check if user's role is in the allowed roles
-  let allowed = false;
-  for (const userType of userData.userTypes) {
-    if (allowedRoles.includes(userType)) {
-      allowed = true;
-      break;
-    }
-  }
+  const effectiveRoles = Array.from(
+    new Set([...(userData.userTypes || []), userData.userType].filter(Boolean))
+  );
+
+  const isAdmin = effectiveRoles.includes("admin");
+  const allowed = isAdmin || effectiveRoles.some((r) => allowedRoles.includes(r));
+
   if (!allowed) {
     // Redirect to appropriate dashboard based on user type
     const userTypeRoutes = {
       admin: "/dashboard/admin/room_list",
       frontdesk: "/dashboard/frontdesk",
       housekeeping: "/dashboard/housekeeping/room_status_list",
+      accountant: "/dashboard/accounting/bill-posting",
+      laundry: "/dashboard/laundry",
+      store: "/dashboard/store",
     };
 
-    const redirectPath = userTypeRoutes[userData.userType] || "/dashboard";
+    const redirectPath = userTypeRoutes[userData.userType] || "/dashboard/frontdesk";
     return <Navigate to={redirectPath} replace />;
   }
 

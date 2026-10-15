@@ -1,7 +1,7 @@
 import React from "react";
 import data from '../../../../../Operation/data.json';
 
-const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discountMethod = "none", discountValue = 0 }) => {
+const PrintBill = ({ table, items, institutionData, screenWidth, orderId, date, discountMethod = "none", discountValue = 0 }) => {
   const printerpaperSize = "80";
 
   // Calculate totals based on provided items
@@ -53,8 +53,14 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discou
     if (existingStyle) document.head.removeChild(existingStyle);
 
     const formatDateTime = () => {
-      const now = new Date();
-      return now.toLocaleString("en-IN", {
+      let d = new Date();
+      if (date) {
+        const parsed = new Date(date);
+        if (!isNaN(parsed.getTime())) {
+          d = parsed;
+        }
+      }
+      return d.toLocaleString("en-IN", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
@@ -122,6 +128,7 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discou
 
             <div class="bill-details">
               <div class="table-info">Table: ${table.id}</div>
+              ${orderId ? `<div class="order-info" style="font-size:10pt;font-weight:bold;margin-top:1mm;">Order ID: ${orderId}</div>` : ""}
             </div>
 
             <table class="items-table">

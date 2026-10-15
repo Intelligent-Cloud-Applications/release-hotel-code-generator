@@ -137,6 +137,30 @@ const AmendBooking = () => {
   const isNewCompany = useMemo(() => {
     return companyQuery && !formData.company_id && filteredCompanies.length === 0;
   }, [companyQuery, formData.company_id, filteredCompanies.length]);
+
+  const availableCategories = useMemo(() => {
+    const dynamicCategories = (rooms || [])
+      .map((r) => r.room_type)
+      .filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const fromBooking = [
+      editingBooking?.room_category,
+      editingBooking?.room_type,
+      formData?.room_category,
+      formData?.room_type,
+      ...(editingBooking?.rooms_config?.map((rc) => rc.room_category || rc.room_type) || []),
+    ].filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const standardCategories = [
+      "Standard",
+      "Deluxe",
+      "Super Deluxe",
+      "Executive",
+      "Suite",
+      "Single",
+      "Double",
+      "Family",
+    ];
+    return Array.from(new Set([...fromBooking, ...dynamicCategories, ...standardCategories]));
+  }, [rooms, editingBooking, formData?.room_category, formData?.room_type]);
   // Close suggestions on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -210,29 +234,143 @@ const AmendBooking = () => {
       gst_no: booking.gst_no
     };
   };
-  // Get room details for a room ID
+  // Get room details for a room ID or room number
   const getRoomDetails = (roomId) => {
-    return rooms?.find(room =>
-      room.room_id === roomId ||
-      room.id === roomId ||
-      room._id === roomId
+    if (!roomId) return {};
+    const str = String(roomId).trim();
+    return (rooms || []).find(room =>
+      String(room.room_id || "").trim() === str ||
+      String(room.id || "").trim() === str ||
+      String(room._id || "").trim() === str ||
+      String(room.room_number || "").trim() === str
     ) || {};
   };
+
+  // Helper to determine if a room is currently occupied by another checked-in guest
+  const isRoomOccupied = (roomOrId, currentBookingId = null) => {
+    if (!roomOrId) return false;
+    const room = typeof roomOrId === "object" ? roomOrId : getRoomDetails(roomOrId);
+    const roomIdStr = String(room?.room_id || room?.id || roomOrId || "").trim().toLowerCase();
+    const roomNumStr = String(room?.room_number || roomOrId || "").trim().toLowerCase();
+
+    // If this room belongs to editingBooking or currentBookingId, it is their OWN room!
+    const targetBooking =
+      editingBooking ||
+      (currentBookingId
+        ? (bookings || []).find(
+            (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+          )
+        : null);
+
+    if (targetBooking) {
+      const myRooms = getCurrentRoomIds(targetBooking)
+        .map((r) => {
+          const detail = getRoomDetails(r);
+          return [
+            String(r || "").trim().toLowerCase(),
+            String(detail?.room_id || "").trim().toLowerCase(),
+            String(detail?.room_number || "").trim().toLowerCase(),
+          ];
+        })
+        .flat()
+        .filter(Boolean);
+
+      if (myRooms.includes(roomIdStr) || myRooms.includes(roomNumStr)) {
+        return false;
+      }
+    }
+
+    const checkMatch = (val) => {
+      if (!val) return false;
+      if (Array.isArray(val)) return val.some(checkMatch);
+      const str = String(val).trim().toLowerCase();
+      return (
+        (roomIdStr && str === roomIdStr) ||
+        (roomNumStr && str === roomNumStr)
+      );
+    };
+
+    const bookingMatchesRoom = (b) => {
+      if (!b) return false;
+      return (
+        checkMatch(b.room_id) ||
+        checkMatch(b.room_ids) ||
+        checkMatch(b.room_number) ||
+        checkMatch(b.room_numbers) ||
+        checkMatch(b.roomNo) ||
+        (Array.isArray(b.rooms) &&
+          b.rooms.some(
+            (r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)
+          )) ||
+        (Array.isArray(b.rooms_config) &&
+          b.rooms_config.some(
+            (r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)
+          ))
+      );
+    };
+
+    // Check if any OTHER checked-in booking occupies this room
+    const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
+      if (b.status !== "Checked-in") return false;
+      const bId = String(b.booking_id || "").trim();
+      if (
+        (editingBooking &&
+          bId === String(editingBooking.booking_id).trim()) ||
+        (currentBookingId &&
+          bId === String(currentBookingId).trim())
+      ) {
+        return false;
+      }
+      return bookingMatchesRoom(b);
+    });
+
+    if (isOccupiedByAnotherBooking) return true;
+
+    // Finally, if room status is Occupied in the DB and this booking does not own it
+    const s = String(room?.status || "").toLowerCase().trim();
+    if (s === "occupied" || s.includes("occup")) {
+      return true;
+    }
+
+    return false;
+  };
+
   // Get available rooms (status = "Vacant") and current room
   const getAvailableRooms = (currentRoomId) => {
-    const availableRooms = rooms?.filter(room => room.status === "Vacant") || [];
-    const currentRoom = rooms?.find(room => room.room_id === currentRoomId);
-    if (currentRoom && !availableRooms.find(room => room.room_id === currentRoomId)) {
+    const availableRooms = (rooms || []).filter(room => 
+      (room.status === "Vacant" || room.status === "Clean") && 
+      !isRoomOccupied(room, editingBooking?.booking_id)
+    );
+    const currentRoom = (rooms || []).find(room => 
+      String(room.room_id) === String(currentRoomId) || 
+      String(room.room_number) === String(currentRoomId)
+    );
+    if (currentRoom && !availableRooms.find(room => String(room.room_id) === String(currentRoom.room_id))) {
       return [currentRoom, ...availableRooms];
     }
     return availableRooms;
   };
-  // Get array of room IDs from booking
+
+  // Get array of room IDs from booking (supports multi-room bookings)
   const getCurrentRoomIds = (booking) => {
-    if (Array.isArray(booking.room_id)) {
+    if (!booking) return [];
+    if (Array.isArray(booking.room_ids) && booking.room_ids.length > 0) {
+      return booking.room_ids;
+    }
+    if (Array.isArray(booking.room_id) && booking.room_id.length > 0) {
       return booking.room_id;
     }
-    return booking.room_id ? [booking.room_id] : [];
+    if (Array.isArray(booking.rooms_config) && booking.rooms_config.length > 0) {
+      const fromConfig = booking.rooms_config.map((r) => r.room_id || r.room_number).filter(Boolean);
+      if (fromConfig.length > 0) return fromConfig;
+    }
+    if (Array.isArray(booking.rooms) && booking.rooms.length > 0) {
+      const fromRooms = booking.rooms.map((r) => r.room_id || r.room_number).filter(Boolean);
+      if (fromRooms.length > 0) return fromRooms;
+    }
+    if (booking.room_id) return [booking.room_id];
+    if (booking.room_number) return [booking.room_number];
+    return [];
   };
   // Convert services object to use room numbers as keys instead of UUIDs
   const convertServicesToRoomNumbers = (services, roomId) => {
@@ -289,22 +427,54 @@ const AmendBooking = () => {
   // ----------- MULTI-ROOM DROPDOWN LOGIC START -----------
   // Helper: Get available rooms for a given dropdown index, removing rooms already picked in other dropdowns (except its own)
   const getAvailableRoomsForDropdown = (currentRoomIds, idx) => {
-    const selectedRoomIds = currentRoomIds.filter((rid, i) => i !== idx);
-    return rooms.filter(room => {
-      if (room.room_id === currentRoomIds[idx]) return true;
-      if (room.status === "Vacant" && !selectedRoomIds.includes(room.room_id)) return true;
-      return false;
+    const selectedRoomIds = (currentRoomIds || []).filter((rid, i) => i !== idx);
+    const thisDropdownRoomId = currentRoomIds?.[idx];
+
+    return (rooms || []).filter(room => {
+      const isThisRoomCurrent =
+        String(room.room_id).trim() === String(thisDropdownRoomId || "").trim() ||
+        String(room.id || "").trim() === String(thisDropdownRoomId || "").trim() ||
+        String(room.room_number || "").trim() === String(thisDropdownRoomId || "").trim();
+
+      if (isThisRoomCurrent) return true;
+
+      // Don't show rooms picked in another dropdown of this same booking
+      if (selectedRoomIds.some(rid =>
+        String(room.room_id).trim() === String(rid).trim() ||
+        String(room.id || "").trim() === String(rid).trim() ||
+        String(room.room_number || "").trim() === String(rid).trim()
+      )) {
+        return false;
+      }
+
+      // Check if room is occupied by another guest
+      if (isRoomOccupied(room, editingBooking?.booking_id)) {
+        return false;
+      }
+
+      const s = String(room.status || "").toLowerCase().trim();
+      if (s === "dirty" || s.includes("maintenance") || s.includes("order") || s.includes("block")) {
+        return false;
+      }
+
+      return true;
     });
   };
   // Change handler: update room_ids and ensure uniqueness
   const handleRoomIdChange = (index, value) => {
+    if (isRoomOccupied(value, editingBooking?.booking_id)) {
+      const r = getRoomDetails(value);
+      toast.error(`Room ${r.room_number || value} is currently Occupied by another guest. Please select a vacant room.`);
+      return;
+    }
+
     setFormData(prev => {
       const newRoomIds = [...(prev.room_ids || [])];
       // Prevent duplicate selection
       setIsRoomChanged({
         oldRoom: newRoomIds[index],
         newRoom: value
-      })
+      });
       if (newRoomIds.includes(value) && newRoomIds[index] !== value) return prev;
       newRoomIds[index] = value;
       
@@ -461,6 +631,20 @@ const AmendBooking = () => {
           }
         }
       }
+      if (field === 'no_of_rooms') {
+        const count = parseInt(value, 10);
+        if (count && count > 0) {
+          const currentRooms = Array.isArray(prev.room_ids) ? [...prev.room_ids] : [];
+          if (currentRooms.length < count) {
+            while (currentRooms.length < count) {
+              currentRooms.push('');
+            }
+          } else if (currentRooms.length > count) {
+            currentRooms.splice(count);
+          }
+          next.room_ids = currentRooms;
+        }
+      }
       return next;
     });
   };
@@ -500,6 +684,9 @@ const AmendBooking = () => {
       checkout_date: editingBooking.checkout_date ? Number(editingBooking.checkout_date) : '',
       room_ids: currentRoomIds,
       room_type: getRoomDetails(currentRoomIds[0]).room_type || editingBooking.room_type || '',
+      room_category: editingBooking.room_category || getRoomDetails(currentRoomIds[0]).room_type || editingBooking.room_type || '',
+      no_of_rooms: editingBooking.no_of_rooms || editingBooking.number_of_rooms || (currentRoomIds ? currentRoomIds.length : 1),
+      no_of_persons: editingBooking.no_of_persons || editingBooking.no_of_adults || 1,
       no_of_adults: editingBooking.no_of_adults || 1,
       no_of_children: editingBooking.no_of_children || 0,
       discount: editingBooking.discount || 0,
@@ -573,6 +760,9 @@ const AmendBooking = () => {
       checkout_date: booking.checkout_date ? Number(booking.checkout_date) : '',
       room_ids: currentRoomIds,
       room_type: getRoomDetails(currentRoomIds[0]).room_type || booking.room_type || '',
+      room_category: booking.room_category || getRoomDetails(currentRoomIds[0]).room_type || booking.room_type || '',
+      no_of_rooms: booking.no_of_rooms || booking.number_of_rooms || (currentRoomIds ? currentRoomIds.length : 1),
+      no_of_persons: booking.no_of_persons || booking.no_of_adults || 1,
       no_of_adults: booking.no_of_adults || 1,
       no_of_children: booking.no_of_children || 0,
       discount: booking.discount || 0,
@@ -1018,10 +1208,22 @@ const AmendBooking = () => {
       guestPayload.marital_status = formData.marital_status;
       guestPayload.anniversary_date = formData.anniversary_date;
     }
+    const newRoomNumbers = (formData.room_ids || []).map((rid) => {
+      const r = getRoomDetails(rid);
+      return r?.room_number || rid;
+    });
+
     const bookingPayloadBase = {
       booking_id: editingBooking.booking_id,
       room_id: formData.room_ids,
+      room_ids: formData.room_ids,
+      room_number: newRoomNumbers.join(", "),
+      room_numbers: newRoomNumbers,
       room_type: formData.room_type,
+      room_category: formData.room_category || formData.room_type,
+      no_of_rooms: parseInt(formData.no_of_rooms) || (formData.room_ids ? formData.room_ids.length : 1),
+      number_of_rooms: parseInt(formData.no_of_rooms) || (formData.room_ids ? formData.room_ids.length : 1),
+      no_of_persons: parseInt(formData.no_of_persons || formData.no_of_adults) || 1,
       no_of_adults: parseInt(formData.no_of_adults) || 1,
       services: formData.services || {},
       updated_at: Math.floor(Date.now())
@@ -1180,6 +1382,19 @@ const AmendBooking = () => {
     } else {
       bookingPayload.rate_plan_id = formData.rate_plan_id;
     }
+    // Verify none of the rooms in formData.room_ids are occupied by another guest
+    const occupiedInAmend = [];
+    (formData.room_ids || []).forEach((rid) => {
+      if (isRoomOccupied(rid, editingBooking?.booking_id)) {
+        const r = getRoomDetails(rid);
+        occupiedInAmend.push(r.room_number || rid);
+      }
+    });
+    if (occupiedInAmend.length > 0) {
+      toast.error(`Cannot save amendment: Room ${occupiedInAmend.join(", ")} is currently Occupied by another guest. Please assign a vacant room.`);
+      return;
+    }
+
     setLoading(true);
     try {
       await amendBooking({
@@ -1205,16 +1420,35 @@ const AmendBooking = () => {
       }
       // Handle room status changes for all rooms
       const originalRoomIds = getCurrentRoomIds(editingBooking);
-      const newRoomIds = formData.room_ids;
+      const newRoomIds = formData.room_ids || [];
       if (updateRoomStatus) {
-        for (let i = 0; i < originalRoomIds.length; i++) {
-          if (originalRoomIds[i] !== newRoomIds[i]) {
-            await updateRoomStatus(originalRoomIds[i], "Under Maintenance");
-            await updateRoomStatus(newRoomIds[i], "Occupied");
+        // Free up old rooms that are no longer assigned
+        for (const oldRid of originalRoomIds) {
+          if (!newRoomIds.includes(oldRid)) {
+            await updateRoomStatus(oldRid, "Dirty");
+          }
+        }
+        // Mark all active rooms in the amended booking as Occupied
+        for (const newRid of newRoomIds) {
+          if (newRid) {
+            await updateRoomStatus(newRid, "Occupied");
           }
         }
         if (fetchRooms) await fetchRooms();
       }
+      try {
+        const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+        const store = JSON.parse(rawStore);
+        store[editingBooking.booking_id] = {
+          ...(store[editingBooking.booking_id] || {}),
+          room_id: formData.room_ids,
+          room_ids: formData.room_ids,
+          no_of_rooms: formData.room_ids ? formData.room_ids.length : 1,
+          number_of_rooms: formData.room_ids ? formData.room_ids.length : 1,
+        };
+        localStorage.setItem("hotel_bookings_meta", JSON.stringify(store));
+      } catch (e) {}
+
       toast.success('Check-in amended successfully!');
       setShowEditDialog(false);
       setEditingBooking(null);
@@ -1370,9 +1604,9 @@ const AmendBooking = () => {
       </div>
       {/* Edit Modal - Moved outside table */}
       {showEditDialog && editingBooking && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl px-4 max-w-[95vw] max-h-[95vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col overflow-hidden">
+            <div className="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between flex-shrink-0">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Amend Check-in - {editingBooking.booking_id}</h2>
                 {isOldCheckin && (
@@ -1391,7 +1625,8 @@ const AmendBooking = () => {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+            <div className="overflow-y-auto flex-1 p-4 sm:p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Guest Details Section */}
               <div className="bg-gray-50 p-3 rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
@@ -1599,9 +1834,98 @@ const AmendBooking = () => {
               <div className="bg-gray-50 p-3 rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2 text-sm">
                   <Calendar className="h-3 w-3" />
-                  Booking Information
+                  Booking & Room Information
                 </h4>
+
+                {/* Visible Room & Booking Summary Banner */}
+                <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-md text-xs space-y-1 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-blue-900">Room Category / Type:</span>
+                    <span className="bg-blue-600 text-white font-bold px-2 py-0.5 rounded text-xs">
+                      {formData.room_category || formData.room_type || editingBooking?.room_category || editingBooking?.room_type || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-blue-800">
+                    <span>
+                      <strong>Total Rooms:</strong> {formData.no_of_rooms || editingBooking?.no_of_rooms || (formData.room_ids ? formData.room_ids.length : 1)}
+                    </span>
+                    <span>
+                      <strong>Total Persons:</strong> {formData.no_of_persons || editingBooking?.no_of_persons || editingBooking?.no_of_adults || 1}
+                    </span>
+                    {formData.room_ids && formData.room_ids.length > 0 && (
+                      <span>
+                        <strong>Assigned Rooms:</strong>{" "}
+                        {formData.room_ids
+                          .map((id) => getRoomDetails(id)?.room_number || id)
+                          .filter(Boolean)
+                          .join(", ")}
+                      </span>
+                    )}
+                  </div>
+                  {editingBooking?.rooms_config && editingBooking.rooms_config.length > 0 && (
+                    <div className="pt-1 border-t border-blue-200/60 flex flex-wrap gap-1">
+                      {editingBooking.rooms_config.map((r, i) => (
+                        <span
+                          key={i}
+                          className="bg-white border border-blue-200 text-blue-900 px-1.5 py-0.5 rounded text-[11px] font-medium"
+                        >
+                          Room {r.room_index || i + 1}: <strong>{r.room_category || r.room_type || "Standard"}</strong>
+                          {r.room_number ? ` (No. ${r.room_number})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700">Room Category *</Label>
+                    <Select
+                      value={formData.room_category || formData.room_type || ''}
+                      onValueChange={(val) => {
+                        handleInputChange('room_category', val);
+                        handleInputChange('room_type', val);
+                      }}
+                      disabled={isOldCheckin}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select room category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCategories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs font-medium text-gray-700">Rooms *</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.no_of_rooms || 1}
+                        onChange={(e) => handleInputChange('no_of_rooms', e.target.value)}
+                        className="h-7 text-xs"
+                        disabled={isOldCheckin}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium text-gray-700">Persons *</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.no_of_persons || formData.no_of_adults || 1}
+                        onChange={(e) => {
+                          handleInputChange('no_of_persons', e.target.value);
+                          handleInputChange('no_of_adults', e.target.value);
+                        }}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </div>
                   <div>
                     <Label className="text-xs font-medium text-gray-700">Check-in Date *</Label>
                     <Input
@@ -2019,7 +2343,8 @@ const AmendBooking = () => {
                 )}
               </div>
             </div>
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-between">
+            </div>
+            <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
               <Button
                 variant="outline"
                 onClick={resetForm}

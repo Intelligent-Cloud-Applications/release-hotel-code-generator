@@ -131,14 +131,44 @@ const BillReport = ({ billData: rawBillData }) => {
       bill_no: rawBillData?.billHeader?.bill_no || "N/A",
     };
 
+    const resolvedRoomNumber = (() => {
+      const rn = rawBillData?.bookingDetails?.roomNumber || rawBillData?.bookingDetails?.room_number;
+      if (rn && rn !== "---" && rn !== "N/A" && String(rn).trim() !== "") return rn;
+      const rids = rawBillData?.room_ids || rawBillData?.bookingDetails?.room_id || rawBillData?.bookingDetails?.room_ids;
+      if (rids) {
+        const idArray = Array.isArray(rids) ? rids : [rids];
+        const matched = idArray.map((rid) => {
+          const r = rooms?.find((rm) => rm.room_id === rid || String(rm.room_number) === String(rid));
+          return r ? r.room_number : rid;
+        });
+        if (matched.length > 0) return matched.join(", ");
+      }
+      return rawBookingData?.rooms?.map((room) => room.room_number).join(", ") || "---";
+    })();
+
+    const resolvedRoomType = (() => {
+      const rt = rawBillData?.bookingDetails?.roomType || rawBillData?.bookingDetails?.room_type;
+      if (rt && rt !== "---" && rt !== "N/A" && String(rt).trim() !== "") return rt;
+      const rids = rawBillData?.room_ids || rawBillData?.bookingDetails?.room_id || rawBillData?.bookingDetails?.room_ids;
+      if (rids) {
+        const idArray = Array.isArray(rids) ? rids : [rids];
+        const matched = idArray.map((rid) => {
+          const r = rooms?.find((rm) => rm.room_id === rid || String(rm.room_number) === String(rid));
+          return r ? r.room_type : "Standard";
+        });
+        if (matched.length > 0) return matched.join(", ");
+      }
+      return rawBookingData?.rooms?.map((room) => room.room_type).join(", ") || "---";
+    })();
+
     // Build bookingDetails similar to Bill.jsx
     const bookingDetails = {
       ...rawBillData?.bookingDetails,
       bookingId: rawBillData?.bookingDetails?.bookingId || bookingId || "N/A",
       bookingType: rawBillData?.bookingDetails?.bookingType || rawBookingData?.booking_type || "",
       bookingSource: rawBillData?.bookingDetails?.bookingSource || rawBookingData?.booking_source || "",
-      roomNumber: rawBillData?.bookingDetails?.roomNumber || rawBookingData?.rooms?.map((room) => room.room_number).join(", ") || "",
-      roomType: rawBillData?.bookingDetails?.roomType || rawBookingData?.rooms?.map((room) => room.room_type).join(", ") || "",
+      roomNumber: resolvedRoomNumber,
+      roomType: resolvedRoomType,
       ratePlanId: rawBillData?.bookingDetails?.ratePlanId || rawBookingData?.rate_plan_id || "",
       ratePlanName: rawBillData?.bookingDetails?.ratePlanName || rawBookingData?.rate_plan_name || "",
       ratePlanBaseTariff: rawBillData?.bookingDetails?.ratePlanBaseTariff || rawBookingData?.base_tariff || 0,
@@ -187,6 +217,59 @@ const BillReport = ({ billData: rawBillData }) => {
       });
     }
 
+    if (totalRoomCharges === 0 && (rawBillData?.billingSummary?.totalRoomServices || rawBillData?.billingSummary?.roomCharges)) {
+      totalRoomCharges = Number(rawBillData.billingSummary.totalRoomServices || rawBillData.billingSummary.roomCharges || 0);
+    }
+    if (totalServiceCharges === 0 && (rawBillData?.billingSummary?.totalServiceCharges || rawBillData?.billingSummary?.serviceCharges)) {
+      totalServiceCharges = Number(rawBillData.billingSummary.totalServiceCharges || rawBillData.billingSummary.serviceCharges || 0);
+    }
+    if (totalExtraPaxCharges === 0 && rawBillData?.billingSummary?.extraPaxCharges) {
+      totalExtraPaxCharges = Number(rawBillData.billingSummary.extraPaxCharges || 0);
+    }
+
+    let finalServiceChargesByDate = rawBillData?.serviceChargesByDate || [];
+    const hasAnyChargesInBreakdown = finalServiceChargesByDate.some((dayData) => {
+      const date = Object.keys(dayData)[0];
+      return (dayData[date] || []).some(
+        (re) => (re.charges?.roomCharges || 0) > 0 || (re.charges?.dailyTotal || 0) > 0
+      );
+    });
+
+    if (!hasAnyChargesInBreakdown && totalRoomCharges > 0) {
+      const checkinDateVal = rawBillData?.bookingDetails?.checkIn || rawBookingData?.checkin_date || Date.now();
+      const numNights = Math.max(1, rawBillData?.bookingDetails?.numberOfNights || 1);
+      const dailyTariff = totalRoomCharges / numNights;
+      const roomNum = resolvedRoomNumber || "---";
+      const roomTyp = resolvedRoomType || "Standard";
+
+      const synthDates = [];
+      const cur = new Date(typeof checkinDateVal === "number" ? checkinDateVal : new Date(checkinDateVal).getTime());
+      for (let i = 0; i < numNights; i++) {
+        const dateStr = cur.toISOString().split("T")[0];
+        synthDates.push({
+          [dateStr]: [
+            {
+              roomNumber: roomNum,
+              roomType: roomTyp,
+              date: dateStr,
+              charges: {
+                roomCharges: dailyTariff,
+                foodCharges: 0,
+                laundryCharges: 0,
+                minibarCharges: 0,
+                extraBedCharges: 0,
+                manualCharges: 0,
+                extraPaxCharges: 0,
+                dailyTotal: dailyTariff,
+              },
+            },
+          ],
+        });
+        cur.setDate(cur.getDate() + 1);
+      }
+      finalServiceChargesByDate = synthDates;
+    }
+
     const discountAmount = rawBillData?.billingSummary?.totalDiscount || 0;
     const partialPayment = rawBillData?.billingSummary?.partialPayment || 0;
     const subTotal = totalRoomCharges + totalServiceCharges + totalRatePlanCharges + totalExtraPaxCharges - discountAmount;
@@ -225,8 +308,9 @@ const BillReport = ({ billData: rawBillData }) => {
       legalSignature,
       billingSummary,
       finalSummary,
+      serviceChargesByDate: finalServiceChargesByDate,
     };
-  }, [rawBillData, institutionData, bookings, companies]);
+  }, [rawBillData, institutionData, bookings, companies, rooms]);
  
 
   if (!billData) {

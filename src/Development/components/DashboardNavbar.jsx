@@ -31,15 +31,36 @@ const DashboardNavbar = () => {
   useEffect(() => {
     const navPath = location.pathname.split("/")[2] || "";
     const navItemPath = location.pathname.split("/")[3] || "";
+    const searchParams = new URLSearchParams(location.search);
+    const tabParam = searchParams.get("tab");
 
-    setActiveTab(navPath);
+    if (navPath === "laundry") {
+      setActiveTab(tabParam ? `laundry_${tabParam}` : "laundry_new_order");
+    } else {
+      setActiveTab(navPath);
+    }
     setActiveItem(navItemPath);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
+
+  const hasLaundryAccess =
+    userData?.userType === "laundry" ||
+    (userData?.userTypes || []).includes("laundry") ||
+    userData?.userType === "admin" ||
+    (userData?.userTypes || []).includes("admin");
+
+  const getLaundryOrderCount = () => {
+    try {
+      const saved = localStorage.getItem("hotel_laundry_orders");
+      return saved ? JSON.parse(saved).length : 0;
+    } catch (e) {
+      return 0;
+    }
+  };
 
   // Define navigation items based on user type
   const getNavItems = () => {
     if (userData?.userType == 'frontdesk') {
-      return [
+      const items = [
         {
           id: "bookings",
           label: "Bookings",
@@ -50,15 +71,33 @@ const DashboardNavbar = () => {
           label: "Front Desk",
           hasDropdown: false,
         },
-        // {
-        //   id: "registrations",
-        //   label: "Registrations",
-        //   hasDropdown: false,
-        // },
         { id: "dayend", label: "Day End Process", hasDropdown: false },
         { id: "guest_history", label: "Guest History", hasDropdown: false },
         { id: "company", label: "Company Details", hasDropdown: false },
         { id: "expenses", label: "Cash Drawer", hasDropdown: false },
+        { id: "store", label: "Store", hasDropdown: false },
+      ];
+
+      // if (hasLaundryAccess) {
+      //   items.push({ id: "laundry", tab: "new_order", label: "Laundry", hasDropdown: false });
+      // }
+
+      items.push({ id: "reports", label: "Reports", hasDropdown: false });
+      return items;
+    }
+    if (userData?.userType == 'laundry') {
+      const bagCount = getLaundryOrderCount();
+      return [
+        { id: "laundry_new_order", tab: "new_order", label: "New Order (Billing)", hasDropdown: false },
+        { id: "laundry_deliveries", tab: "deliveries", label: "Deliveries", hasDropdown: false },
+        { id: "laundry_tracker", tab: "tracker", label: bagCount > 0 ? `Order Tracker (${bagCount})` : "Order Tracker", hasDropdown: false },
+        { id: "laundry_price_sheet", tab: "price_sheet", label: "Rate Sheet & Prices", hasDropdown: false },
+        { id: "laundry_statistics", tab: "statistics", label: "Shift Stats & Revenue", hasDropdown: false },
+        { id: "reports", label: "Reports", hasDropdown: false },
+      ];
+    }
+    if (userData?.userType == 'store') {
+      return [
         { id: "store", label: "Store", hasDropdown: false },
         { id: "reports", label: "Reports", hasDropdown: false },
       ];
@@ -93,8 +132,10 @@ const DashboardNavbar = () => {
                 let route = `/dashboard/${val}`;
                 if (val === 'housekeeping') route = '/dashboard/housekeeping/room_status_list';
                 if (val === 'frontdesk') route = '/dashboard/frontdesk';
-                if (val === 'admin') route = '/dashboard/admin';
+                if (val === 'admin') route = '/dashboard/admin/room_list';
                 if (val === 'accountant') route = '/dashboard/accounting/bill-posting';
+                if (val === 'laundry') route = '/dashboard/laundry';
+                if (val === 'store') route = '/dashboard/store';
                 setActiveTab('');
                 setActiveItem('');
                 setUserData({ ...userData, userType: val });
@@ -109,11 +150,20 @@ const DashboardNavbar = () => {
                 <SelectValue placeholder="Select Role" />
               </SelectTrigger>
               <SelectContent>
-                {(userData?.userTypes || []).map((ut) => (
-                  <SelectItem key={ut} value={ut} className="text-sm capitalize">
-                    {ut[0].toUpperCase() + ut.slice(1)}
-                  </SelectItem>
-                ))}
+                {(() => {
+                  const isAdmin =
+                    userData?.userType === "admin" ||
+                    (userData?.userTypes || []).includes("admin");
+                  const allRoles = ["admin", "frontdesk", "housekeeping", "accountant", "laundry", "store"];
+                  const displayRoles = isAdmin
+                    ? allRoles
+                    : Array.from(new Set([...(userData?.userTypes || []), userData?.userType].filter(Boolean)));
+                  return displayRoles.map((ut) => (
+                    <SelectItem key={ut} value={ut} className="text-sm capitalize">
+                      {ut[0].toUpperCase() + ut.slice(1)}
+                    </SelectItem>
+                  ));
+                })()}
               </SelectContent>
             </Select>
           </div>
@@ -184,8 +234,13 @@ const DashboardNavbar = () => {
                         : "text-gray-700 hover:bg-gray-400 hover:text-white"
                       }`}
                     onClick={() => {
-                      setActiveTab(item.id);
-                      navigate(item.id);
+                      if (item.tab) {
+                        setActiveTab(item.id);
+                        navigate(`/dashboard/laundry?tab=${item.tab}`);
+                      } else {
+                        setActiveTab(item.id);
+                        navigate(`/dashboard/${item.id}`);
+                      }
                     }}
                   >
                     {item.label}
@@ -370,8 +425,13 @@ const DashboardNavbar = () => {
                         : "text-gray-700 hover:bg-gray-400 hover:text-white"
                       }`}
                     onClick={() => {
-                      setActiveTab(item.id);
-                      navigate(item.id);
+                      if (item.tab) {
+                        setActiveTab(item.id);
+                        navigate(`/dashboard/laundry?tab=${item.tab}`);
+                      } else {
+                        setActiveTab(item.id);
+                        navigate(`/dashboard/${item.id}`);
+                      }
                       setIsMobileMenuOpen(false);
                     }}
                   >

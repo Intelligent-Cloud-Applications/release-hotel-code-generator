@@ -33,6 +33,7 @@ const CheckIn = () => {
     createCompany,
     fetchCompanies,
     listTotalBill,
+    updateRoomStatus,
   } = useAppContext();
   
   const navigate = useNavigate();
@@ -51,9 +52,118 @@ const CheckIn = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isProcessingRef = useRef(false);
   const [validationErrors, setValidationErrors] = useState({});
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [roomAutoSelected, setRoomAutoSelected] = useState(false);
+
+  // Helper to find a room by room_id, id, or room_number
+  const findRoom = (idOrNum) => {
+    if (!idOrNum) return null;
+    if (typeof idOrNum === "object") return idOrNum;
+    const str = String(idOrNum).trim();
+    return (rooms || []).find(
+      (r) =>
+        String(r.room_id || "").trim() === str ||
+        String(r.id || "").trim() === str ||
+        String(r.room_number || "").trim() === str
+    );
+  };
+
+  // Helper to determine if a room is currently occupied by another checked-in guest
+  const isRoomOccupied = (roomOrId, currentBookingId = null) => {
+    if (!roomOrId) return false;
+    const room = typeof roomOrId === "object" ? roomOrId : findRoom(roomOrId);
+    const roomIdStr = String(room?.room_id || room?.id || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+    const roomNumStr = String(room?.room_number || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+
+    const checkMatch = (val) => {
+      if (!val) return false;
+      if (Array.isArray(val)) return val.some(checkMatch);
+      const str = String(val).trim();
+      return (
+        (roomIdStr && str === roomIdStr) ||
+        (roomNumStr && str === roomNumStr)
+      );
+    };
+
+    const bookingMatchesRoom = (b) => {
+      if (!b) return false;
+      return (
+        checkMatch(b.room_id) ||
+        checkMatch(b.room_ids) ||
+        checkMatch(b.room_number) ||
+        checkMatch(b.room_numbers) ||
+        checkMatch(b.roomNo) ||
+        (Array.isArray(b.rooms) && b.rooms.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number))) ||
+        (Array.isArray(b.rooms_config) && b.rooms_config.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)))
+      );
+    };
+
+    // If currentBookingId (or selectedBooking) owns this room, it's this booking's own room
+    const targetBooking =
+      selectedBooking ||
+      (currentBookingId
+        ? (bookings || []).find(
+            (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+          )
+        : null);
+
+    if (targetBooking) {
+      const myRooms = [];
+      const add = (v) => {
+        if (!v) return;
+        if (Array.isArray(v)) v.forEach(add);
+        else myRooms.push(String(v).trim().toLowerCase());
+      };
+      add(targetBooking.room_id);
+      add(targetBooking.room_ids);
+      add(targetBooking.room_number);
+      add(targetBooking.room_numbers);
+      if (Array.isArray(targetBooking.rooms_config)) {
+        targetBooking.rooms_config.forEach((rc) => {
+          add(rc.room_id);
+          add(rc.room_number);
+        });
+      }
+      if (Array.isArray(targetBooking.rooms)) {
+        targetBooking.rooms.forEach((r) => {
+          add(r.room_id);
+          add(r.room_number);
+        });
+      }
+
+      if (
+        myRooms.includes(roomIdStr.toLowerCase()) ||
+        myRooms.includes(roomNumStr.toLowerCase())
+      ) {
+        return false;
+      }
+    }
+
+    // Check if any OTHER checked-in booking occupies this room
+    const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
+      if (b.status !== "Checked-in") return false;
+      const bId = String(b.booking_id || "").trim();
+      if (
+        (selectedBooking && bId === String(selectedBooking.booking_id).trim()) ||
+        (currentBookingId && bId === String(currentBookingId).trim())
+      ) {
+        return false;
+      }
+      return bookingMatchesRoom(b);
+    });
+
+    if (isOccupiedByAnotherBooking) return true;
+
+    // Finally, if room status is Occupied in DB and not owned by current booking
+    const s = String(room?.status || "").toLowerCase().trim();
+    if (s === "occupied" || s.includes("occup")) {
+      return true;
+    }
+
+    return false;
+  };
 
   const formatToLocalDateTime = (timestamp) => {
     if (!timestamp) return "";
@@ -79,6 +189,7 @@ const CheckIn = () => {
     id_proof_image_url: "",
     nationality: "Indian",
     guest_category: "Regular",
+    marital_status: "Unmarried",
     address: "",
     city: "",
     state: "",
@@ -212,40 +323,50 @@ const CheckIn = () => {
       !roomAutoSelected && 
       (!checkInData.room_id || checkInData.room_id.length === 0)
     ) {
-      // Filter vacant/clean rooms inline (to avoid dependency on getVacantRooms)
-      const vacantRooms = rooms.filter(
-        (room) => room.status === "Clean" || room.status === "Vacant"
-      );
-      
-      // Find the room in the vacant rooms list
-      const roomToSelect = vacantRooms.find(room => {
-        const roomIdStr = String(room.room_id);
+      // Find the room in all rooms first
+      const targetRoom = rooms.find(room => {
+        const roomIdStr = String(room.room_id || room.id);
         const urlRoomIdStr = String(roomIdFromUrl);
         return roomIdStr === urlRoomIdStr;
       });
 
-      if (roomToSelect) {
-        // Room is already validated as Vacant or Clean by the filter above
-        // Auto-select the room by updating state directly (avoid dependency on handleInputChange)
-        setCheckInData(prev => ({
-          ...prev,
-          room_id: [roomToSelect.room_id]
-        }));
-        
-        // Mark as auto-selected to prevent re-selection
-        setRoomAutoSelected(true);
-        
-        // Clear the URL parameter after a short delay to allow state updates
+      if (targetRoom) {
+        if (isRoomOccupied(targetRoom, selectedBooking?.booking_id)) {
+          toast.error(
+            `Room ${targetRoom.room_number} is currently Occupied by another guest and cannot be checked in.`
+          );
+        } else {
+          const s = String(targetRoom.status || "").toLowerCase().trim();
+          const isNotReady =
+            s === "dirty" ||
+            s.includes("dirty") ||
+            s.includes("maintenance") ||
+            s.includes("order") ||
+            s.includes("block");
+
+          if (isNotReady) {
+            toast.warning(
+              `Warning: Room ${targetRoom.room_number} was selected, but is currently ${targetRoom.status || "Dirty"} (Dirty / Under Maintenance). Please clean/maintain it or select an alternate clean room.`,
+              { duration: 7000 }
+            );
+          } else {
+            // Room is Vacant and Clean
+            setCheckInData(prev => ({
+              ...prev,
+              room_id: [targetRoom.room_id]
+            }));
+            setRoomAutoSelected(true);
+            toast.success(`Room ${targetRoom.room_number} has been auto-selected for check-in`);
+          }
+        }
+
         setTimeout(() => {
           const newSearchParams = new URLSearchParams(searchParams);
           newSearchParams.delete('room_id');
           setSearchParams(newSearchParams, { replace: true });
         }, 100);
-        
-        // Show success message
-        toast.success(`Room ${roomToSelect.room_number} has been auto-selected for check-in`);
       } else {
-        // Room not found in vacant rooms, clear URL parameter
+        // Room not found in rooms list, clear URL parameter
         toast.error("Room not found or not available for check-in");
         const newSearchParams = new URLSearchParams(searchParams);
         newSearchParams.delete('room_id');
@@ -282,22 +403,116 @@ const CheckIn = () => {
       const now = new Date();
       const currentDateTime = now.getTime();
 
+      const rawPhone = String(guest?.mobile || "").trim();
+      const phoneDigits = rawPhone.replace(/\D/g, "");
+      const cleanPhone =
+        phoneDigits.length === 12 && phoneDigits.startsWith("91")
+          ? phoneDigits.slice(2)
+          : phoneDigits.length === 11 && phoneDigits.startsWith("0")
+          ? phoneDigits.slice(1)
+          : phoneDigits.length > 10
+          ? phoneDigits.slice(-10)
+          : (phoneDigits.length === 10 ? phoneDigits : rawPhone);
+
+      const rawEmail = String(guest?.email || "").trim();
+      const isPlaceholderEmail = ["n/a", "na", "-", "--", "none", "nil"].includes(rawEmail.toLowerCase());
+      const cleanEmail = isPlaceholderEmail ? "" : rawEmail;
+
+      const rawPin = String(guest?.pincode || "").trim();
+      const isPlaceholderPin = ["n/a", "na", "-", "--", "none", "nil"].includes(rawPin.toLowerCase());
+      const cleanPinDigits = rawPin.replace(/\D/g, "");
+      const cleanPin = isPlaceholderPin ? "" : (cleanPinDigits.length === 6 ? cleanPinDigits : rawPin);
+
+      let checkoutDate = selectedBooking.checkout_date;
+      if (!checkoutDate || new Date(checkoutDate) <= new Date(currentDateTime)) {
+        checkoutDate = new Date(currentDateTime + 24 * 60 * 60 * 1000).getTime();
+      }
+
+      const rawAssignedRoomIds = (Array.isArray(selectedBooking.room_id) && selectedBooking.room_id.length > 0)
+        ? selectedBooking.room_id
+        : (typeof selectedBooking.room_id === "string" && selectedBooking.room_id.trim())
+        ? [selectedBooking.room_id.trim()]
+        : (Array.isArray(selectedBooking.rooms_config) && selectedBooking.rooms_config.length > 0)
+        ? selectedBooking.rooms_config.map((r) => r.room_id || r.room_number).filter((id) => id && id !== "none")
+        : (Array.isArray(selectedBooking.rooms) && selectedBooking.rooms.length > 0)
+        ? selectedBooking.rooms.map((r) => r.room_id || r.room_number).filter((id) => id && id !== "none")
+        : (selectedBooking.room_number ? [selectedBooking.room_number] : []);
+
+      const validSelectableRoomIds = [];
+      const notReadyRoomsFound = [];
+      const occupiedRoomsFound = [];
+
+      rawAssignedRoomIds.forEach((rid) => {
+        const rObj = findRoom(rid);
+        const roomNumber = rObj?.room_number || rid;
+
+        if (isRoomOccupied(rObj || rid, selectedBooking.booking_id)) {
+          occupiedRoomsFound.push({
+            roomNumber,
+            status: "Occupied",
+          });
+          return;
+        }
+
+        if (rObj) {
+          const s = String(rObj.status || "").toLowerCase().trim();
+          const isNotReady =
+            s === "dirty" ||
+            s.includes("dirty") ||
+            s.includes("maintenance") ||
+            s.includes("order") ||
+            s.includes("block");
+
+          if (isNotReady) {
+            notReadyRoomsFound.push({
+              roomNumber,
+              status: rObj.status || "Dirty",
+            });
+            return;
+          }
+          validSelectableRoomIds.push(rObj.room_id || rid);
+        } else {
+          validSelectableRoomIds.push(rid);
+        }
+      });
+
+      if (occupiedRoomsFound.length > 0) {
+        const details = occupiedRoomsFound
+          .map((r) => `Room ${r.roomNumber}`)
+          .join(", ");
+        toast.error(
+          `Alert: ${details} was assigned to this reservation, but is currently OCCUPIED by another guest. It has been unselected. Please select a vacant room.`,
+          { duration: 8000 }
+        );
+      }
+
+      if (notReadyRoomsFound.length > 0) {
+        const details = notReadyRoomsFound
+          .map((r) => `Room ${r.roomNumber} (${r.status})`)
+          .join(", ");
+        toast.warning(
+          `Notice: ${details} was assigned at booking, but is currently not ready (Dirty / Under Maintenance). Please clean or maintain it, or select an alternate clean room before check-in.`,
+          { duration: 8000 }
+        );
+      }
+
       setCheckInData({
         // Guest Details
         full_name: guest?.full_name || "",
-        mobile: guest?.mobile || "",
-        email: guest?.email || "",
-        gender: guest?.gender || "",
+        mobile: cleanPhone || "",
+        email: cleanEmail || "",
+        gender: guest?.gender || "Male",
         id_proof_type: guest?.id_proof_type || "",
         id_proof_number: guest?.id_proof_number || "",
         id_proof_image_url: guest?.id_proof_image_url || "",
         nationality: guest?.nationality || "Indian",
         guest_category: guest?.guest_category || "Regular",
+        marital_status: guest?.marital_status || "Unmarried",
         address: guest?.address || "",
         city: guest?.city || "",
         state: guest?.state || "",
         country: guest?.country || "India",
-        pincode: guest?.pincode || "",
+        pincode: cleanPin || "",
         
         // Booking Details
         booking_id: selectedBooking.booking_id,
@@ -305,11 +520,11 @@ const CheckIn = () => {
         booking_type: selectedBooking.booking_type || "Walk-in",
         booking_date: selectedBooking.booking_date,
         checkin_date: currentDateTime,
-        checkout_date: selectedBooking.checkout_date,
-        room_type: selectedBooking.room_type,
-        room_id: selectedBooking.room_id || [],
-        no_of_adults: selectedBooking.no_of_adults,
-        no_of_children: selectedBooking.no_of_children,
+        checkout_date: checkoutDate,
+        room_type: selectedBooking.room_category || selectedBooking.room_type || "",
+        room_id: validSelectableRoomIds,
+        no_of_adults: selectedBooking.no_of_persons || selectedBooking.no_of_adults || 1,
+        no_of_children: selectedBooking.no_of_children || 0,
         company_id: selectedBooking.company_id || "",
         company_name: selectedBooking.company_name || "",
         gst_no: selectedBooking.gst_no || "",
@@ -317,23 +532,25 @@ const CheckIn = () => {
         partial_payment_amount: selectedBooking.partial_payment_amount || 0,
         advance_payment_mode: selectedBooking.advance_payment_mode || "",
         advance_payment_upi_mode: selectedBooking.advance_payment_upi_mode || "",
-        booking_source: selectedBooking.booking_source,
+        booking_source: selectedBooking.booking_source || "Direct",
         remarks: selectedBooking.remarks || "",
         special_requests: selectedBooking.special_requests || "",
         status: selectedBooking.status || "Checked-in",
         assigned_staff_id: selectedBooking.assigned_staff_id || "",
-        rate_plan_id: selectedBooking.rate_plan_id,
+        rate_plan_id: selectedBooking.rate_plan_id || (ratePlans?.[0]?.plan_id || ""),
         grc_no: "",
       });
     }
-  }, [selectedBooking, guests]);
+  }, [selectedBooking, guests, ratePlans]);
 
   // Get vacant rooms for assignment - memoized to prevent unnecessary recalculations
   const getVacantRooms = useMemo(() => {
     return rooms.filter(
-      (room) => room.status === "Clean" || room.status === "Vacant"
+      (room) =>
+        (room.status === "Clean" || room.status === "Vacant") &&
+        !isRoomOccupied(room, selectedBooking?.booking_id)
     );
-  }, [rooms]);
+  }, [rooms, bookings, selectedBooking?.booking_id]);
 
   const reservedBookings = useMemo(() => 
     bookings.filter((booking) => booking.status === "Reserved"),
@@ -358,6 +575,24 @@ const CheckIn = () => {
     setSelectedBooking(booking);
     setIsModalOpen(false);
     setValidationErrors({});
+    setHasAttemptedSubmit(false);
+  };
+
+  const handleBookingUpdated = (updatedBooking, updatedGuest) => {
+    setSelectedBooking(updatedBooking);
+    if (updatedGuest) {
+      setSelectedGuest(updatedGuest);
+    }
+    setCheckInData((prev) => ({
+      ...prev,
+      full_name: updatedGuest?.full_name || updatedBooking?.full_name || prev.full_name,
+      mobile: updatedGuest?.mobile || updatedBooking?.mobile || prev.mobile,
+      email: updatedGuest?.email || updatedBooking?.email || prev.email,
+      room_type: updatedBooking?.room_category || updatedBooking?.room_type || prev.room_type,
+      no_of_adults: updatedBooking?.no_of_persons || updatedBooking?.no_of_adults || prev.no_of_adults,
+      checkin_date: updatedBooking?.checkin_date || prev.checkin_date,
+      checkout_date: updatedBooking?.checkout_date || prev.checkout_date,
+    }));
   };
 
   const handleDialogOpen = async (open) => {
@@ -391,6 +626,21 @@ const CheckIn = () => {
       setHasUserInteracted(true);
     }
     
+    // Support object for batch updating multiple fields
+    if (typeof field === "object" && field !== null) {
+      setCheckInData((prev) => {
+        const updated = {
+          ...prev,
+          ...field,
+        };
+        if (field.room_id !== undefined || field.rate_plan_id !== undefined) {
+          delete updated.manual_base_tariff;
+        }
+        return updated;
+      });
+      return;
+    }
+
     // Input validation
     if (field === "discount") {
       // Allow empty string for clearing the field
@@ -405,182 +655,228 @@ const CheckIn = () => {
       value = 0;
     }
 
-    setCheckInData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setCheckInData((prev) => {
+      const updated = {
+        ...prev,
+        [field]: value,
+      };
+      if (field === "room_id" || field === "rate_plan_id") {
+        delete updated.manual_base_tariff;
+      }
+      return updated;
+    });
   };
 
-  // Validation function
-  const validateForm = () => {
+  // Pure validation calculation
+  const getValidationErrors = (data = checkInData) => {
     const errors = {};
 
-    // Guest Details Validation
-    if (!checkInData.full_name || checkInData.full_name.trim() === "") {
+    // 1. Full Name *
+    if (!data.full_name || !String(data.full_name).trim()) {
       errors.full_name = "Full name is required";
     }
 
-    if (!checkInData.mobile || checkInData.mobile.trim() === "") {
+    // 2. Mobile *
+    const rawMobile = String(data.mobile || "").trim();
+    const cleanDigits = rawMobile.replace(/\D/g, "");
+    const normalizedMobile =
+      cleanDigits.length === 12 && cleanDigits.startsWith("91")
+        ? cleanDigits.slice(2)
+        : cleanDigits.length === 11 && cleanDigits.startsWith("0")
+        ? cleanDigits.slice(1)
+        : cleanDigits.length > 10
+        ? cleanDigits.slice(-10)
+        : cleanDigits;
+
+    if (!rawMobile) {
       errors.mobile = "Mobile number is required";
-    } else if (!/^\d{10}$/.test(checkInData.mobile)) {
+    } else if (normalizedMobile.length !== 10) {
       errors.mobile = "Mobile number must be 10 digits";
     }
 
-    if (checkInData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkInData.email)) {
-      errors.email = "Please enter a valid email address";
+    // 3. Gender *
+    if (!data.gender || !String(data.gender).trim()) {
+      errors.gender = "Gender is required";
     }
 
-    if (!checkInData.gender) {
-      errors.gender = "Please select gender";
+    // 4. ID Proof Type *
+    if (!data.id_proof_type || !String(data.id_proof_type).trim()) {
+      errors.id_proof_type = "ID proof type is required";
     }
 
-    if (!checkInData.id_proof_type) {
-      errors.id_proof_type = "Please select ID proof type";
-    }
-
-    if (!checkInData.id_proof_number || checkInData.id_proof_number.trim() === "") {
+    // 5. ID Proof Number *
+    if (!data.id_proof_number || !String(data.id_proof_number).trim()) {
       errors.id_proof_number = "ID proof number is required";
     }
 
-    if (!checkInData.nationality || checkInData.nationality.trim() === "") {
+    // 6. Nationality *
+    if (!data.nationality || !String(data.nationality).trim()) {
       errors.nationality = "Nationality is required";
     }
 
-    if (!checkInData.guest_category || checkInData.guest_category.trim() === "") {
-      errors.guest_category = "Please select guest category";
-    }
-
-    if (!checkInData.address || checkInData.address.trim() === "") {
+    // 7. Address *
+    if (!data.address || !String(data.address).trim()) {
       errors.address = "Address is required";
     }
 
-    if (!checkInData.city || checkInData.city.trim() === "") {
+    // 8. City *
+    if (!data.city || !String(data.city).trim()) {
       errors.city = "City is required";
     }
 
-    if (!checkInData.state || checkInData.state.trim() === "") {
+    // 9. State *
+    if (!data.state || !String(data.state).trim()) {
       errors.state = "State is required";
     }
 
-    if (!checkInData.country || checkInData.country.trim() === "") {
+    // 10. Country *
+    if (!data.country || !String(data.country).trim()) {
       errors.country = "Country is required";
     }
 
-    if (!checkInData.pincode || checkInData.pincode.trim() === "") {
+    // 11. Pincode *
+    const pinStr = String(data.pincode || "").trim();
+    const isPlaceholderPin = ["n/a", "na", "-", "--", "none", "nil"].includes(pinStr.toLowerCase());
+    const cleanPin = pinStr.replace(/\D/g, "");
+    if (!pinStr || isPlaceholderPin) {
       errors.pincode = "Pincode is required";
-    } else if (!/^\d{6}$/.test(checkInData.pincode)) {
+    } else if (cleanPin.length !== 6) {
       errors.pincode = "Pincode must be 6 digits";
     }
 
-    // Booking Details Validation
-    // Note: Booking selection is optional when form is shown directly
-    // Users can fill in guest details manually for walk-in guests
-
-    if (!checkInData.checkin_date) {
-      errors.checkin_date = "Check-in date is required";
+    // 12. Guest Category *
+    if (!data.guest_category || !String(data.guest_category).trim()) {
+      errors.guest_category = "Guest category is required";
     }
 
-    if (!checkInData.checkout_date) {
-      errors.checkout_date = "Check-out date is required";
+    // 13. Marital Status *
+    if (!data.marital_status || !String(data.marital_status).trim()) {
+      errors.marital_status = "Marital status is required";
     }
 
-    if (!checkInData.room_id || checkInData.room_id.length === 0) {
-      errors.room_id = "Please assign at least one room";
+    // 14. Check-in Type *
+    if (!data.booking_type || !String(data.booking_type).trim()) {
+      errors.booking_type = "Check-in type is required";
     }
 
-    if (!checkInData.no_of_adults || checkInData.no_of_adults < 1) {
+    // 15. Number of Adults *
+    if (!data.no_of_adults || data.no_of_adults < 1) {
       errors.no_of_adults = "At least 1 adult is required";
+    } else if (data.no_of_adults > 10) {
+      errors.no_of_adults = "Maximum 10 adults allowed";
     }
 
-    // Staff assignment validation removed since the field is commented out in the form
-    // if (!checkInData.assigned_staff_id) {
-    //   errors.assigned_staff_id = "Please assign a staff member";
-    // }
-
-    if (!checkInData.booking_type) {
-      errors.booking_type = "Please select a booking type";
+    if (data.no_of_children && data.no_of_children > 5) {
+      errors.no_of_children = "Maximum 5 children allowed";
     }
 
-
-    if (!checkInData.rate_plan_id) {
+    // 16. Rate Plan *
+    if (!data.rate_plan_id || !String(data.rate_plan_id).trim()) {
       errors.rate_plan_id = "Please select a rate plan";
     }
 
-    if (checkInData.checkin_date && checkInData.checkout_date) {
-      if (
-        new Date(checkInData.checkout_date) <=
-        new Date(checkInData.checkin_date)
-      ) {
-        errors.checkout_date = "Check-out date must be after check-in date";
+    // 17. Check-in Date *
+    if (!data.checkin_date) {
+      errors.checkin_date = "Check-in date is required";
+    }
+
+    // 18. Check-out Date *
+    if (!data.checkout_date) {
+      errors.checkout_date = "Check-out date is required";
+    } else if (data.checkin_date && new Date(data.checkout_date) <= new Date(data.checkin_date)) {
+      errors.checkout_date = "Check-out date must be after check-in date";
+    }
+
+    // 19. Room(s) *
+    if (!data.room_id || (Array.isArray(data.room_id) && data.room_id.length === 0)) {
+      errors.room_id = "Please assign at least one room";
+    } else {
+      const selectedIds = Array.isArray(data.room_id) ? data.room_id : [data.room_id];
+      const occupiedSelected = [];
+      selectedIds.forEach((rid) => {
+        if (isRoomOccupied(rid, selectedBooking?.booking_id)) {
+          const rObj = findRoom(rid);
+          occupiedSelected.push(rObj?.room_number || rid);
+        }
+      });
+      if (occupiedSelected.length > 0) {
+        errors.room_id = `Room ${occupiedSelected.join(", ")} is currently Occupied by another guest. Please select a vacant room.`;
       }
     }
 
     if (
-      checkInData.discount !== undefined && checkInData.discount !== null &&
-      (isNaN(checkInData.discount) ||
-        checkInData.discount < 0)
+      data.discount !== undefined && data.discount !== null &&
+      (isNaN(data.discount) || data.discount < 0)
     ) {
       errors.discount = "Discount must be 0 or greater";
     }
 
     if (
-      checkInData.partial_payment_amount &&
-      (isNaN(checkInData.partial_payment_amount) ||
-        checkInData.partial_payment_amount < 0)
+      data.partial_payment_amount &&
+      (isNaN(data.partial_payment_amount) || data.partial_payment_amount < 0)
     ) {
-      errors.partial_payment_amount =
-        "Partial payment amount must be 0 or greater";
+      errors.partial_payment_amount = "Partial payment amount must be 0 or greater";
     }
 
-    // Validate advance payment mode if partial payment amount is provided
+    // 20. Advance Payment Mode * (if partial payment > 0)
     if (
-      checkInData.partial_payment_amount &&
-      checkInData.partial_payment_amount > 0 &&
-      !checkInData.advance_payment_mode
+      data.partial_payment_amount &&
+      data.partial_payment_amount > 0 &&
+      !data.advance_payment_mode
     ) {
       errors.advance_payment_mode = "Please select advance payment mode";
     }
 
-    // Validate UPI platform if UPI is selected as payment mode
+    // 21. UPI Platform * (if UPI selected)
     if (
-      checkInData.advance_payment_mode === "UPI" &&
-      !checkInData.advance_payment_upi_mode
+      data.partial_payment_amount > 0 &&
+      data.advance_payment_mode === "UPI" &&
+      !data.advance_payment_upi_mode
     ) {
       errors.advance_payment_upi_mode = "Please select UPI platform";
     }
 
-    if (checkInData.no_of_adults && checkInData.no_of_adults > 10) {
-      errors.no_of_adults = "Maximum 10 adults allowed";
-    }
+    return errors;
+  };
 
-    if (checkInData.no_of_children && checkInData.no_of_children > 5) {
-      errors.no_of_children = "Maximum 5 children allowed";
+  // Validation function
+  const validateForm = (forceShow = false) => {
+    const errors = getValidationErrors(checkInData);
+    if (forceShow || hasAttemptedSubmit) {
+      setValidationErrors(errors);
     }
-
-    // Only show validation errors if user has interacted with the form
-    if (hasUserInteracted) {
-    setValidationErrors(errors);
-    }
-    
     return Object.keys(errors).length === 0;
   };
 
-  // Run validation whenever form data changes
+  // Run validation whenever form data changes, but ONLY after user has attempted submit
   useEffect(() => {
-    validateForm();
-  }, [checkInData]);
+    if (hasAttemptedSubmit) {
+      const errors = getValidationErrors(checkInData);
+      setValidationErrors(errors);
+    }
+  }, [checkInData, hasAttemptedSubmit]);
 
   // Calculate final price when rate plan, room, or discount changes
   useEffect(() => {
     let basePrice = 0;
     let roomPrice = 0;
 
+    const numRooms = Math.max(
+      1,
+      Array.isArray(checkInData.room_id) && checkInData.room_id.length > 0
+        ? checkInData.room_id.length
+        : 1
+    );
+
     if (checkInData.rate_plan_id && ratePlans) {
       const selectedPlan = ratePlans.find(
         (plan) => plan.plan_id === checkInData.rate_plan_id
       );
       if (selectedPlan) {
-        basePrice = selectedPlan.base_tariff;
+        const unitTariff = parseFloat(selectedPlan.base_tariff) || 0;
+        basePrice = checkInData.manual_base_tariff !== undefined
+          ? (parseFloat(checkInData.manual_base_tariff) || 0)
+          : unitTariff * numRooms;
         setBaseTariff(basePrice);
       }
     }
@@ -595,18 +891,18 @@ const CheckIn = () => {
     // Always set room tariff, even when no rooms are selected (set to 0)
     setRoomTariff(roomPrice);
 
-    let nights = 0;
+    let nights = 1;
     if (checkInData.checkin_date && checkInData.checkout_date) {
-      const checkinDate = new Date(checkInData.checkin_date);
-      const checkoutDate = new Date(checkInData.checkout_date);
-      const timeDiff = checkoutDate.getTime() - checkinDate.getTime();
-      nights = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-
-      if (nights < 1) {
-        nights = 1;
-      }
-    } else {
-      nights = 1;
+      const cin = new Date(
+        new Date(checkInData.checkin_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const cout = new Date(
+        new Date(checkInData.checkout_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const cinDay = new Date(cin.getFullYear(), cin.getMonth(), cin.getDate());
+      const coutDay = new Date(cout.getFullYear(), cout.getMonth(), cout.getDate());
+      const dayDiff = Math.round((coutDay.getTime() - cinDay.getTime()) / (1000 * 60 * 60 * 24));
+      nights = Math.max(1, dayDiff);
     }
     setNumberOfNights(nights);
 
@@ -757,10 +1053,16 @@ const CheckIn = () => {
     }
 
     // Force show validation errors when user tries to submit
-    setHasUserInteracted(true);
+    setHasAttemptedSubmit(true);
+    const errors = getValidationErrors(checkInData);
+    setValidationErrors(errors);
 
-    if (!validateForm()) {
-      toast.error("Please fix the validation errors before submitting");
+    if (Object.keys(errors).length > 0) {
+      const errorList = Object.values(errors);
+      toast.error(
+        `Please fill all required star (*) marked fields: ${errorList.slice(0, 3).join(", ")}${errorList.length > 3 ? ` and ${errorList.length - 3} more` : ''}`,
+        { duration: 6000 }
+      );
       return;
     }
 
@@ -810,18 +1112,57 @@ const CheckIn = () => {
       // Generate services data for each selected room
       const services = {};
       const selectedRoomIds = checkInData.room_id || [];
+
+      // Check if any selected room is currently occupied
+      const occupiedInSelection = [];
+      (selectedRoomIds || []).forEach((rid) => {
+        if (isRoomOccupied(rid, selectedBooking?.booking_id)) {
+          const rObj = findRoom(rid);
+          occupiedInSelection.push(rObj?.room_number || rid);
+        }
+      });
+      if (occupiedInSelection.length > 0) {
+        toast.error(
+          `Cannot check in: Room ${occupiedInSelection.join(", ")} is currently Occupied by another guest. Please assign a vacant room.`
+        );
+        setIsSubmitting(false);
+        isProcessingRef.current = false;
+        return;
+      }
       
+      // Generate services for each day of stay using Indian calendar dates
+      const cinDate = new Date(
+        new Date(checkInData.checkin_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const coutDate = new Date(
+        new Date(checkInData.checkout_date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const cinDay = new Date(cinDate.getFullYear(), cinDate.getMonth(), cinDate.getDate());
+      const coutDay = new Date(coutDate.getFullYear(), coutDate.getMonth(), coutDate.getDate());
+
+      const stayDates = [];
+      let curr = new Date(cinDay);
+      if (curr >= coutDay) {
+        const y = curr.getFullYear();
+        const m = String(curr.getMonth() + 1).padStart(2, "0");
+        const d = String(curr.getDate()).padStart(2, "0");
+        stayDates.push(`${y}-${m}-${d}`);
+      } else {
+        while (curr < coutDay) {
+          const y = curr.getFullYear();
+          const m = String(curr.getMonth() + 1).padStart(2, "0");
+          const d = String(curr.getDate()).padStart(2, "0");
+          stayDates.push(`${y}-${m}-${d}`);
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+
       selectedRoomIds.forEach(roomId => {
-        const room = rooms.find(r => r.room_id === roomId);
+        const room = findRoom(roomId);
         if (room) {
           services[room.room_number] = {};
           
-          // Generate services for each day of stay
-          const checkinDate = new Date(checkInData.checkin_date);
-          const checkoutDate = new Date(checkInData.checkout_date);
-          
-          for (let d = new Date(checkinDate); d < checkoutDate; d.setDate(d.getDate() + 1)) {
-            const dateKey = d.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+          stayDates.forEach((dateKey) => {
             services[room.room_number][dateKey] = {
               extra_bed_charges: 0,
               food_charges: 0,
@@ -829,7 +1170,7 @@ const CheckIn = () => {
               manual_charges: 0,
               minibar_charges: 0
             };
-          }
+          });
         }
       });
 
@@ -856,16 +1197,39 @@ const CheckIn = () => {
       const year = now.getFullYear();
       const hours = String(now.getHours()).padStart(2, "0");
       const minutes = String(now.getMinutes()).padStart(2, "0");
-      const phoneNumber = checkInData.mobile || "0000000000";
+      const rawMobile = String(checkInData.mobile || "").trim();
+      const cleanDigits = rawMobile.replace(/\D/g, "");
+      const normalizedMobile =
+        cleanDigits.length === 12 && cleanDigits.startsWith("91")
+          ? cleanDigits.slice(2)
+          : cleanDigits.length === 11 && cleanDigits.startsWith("0")
+          ? cleanDigits.slice(1)
+          : cleanDigits.length > 10
+          ? cleanDigits.slice(-10)
+          : (cleanDigits.length === 10 ? cleanDigits : checkInData.mobile);
+
+      const phoneNumber = normalizedMobile || "0000000000";
       const customBookingId = `${phoneNumber}_${day}${month}${year}_${hours}${minutes}`;
 
       const grcNo = nextGrcNumber;
       const checkInSequenceNumber = nextCheckInNumber;
       const billSequenceNumber = nextBillNumber;
 
+      const selectedRoomNumbers = (selectedRoomIds || []).map(rid => findRoom(rid)?.room_number || rid);
+      const roomCount = (selectedRoomIds && selectedRoomIds.length > 0) ? selectedRoomIds.length : (selectedBooking?.no_of_rooms || 1);
+
       const finalCheckInData = {
         ...checkInData,
+        mobile: normalizedMobile || checkInData.mobile,
         status: "Checked-in",
+        room_type: checkInData.room_type || selectedBooking?.room_category || selectedBooking?.room_type || "",
+        room_category: checkInData.room_type || selectedBooking?.room_category || selectedBooking?.room_type || "",
+        room_id: selectedRoomIds,
+        room_ids: selectedRoomIds,
+        room_numbers: selectedRoomNumbers,
+        room_number: selectedRoomNumbers.join(", "),
+        no_of_rooms: roomCount,
+        number_of_rooms: roomCount,
         company_id: companyId || checkInData.company_id || "",
         company_name: checkInData.company_name || "N/A",
         gst_no: checkInData.gst_no || "N/A",
@@ -892,6 +1256,20 @@ const CheckIn = () => {
       
       // Wait for the API call to complete
       await checkInGuest({ checkInData: finalCheckInData });
+
+      // Update room statuses to Occupied in rooms table
+      if (typeof updateRoomStatus === "function" && Array.isArray(finalCheckInData.room_id)) {
+        for (const rid of finalCheckInData.room_id) {
+          try {
+            await updateRoomStatus(rid, "Occupied");
+          } catch (statusErr) {
+            console.warn("Could not update room status to Occupied:", statusErr);
+          }
+        }
+      }
+      if (typeof fetchRooms === "function") {
+        fetchRooms().catch((err) => console.error("Error refreshing rooms:", err));
+      }
       
       // If payment is cash and partial payment amount > 0, add to cash drawer as received
       if (finalCheckInData.advance_payment_mode === "Cash" && finalCheckInData.partial_payment_amount > 0) {
@@ -947,6 +1325,7 @@ const CheckIn = () => {
       id_proof_image_url: "",
       nationality: "Indian",
       guest_category: "Regular",
+      marital_status: "Unmarried",
       address: "",
       city: "",
       state: "",
@@ -980,16 +1359,12 @@ const CheckIn = () => {
       grc_no: "",
     });
     setValidationErrors({});
+    setHasAttemptedSubmit(false);
     setHasUserInteracted(false);
   };
 
-  const hasValidationErrors = Object.keys(validationErrors).length > 0;
-  const isFormValid =
-    checkInData.full_name &&
-    checkInData.mobile &&
-    (checkInData.room_id && checkInData.room_id.length > 0) &&
-    checkInData.checkout_date &&
-    checkInData.rate_plan_id;
+  const hasValidationErrors = hasAttemptedSubmit && Object.keys(validationErrors).length > 0;
+  const isFormValid = Object.keys(getValidationErrors(checkInData)).length === 0;
 
   if (pageLoading) {
     return <LoadingState message="Loading check-in system..." />;
@@ -1021,7 +1396,7 @@ const CheckIn = () => {
                 guests={guests}
                 handleBookingSelect={handleBookingSelect}
                 formatDate={formatDate}
-                validationErrors={validationErrors}
+                validationErrors={hasAttemptedSubmit ? validationErrors : {}}
               />
             </div>
           </div>
@@ -1029,22 +1404,23 @@ const CheckIn = () => {
           {/* Main Content */}
           <div className="p-6">
             <div className="space-y-6">
+              {hasAttemptedSubmit && Object.keys(validationErrors).length > 0 && (
+                <ValidationSummary validationErrors={validationErrors} />
+              )}
+
               {selectedBooking && (
-                <>
-                  <ValidationSummary validationErrors={validationErrors} />
-                  
-                  <SelectedBookingInfo 
-                    selectedBooking={selectedBooking}
-                    selectedGuest={selectedGuest}
-                    formatDate={formatDate}
-                  />
-                </>
+                <SelectedBookingInfo 
+                  selectedBooking={selectedBooking}
+                  selectedGuest={selectedGuest}
+                  formatDate={formatDate}
+                  onBookingUpdated={handleBookingUpdated}
+                />
               )}
 
               <CheckInForm
                 checkInData={checkInData}
                 handleInputChange={handleInputChange}
-                validationErrors={validationErrors}
+                validationErrors={hasAttemptedSubmit ? validationErrors : {}}
                 formatToLocalDateTime={formatToLocalDateTime}
                 parseLocalDateTime={parseLocalDateTime}
                 getVacantRooms={getVacantRooms}
@@ -1056,6 +1432,8 @@ const CheckIn = () => {
                 nextCheckInNumber={nextCheckInNumber}
                 nextBillNumber={nextBillNumber}
                 bills={bills}
+                guests={guests}
+                selectedBooking={selectedBooking}
               />
 
               {(checkInData.rate_plan_id || (checkInData.room_id && checkInData.room_id.length > 0)) && (

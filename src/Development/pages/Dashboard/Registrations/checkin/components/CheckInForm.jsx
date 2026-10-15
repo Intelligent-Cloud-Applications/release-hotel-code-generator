@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { toast } from "sonner";
 import { Input } from "../../../../../components/ui/input.js";
 import { Label } from "../../../../../components/ui/label.js";
 import { Button } from "../../../../../components/ui/button.js";
@@ -50,10 +51,21 @@ const CheckInForm = ({
   nextCheckInNumber,
   nextBillNumber,
   bills = [],
+  guests: propGuests = [],
+  selectedBooking,
 }) => {
-  const { companies = [], createCompany } = useAppContext?.() || {
+  const {
+    companies = [],
+    createCompany,
+    guests: contextGuests = [],
+    rooms = [],
+    bookings = [],
+  } = useAppContext?.() || {
     companies: [],
-    createCompany: null
+    createCompany: null,
+    guests: [],
+    rooms: [],
+    bookings: [],
   };
 
   // Auto-create company control
@@ -68,43 +80,110 @@ const CheckInForm = ({
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
   const [createCompanyError, setCreateCompanyError] = useState("");
 
-  // ── Guest auto-suggestion from bills ──
+  // Helpers to sanitize guest data from history/bills
+  const cleanMobileNumber = useCallback((val) => {
+    if (!val) return "";
+    const d = String(val).replace(/\D/g, "");
+    if (d.length === 12 && d.startsWith("91")) return d.slice(2);
+    if (d.length === 11 && d.startsWith("0")) return d.slice(1);
+    if (d.length > 10) return d.slice(-10);
+    return d;
+  }, []);
+
+  const cleanEmail = useCallback((val) => {
+    if (!val) return "";
+    const str = String(val).trim();
+    if (["n/a", "na", "-", "--", "none", "nil", "null", "undefined"].includes(str.toLowerCase())) {
+      return "";
+    }
+    return str;
+  }, []);
+
+  const cleanPincode = useCallback((val) => {
+    if (!val) return "";
+    const str = String(val).trim();
+    if (["n/a", "na", "-", "--", "none", "nil", "null", "undefined"].includes(str.toLowerCase())) {
+      return "";
+    }
+    const match = str.match(/\b\d{6}\b/);
+    if (match) return match[0];
+    const d = str.replace(/\D/g, "");
+    if (d.length === 6) return d;
+    return str;
+  }, []);
+
+  // ── Guest auto-suggestion from bills and existing guest records ──
   const [guestQuery, setGuestQuery] = useState("");
   const [showGuestSuggestions, setShowGuestSuggestions] = useState(false);
   const guestSuggestionRef = useRef(null);
 
-  // Extract unique guests from bills data for auto-suggestion
+  // Extract unique guests from both database guests and bills data for auto-suggestion
   const billGuests = useMemo(() => {
-    if (!Array.isArray(bills) || bills.length === 0) return [];
     const guestMap = new Map();
-    bills.forEach((billWrapper) => {
-      const bill = billWrapper?.bill || billWrapper;
-      const gd = bill?.guestDetails || {};
-      const name = gd.guestName || gd.full_name || gd.guest_name || "";
-      const mobile = gd.mobile || gd.phone || "";
-      if (!name.trim()) return;
-      // Use name+mobile as unique key to de-duplicate
-      const key = `${name.trim().toLowerCase()}_${mobile.trim()}`;
-      if (!guestMap.has(key)) {
-        guestMap.set(key, {
-          full_name: name.trim(),
-          mobile: mobile.trim(),
-          email: gd.email || "",
-          gender: gd.gender || "",
-          id_proof_type: gd.idProofType || gd.id_proof_type || "",
-          id_proof_number: gd.idProofNumber || gd.id_proof_number || "",
-          nationality: gd.nationality || "Indian",
-          address: gd.address || "",
-          city: gd.city || "",
-          state: gd.state || "",
-          country: gd.country || "India",
-          pincode: gd.pinCode || gd.pincode || "",
-          guest_category: gd.guest_category || gd.guestCategory || "Regular",
-        });
-      }
-    });
+
+    const dbGuests = (propGuests && propGuests.length > 0) ? propGuests : (contextGuests || []);
+    if (Array.isArray(dbGuests)) {
+      dbGuests.forEach((g) => {
+        const name = g.full_name || g.guest_name || "";
+        const mobile = g.mobile || g.phone || "";
+        if (!name.trim()) return;
+        const cleanPhone = cleanMobileNumber(mobile);
+        const key = `${name.trim().toLowerCase()}_${cleanPhone}`;
+        if (!guestMap.has(key)) {
+          guestMap.set(key, {
+            guest_id: g.guest_id || g.id || "",
+            full_name: name.trim(),
+            mobile: cleanPhone || (mobile ? String(mobile).trim() : ""),
+            email: cleanEmail(g.email),
+            gender: g.gender || "",
+            id_proof_type: g.id_proof_type || g.idProofType || "",
+            id_proof_number: g.id_proof_number || g.idProofNumber || "",
+            nationality: g.nationality || "Indian",
+            address: g.address || "",
+            city: g.city || "",
+            state: g.state || "",
+            country: g.country || "India",
+            pincode: cleanPincode(g.pincode || g.pinCode),
+            guest_category: g.guest_category || g.guestCategory || "Regular",
+            marital_status: g.marital_status || g.maritalStatus || "Unmarried",
+          });
+        }
+      });
+    }
+
+    if (Array.isArray(bills)) {
+      bills.forEach((billWrapper) => {
+        const bill = billWrapper?.bill || billWrapper;
+        const gd = bill?.guestDetails || {};
+        const name = gd.guestName || gd.full_name || gd.guest_name || "";
+        const mobile = gd.mobile || gd.phone || "";
+        if (!name.trim()) return;
+        const cleanPhone = cleanMobileNumber(mobile);
+        const key = `${name.trim().toLowerCase()}_${cleanPhone}`;
+        if (!guestMap.has(key)) {
+          guestMap.set(key, {
+            guest_id: gd.guest_id || gd.guestId || "",
+            full_name: name.trim(),
+            mobile: cleanPhone || (mobile ? String(mobile).trim() : ""),
+            email: cleanEmail(gd.email),
+            gender: gd.gender || "",
+            id_proof_type: gd.idProofType || gd.id_proof_type || "",
+            id_proof_number: gd.idProofNumber || gd.id_proof_number || "",
+            nationality: gd.nationality || "Indian",
+            address: gd.address || "",
+            city: gd.city || "",
+            state: gd.state || "",
+            country: gd.country || "India",
+            pincode: cleanPincode(gd.pinCode || gd.pincode),
+            guest_category: gd.guest_category || gd.guestCategory || "Regular",
+            marital_status: gd.marital_status || gd.maritalStatus || "Unmarried",
+          });
+        }
+      });
+    }
+
     return Array.from(guestMap.values());
-  }, [bills]);
+  }, [bills, propGuests, contextGuests, cleanMobileNumber, cleanEmail, cleanPincode]);
 
   // Filter guest suggestions based on query
   const filteredGuestSuggestions = useMemo(() => {
@@ -124,21 +203,29 @@ const CheckInForm = ({
     setGuestQuery(guest.full_name);
     setShowGuestSuggestions(false);
 
-    // Auto-fill all guest fields
-    handleInputChange("full_name", guest.full_name);
-    handleInputChange("mobile", guest.mobile);
-    if (guest.email) handleInputChange("email", guest.email);
-    if (guest.gender) handleInputChange("gender", guest.gender);
-    if (guest.id_proof_type) handleInputChange("id_proof_type", guest.id_proof_type);
-    if (guest.id_proof_number) handleInputChange("id_proof_number", guest.id_proof_number);
-    if (guest.nationality) handleInputChange("nationality", guest.nationality);
-    if (guest.address) handleInputChange("address", guest.address);
-    if (guest.city) handleInputChange("city", guest.city);
-    if (guest.state) handleInputChange("state", guest.state);
-    if (guest.country) handleInputChange("country", guest.country);
-    if (guest.pincode) handleInputChange("pincode", guest.pincode);
-    if (guest.guest_category) handleInputChange("guest_category", guest.guest_category);
-  }, [handleInputChange]);
+    const cleanedMobile = cleanMobileNumber(guest.mobile) || guest.mobile || "";
+    const cleanedEmail = cleanEmail(guest.email) || guest.email || "";
+    const cleanedPincode = cleanPincode(guest.pincode) || guest.pincode || "";
+
+    // Auto-fill all guest fields in one batch update
+    handleInputChange({
+      full_name: guest.full_name || "",
+      mobile: cleanedMobile,
+      email: cleanedEmail || "",
+      gender: guest.gender || "Male",
+      id_proof_type: guest.id_proof_type || "",
+      id_proof_number: guest.id_proof_number || "",
+      nationality: guest.nationality || "Indian",
+      address: guest.address || "",
+      city: guest.city || "",
+      state: guest.state || "",
+      country: guest.country || "India",
+      pincode: cleanedPincode || "",
+      guest_category: guest.guest_category || "Regular",
+      marital_status: guest.marital_status || "Unmarried",
+      ...(guest.guest_id ? { guest_id: guest.guest_id } : {}),
+    });
+  }, [handleInputChange, cleanMobileNumber, cleanEmail, cleanPincode]);
 
   // Handle name input change for guest suggestion
   const handleNameInputChange = useCallback((value) => {
@@ -412,19 +499,125 @@ const CheckInForm = ({
     }
   };
 
+  // Helper to find a room by room_id, id, or room_number
+  const findRoom = useCallback(
+    (idOrNum) => {
+      if (!idOrNum) return null;
+      if (typeof idOrNum === "object") return idOrNum;
+      const str = String(idOrNum).trim();
+      return (rooms || []).find(
+        (r) =>
+          String(r.room_id || "").trim() === str ||
+          String(r.id || "").trim() === str ||
+          String(r.room_number || "").trim() === str
+      );
+    },
+    [rooms]
+  );
+
+  // Helper to determine if a room is currently occupied by another checked-in guest
+  const isRoomOccupied = useCallback(
+    (roomOrId, currentBookingId = null) => {
+      if (!roomOrId) return false;
+      const room = typeof roomOrId === "object" ? roomOrId : findRoom(roomOrId);
+      const roomIdStr = String(room?.room_id || room?.id || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+      const roomNumStr = String(room?.room_number || (typeof roomOrId === "string" ? roomOrId : "")).trim();
+
+      const checkMatch = (val) => {
+        if (!val) return false;
+        if (Array.isArray(val)) return val.some(checkMatch);
+        const str = String(val).trim();
+        return (
+          (roomIdStr && str === roomIdStr) ||
+          (roomNumStr && str === roomNumStr)
+        );
+      };
+
+      const bookingMatchesRoom = (b) => {
+        if (!b) return false;
+        return (
+          checkMatch(b.room_id) ||
+          checkMatch(b.room_ids) ||
+          checkMatch(b.room_number) ||
+          checkMatch(b.room_numbers) ||
+          checkMatch(b.roomNo) ||
+          (Array.isArray(b.rooms) && b.rooms.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number))) ||
+          (Array.isArray(b.rooms_config) && b.rooms_config.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)))
+        );
+      };
+
+      // If currentBookingId (or selectedBooking) owns this room, it's this booking's own room
+      if (currentBookingId) {
+        if (
+          selectedBooking &&
+          String(selectedBooking.booking_id).trim() === String(currentBookingId).trim() &&
+          bookingMatchesRoom(selectedBooking)
+        ) {
+          return false;
+        }
+        const myBooking = (bookings || []).find(
+          (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+        );
+        if (myBooking && bookingMatchesRoom(myBooking)) {
+          return false;
+        }
+      }
+
+      // Check if any OTHER checked-in booking occupies this room
+      const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
+        if (b.status !== "Checked-in") return false;
+        if (
+          currentBookingId &&
+          String(b.booking_id).trim() === String(currentBookingId).trim()
+        ) {
+          return false;
+        }
+        return bookingMatchesRoom(b);
+      });
+
+      if (isOccupiedByAnotherBooking) return true;
+
+      // Finally, if room status is Occupied in DB and not owned by current booking
+      const s = String(room?.status || "").toLowerCase().trim();
+      if (s === "occupied" || s.includes("occup")) {
+        return true;
+      }
+
+      return false;
+    },
+    [bookings, findRoom, selectedBooking]
+  );
+
   const handleRoomSelection = (roomId) => {
     const currentSelectedRoomIds = checkInData.room_id || [];
+    const targetRoom = findRoom(roomId);
+    const roomNum = targetRoom?.room_number || roomId;
+
+    if (isRoomOccupied(targetRoom || roomId, selectedBooking?.booking_id)) {
+      toast.error(
+        `Room ${roomNum} is currently Occupied by another guest. Cannot assign an occupied room.`
+      );
+      return;
+    }
+
+    if (targetRoom && targetRoom.status === "Dirty") {
+      toast.warning(
+        `Room ${roomNum} is currently Dirty. Please mark it as Vacant / Clean first before check-in.`
+      );
+      return;
+    }
 
     if (!currentSelectedRoomIds.includes(roomId)) {
       const updatedRoomIds = [...currentSelectedRoomIds, roomId];
       handleInputChange("room_id", updatedRoomIds);
 
       if (onRoomSelectionChange) {
-        const selectedRooms = getVacantRooms.filter((room) =>
+        const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+        const selectedRooms = allKnownRooms.filter((room) =>
           updatedRoomIds.includes(room.room_id)
         );
         const totalTariff = selectedRooms.reduce(
-          (total, room) => total + room.tariff,
+          (total, room) => total + (room.tariff || 0),
           0
         );
         onRoomSelectionChange(updatedRoomIds, totalTariff);
@@ -438,11 +631,12 @@ const CheckInForm = ({
     handleInputChange("room_id", updatedRoomIds);
 
     if (onRoomSelectionChange) {
-      const selectedRooms = getVacantRooms.filter((room) =>
+      const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+      const selectedRooms = allKnownRooms.filter((room) =>
         updatedRoomIds.includes(room.room_id)
       );
       const totalTariff = selectedRooms.reduce(
-        (total, room) => total + room.tariff,
+        (total, room) => total + (room.tariff || 0),
         0
       );
       onRoomSelectionChange(updatedRoomIds, totalTariff);
@@ -456,25 +650,119 @@ const CheckInForm = ({
 
   const getSelectedRooms = () => {
     const selectedRoomIds = checkInData.room_id || [];
-    return getVacantRooms.filter((room) =>
+    const allKnownRooms = rooms && rooms.length > 0 ? rooms : getVacantRooms;
+    return allKnownRooms.filter((room) =>
       selectedRoomIds.includes(room.room_id)
     );
   };
 
   const getAvailableRooms = () => {
     const selectedRoomIds = checkInData.room_id || [];
-    return getVacantRooms.filter(
-      (room) => !selectedRoomIds.includes(room.room_id)
+    return (getVacantRooms || []).filter(
+      (room) =>
+        !selectedRoomIds.includes(room.room_id) &&
+        !isRoomOccupied(room, selectedBooking?.booking_id)
     );
   };
 
   const getTotalRoomTariff = () => {
     const selectedRooms = getSelectedRooms();
-    return selectedRooms.reduce((total, room) => total + room.tariff, 0);
+    return selectedRooms.reduce((total, room) => total + (room.tariff || 0), 0);
   };
 
   const getSelectedRoomsCount = () => {
     return checkInData.room_id ? checkInData.room_id.length : 0;
+  };
+
+  const availableCategories = useMemo(() => {
+    const dynamicCategories = (rooms || [])
+      .map((r) => r.room_type)
+      .filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    const standardCategories = [
+      "Standard",
+      "Deluxe",
+      "Super Deluxe",
+      "Executive",
+      "Suite",
+      "Single",
+      "Double",
+      "Family",
+    ];
+    return Array.from(new Set([...dynamicCategories, ...standardCategories]));
+  }, [rooms]);
+
+  const targetCategory = useMemo(() => {
+    return (
+      selectedBooking?.room_category ||
+      selectedBooking?.room_type ||
+      checkInData?.room_type ||
+      ""
+    ).trim();
+  }, [selectedBooking, checkInData?.room_type]);
+
+  const targetCategories = useMemo(() => {
+    const list = [];
+    if (selectedBooking?.rooms_config && Array.isArray(selectedBooking.rooms_config)) {
+      selectedBooking.rooms_config.forEach((r) => {
+        if (r.room_category && typeof r.room_category === "string" && !list.includes(r.room_category.trim())) {
+          list.push(r.room_category.trim());
+        }
+      });
+    }
+    if (targetCategory) {
+      targetCategory.split(",").forEach((c) => {
+        const trimmed = c.trim();
+        if (trimmed && !list.includes(trimmed)) {
+          list.push(trimmed);
+        }
+      });
+    }
+    return list;
+  }, [selectedBooking, targetCategory]);
+
+  const bookedRoomsCount = useMemo(() => {
+    return (
+      selectedBooking?.no_of_rooms ||
+      selectedBooking?.number_of_rooms ||
+      (selectedBooking?.rooms_config ? selectedBooking.rooms_config.length : 1) ||
+      1
+    );
+  }, [selectedBooking]);
+
+  const bookedPersonsCount = useMemo(() => {
+    return (
+      selectedBooking?.no_of_persons ||
+      selectedBooking?.no_of_adults ||
+      checkInData?.no_of_adults ||
+      1
+    );
+  }, [selectedBooking, checkInData?.no_of_adults]);
+
+  const matchingVacantRooms = useMemo(() => {
+    if (!targetCategories.length || !getVacantRooms) return [];
+    return getVacantRooms.filter(
+      (room) =>
+        !isRoomOccupied(room, selectedBooking?.booking_id) &&
+        targetCategories.some(
+          (cat) => (room.room_type || "").toLowerCase() === cat.toLowerCase()
+        )
+    );
+  }, [getVacantRooms, targetCategories, isRoomOccupied, selectedBooking?.booking_id]);
+
+  const getSortedAvailableRooms = () => {
+    const available = getAvailableRooms();
+    if (!targetCategories.length) return available;
+    return [...available].sort((a, b) => {
+      const aMatch = targetCategories.some(
+        (cat) => (a.room_type || "").toLowerCase() === cat.toLowerCase()
+      );
+      const bMatch = targetCategories.some(
+        (cat) => (b.room_type || "").toLowerCase() === cat.toLowerCase()
+      );
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
   };
 
   // PAX management for Check-In form
@@ -727,7 +1015,11 @@ const CheckInForm = ({
                 placeholder="Nationality"
                 value={checkInData.nationality || ""}
                 onChange={(e) => handleInputChange("nationality", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.nationality
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.nationality} />
@@ -742,7 +1034,11 @@ const CheckInForm = ({
                 placeholder="Enter full address"
                 value={checkInData.address || ""}
                 onChange={(e) => handleInputChange("address", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.address
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.address} />
@@ -757,7 +1053,11 @@ const CheckInForm = ({
                 placeholder="Enter city"
                 value={checkInData.city || ""}
                 onChange={(e) => handleInputChange("city", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.city
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.city} />
@@ -772,7 +1072,11 @@ const CheckInForm = ({
                 placeholder="Enter state"
                 value={checkInData.state || ""}
                 onChange={(e) => handleInputChange("state", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.state
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.state} />
@@ -787,7 +1091,11 @@ const CheckInForm = ({
                 placeholder="Enter country"
                 value={checkInData.country || ""}
                 onChange={(e) => handleInputChange("country", e.target.value)}
-                className="h-8 text-sm focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.country
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                } transition-colors duration-200`}
                 autoComplete="new-password"
               />
               <ErrorMessage error={validationErrors.country} />
@@ -968,6 +1276,32 @@ const CheckInForm = ({
 
             <div className="space-y-1">
               <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                <Bed className="h-3 w-3 text-gray-500" />
+                Room Category {selectedBooking && (selectedBooking.room_category || selectedBooking.room_type) && (
+                  <span className="text-[10px] text-blue-600 font-normal">
+                    (Booked: {selectedBooking.room_category || selectedBooking.room_type})
+                  </span>
+                )}
+              </Label>
+              <Select
+                value={checkInData.room_type || targetCategory || ""}
+                onValueChange={(value) => handleInputChange("room_type", value)}
+              >
+                <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                  <SelectValue placeholder="Select room category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
                 <Users className="h-3 w-3 text-gray-500" />
                 Number of Adults <span className="text-red-500">*</span>
               </Label>
@@ -979,7 +1313,11 @@ const CheckInForm = ({
                 onChange={(e) =>
                   handleInputChange("no_of_adults", parseInt(e.target.value) || 0)
                 }
-                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.no_of_adults
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-green-500 focus:ring-green-500"
+                } transition-colors duration-200`}
               />
               <ErrorMessage error={validationErrors.no_of_adults} />
             </div>
@@ -1164,7 +1502,11 @@ const CheckInForm = ({
                   handleInputChange("checkout_date", timestamp);
                 }}
                 min={new Date().toISOString().slice(0, 16)}
-                className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200"
+                className={`h-8 text-sm ${
+                  validationErrors.checkout_date
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-green-500 focus:ring-green-500"
+                } transition-colors duration-200`}
               />
               <ErrorMessage error={validationErrors.checkout_date} />
               {numberOfNights > 0 && (
@@ -1176,6 +1518,79 @@ const CheckInForm = ({
             </div>
 
             <div className="md:col-span-2 lg:col-span-3">
+              {(targetCategories.length > 0 || targetCategory) && (
+                <div className="mb-4 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 p-3 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs text-white font-bold">
+                        ★
+                      </span>
+                      <div>
+                        <div className="text-xs font-semibold text-blue-900">
+                          Booking Preference:{" "}
+                          <span className="text-blue-700 underline underline-offset-2">
+                            {targetCategories.length > 0 ? targetCategories.join(" + ") : targetCategory}
+                          </span>
+                          {bookedRoomsCount > 0 ? ` • ${bookedRoomsCount} Room${bookedRoomsCount > 1 ? "s" : ""}` : ""}
+                          {bookedPersonsCount > 0 ? ` • ${bookedPersonsCount} Guest${bookedPersonsCount > 1 ? "s" : ""}` : ""}
+                        </div>
+                        <p className="text-[11px] text-blue-700">
+                          {matchingVacantRooms.length > 0
+                            ? `${matchingVacantRooms.length} vacant matching room${matchingVacantRooms.length > 1 ? "s" : ""} available. Click below to quickly assign:`
+                            : `No vacant matching rooms currently available. You can assign any other vacant room below.`}
+                        </p>
+                      </div>
+                    </div>
+                    {bookedRoomsCount > 0 && (
+                      <span className="text-[11px] font-medium text-blue-800 bg-blue-100/90 px-2.5 py-0.5 rounded-full border border-blue-200">
+                        Assigned: {getSelectedRoomsCount()} / {bookedRoomsCount}
+                      </span>
+                    )}
+                  </div>
+
+                  {matchingVacantRooms.length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap gap-2 pt-2 border-t border-blue-200/60">
+                      {matchingVacantRooms.map((room) => {
+                        const selected = isRoomSelected(room.room_id);
+                        return (
+                          <button
+                            key={room.room_id}
+                            type="button"
+                            onClick={() => {
+                              if (selected) {
+                                removeRoom(room.room_id);
+                              } else {
+                                handleRoomSelection(room.room_id);
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all shadow-xs ${
+                              selected
+                                ? "bg-green-600 text-white hover:bg-green-700 border border-green-700"
+                                : "bg-white text-blue-900 hover:bg-blue-100 hover:text-blue-950 border border-blue-300"
+                            }`}
+                          >
+                            <span>Room {room.room_number}</span>
+                            <span className={`text-[10px] font-medium ${selected ? "text-green-200" : "text-blue-600"}`}>
+                              ({room.room_type})
+                            </span>
+                            <span className={`text-[11px] ${selected ? "text-green-100" : "text-gray-500"}`}>
+                              (₹{room.tariff})
+                            </span>
+                            <span
+                              className={`text-[10px] px-1 py-0.2 rounded font-semibold ${
+                                selected ? "bg-white/20 text-white" : "bg-blue-100 text-blue-800"
+                              }`}
+                            >
+                              {selected ? "✓ Assigned" : "+ Assign"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
@@ -1185,7 +1600,13 @@ const CheckInForm = ({
 
                   <div className="relative">
                     <Select onValueChange={handleRoomSelection}>
-                      <SelectTrigger className="h-8 text-sm focus:border-green-500 focus:ring-green-500 transition-colors duration-200">
+                      <SelectTrigger
+                        className={`h-8 text-sm ${
+                          validationErrors.room_id
+                            ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                            : "focus:border-green-500 focus:ring-green-500"
+                        } transition-colors duration-200`}
+                      >
                         <div className="flex items-center justify-between w-full">
                           <span
                             className={
@@ -1201,21 +1622,33 @@ const CheckInForm = ({
                         </div>
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
-                        {getAvailableRooms().length > 0 ? (
-                          getAvailableRooms().map((room) => (
-                            <SelectItem key={room.room_id} value={room.room_id}>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={isRoomSelected(room.room_id)}
-                                  className="mr-2"
-                                />
-                                <span>
-                                  Room {room.room_number} - {room.room_type} (₹
-                                  {room.tariff})
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))
+                        {getSortedAvailableRooms().length > 0 ? (
+                          getSortedAvailableRooms().map((room) => {
+                            const isSuggested = targetCategories.some(
+                              (cat) => (room.room_type || "").toLowerCase() === cat.toLowerCase()
+                            );
+                            return (
+                              <SelectItem key={room.room_id} value={room.room_id}>
+                                <div className="flex items-center justify-between w-full gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Checkbox
+                                      checked={isRoomSelected(room.room_id)}
+                                      className="mr-2"
+                                    />
+                                    <span>
+                                      Room {room.room_number} - {room.room_type} (₹
+                                      {room.tariff})
+                                    </span>
+                                  </div>
+                                  {isSuggested && (
+                                    <span className="text-[10px] bg-amber-100 text-amber-800 font-semibold px-1.5 py-0.5 rounded border border-amber-300">
+                                      ★ Suggested
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            );
+                          })
                         ) : (
                           <SelectItem value="no-rooms" disabled>
                             {checkInData.room_id && checkInData.room_id.length > 0
@@ -1234,24 +1667,50 @@ const CheckInForm = ({
                         {checkInData.room_id.length > 1 ? "s" : ""}
                       </p>
                       <div className="flex flex-wrap gap-1">
-                        {getSelectedRooms().map((room) => (
-                          <div
-                            key={room.room_id}
-                            className="inline-flex items-center px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs"
-                          >
-                            <span>Room {room.room_number}</span>
-                            <span className="ml-1 text-green-700">
-                              (₹{room.tariff})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeRoom(room.room_id)}
-                              className="ml-1 text-green-600 hover:text-green-800"
+                        {getSelectedRooms().map((room) => {
+                          const s = String(room.status || "").toLowerCase().trim();
+                          const isUnready =
+                            s === "dirty" ||
+                            s.includes("dirty") ||
+                            s.includes("maintenance") ||
+                            s.includes("order") ||
+                            s.includes("block");
+                          return (
+                            <div
+                              key={room.room_id}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                                isUnready
+                                  ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                  : "bg-green-100 text-green-800"
+                              }`}
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
+                              <span>Room {room.room_number}</span>
+                              {isUnready && (
+                                <span className="ml-1 px-1 py-0.2 bg-amber-200 text-amber-900 text-[10px] font-semibold rounded">
+                                  {room.status || "Dirty"}
+                                </span>
+                              )}
+                              <span
+                                className={`ml-1 ${
+                                  isUnready ? "text-amber-800 font-medium" : "text-green-700"
+                                }`}
+                              >
+                                (₹{room.tariff || 0})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeRoom(room.room_id)}
+                                className={`ml-1 ${
+                                  isUnready
+                                    ? "text-amber-700 hover:text-amber-900"
+                                    : "text-green-600 hover:text-green-800"
+                                }`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                       {getSelectedRoomsCount() > 1 && (
                         <div className="mt-1 text-xs text-green-700 font-medium">

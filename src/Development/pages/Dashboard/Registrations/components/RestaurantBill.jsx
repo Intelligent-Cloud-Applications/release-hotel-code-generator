@@ -12,8 +12,18 @@ const RestaurantBill = ({ orderDetails, institutionData, billData }) => {
     if (existingStyle) document.head.removeChild(existingStyle);
 
     const formatDateTime = () => {
-      const now = new Date();
-      return now.toLocaleString("en-IN", {
+      const orderDate =
+        orderDetails?.[0]?.createdAt ||
+        orderDetails?.[0]?.order_details?.createdAt ||
+        orderDetails?.[0]?.date;
+      let d = new Date();
+      if (orderDate) {
+        const parsed = new Date(orderDate);
+        if (!isNaN(parsed.getTime())) {
+          d = parsed;
+        }
+      }
+      return d.toLocaleString("en-IN", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
@@ -31,19 +41,18 @@ const RestaurantBill = ({ orderDetails, institutionData, billData }) => {
     // Process all order details to get items
     const allItems = [];
     orderDetails.forEach(order => {
-      if (order.order_details && order.order_details.items) {
-        order.order_details.items.forEach(item => {
-          allItems.push({
-            name: item.name,
-            itemName: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            type: item.type || 'food'
-          });
+      const items = (order.order_details && order.order_details.items) || order.items || [];
+      items.forEach(item => {
+        allItems.push({
+          name: item.name || item.itemName,
+          itemName: item.name || item.itemName,
+          price: Number(item.price) || 0,
+          quantity: Number(item.quantity) || 1,
+          type: item.type || 'food'
         });
-      }
+      });
     });
-console.log("All items: 👍👍👍👍👍👍👍", allItems);
+    console.log("All items: 👍👍👍👍👍👍👍", allItems);
     if (allItems.length === 0) {
       console.error("No items found in order details.", { orderDetails, allItems });
       return;

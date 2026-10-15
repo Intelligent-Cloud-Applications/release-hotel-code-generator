@@ -63,6 +63,7 @@ const CheckOut = () => {
     fetchGuests,
     fetchRooms,
     addExpense,
+    updateRoomStatus,
   } = useAppContext();
   const { userData } = useAuthContext();
   const [searchTerm, setSearchTerm] = useState("");
@@ -122,6 +123,159 @@ const CheckOut = () => {
     return c ? getCompanyGst(c) : "";
   };
 
+// Helper to extract all active room IDs for a booking
+const getBookingAllRoomIds = (booking) => {
+  if (!booking) return [];
+  const ids = [];
+  const add = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach(add);
+    } else if (typeof val === "string") {
+      val.split(",").forEach((s) => {
+        const t = s.trim();
+        if (t && !ids.includes(t)) ids.push(t);
+      });
+    } else if (typeof val === "number") {
+      const s = String(val);
+      if (!ids.includes(s)) ids.push(s);
+    }
+  };
+  add(booking.room_ids);
+  add(booking.room_id);
+  if (Array.isArray(booking.rooms_config)) {
+    booking.rooms_config.forEach((r) => add(r?.room_id || r?.room_number));
+  }
+  if (Array.isArray(booking.rooms)) {
+    booking.rooms.forEach((r) => add(r?.room_id || r?.room_number));
+  }
+  return ids.length > 0
+    ? ids
+    : (Array.isArray(booking.room_id) ? booking.room_id : [booking.room_id]).filter(Boolean);
+};
+
+// Helper to format room numbers without stray commas or UUIDs, displaying all active rooms
+const formatBookingRoomNumbers = (booking, rooms = []) => {
+  if (!booking) return "";
+
+  const resolveItem = (item) => {
+    if (!item) return null;
+    const str = String(item).replace(/^,+|,+$/g, "").trim();
+    if (!str) return null;
+
+    // Check if matching room_id or id in rooms
+    const foundById = (rooms || []).find(
+      (r) => String(r.room_id) === str || String(r.id) === str
+    );
+    if (foundById?.room_number) {
+      return String(foundById.room_number).trim();
+    }
+
+    // Check if matching room_number directly
+    const foundByNum = (rooms || []).find(
+      (r) => String(r.room_number) === str
+    );
+    if (foundByNum?.room_number) {
+      return String(foundByNum.room_number).trim();
+    }
+
+    // Check cached localStorage rooms
+    try {
+      const cached = localStorage.getItem("hotel_rooms");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const hit = (parsed || []).find(
+          (r) => String(r.room_id) === str || String(r.room_number) === str
+        );
+        if (hit?.room_number) {
+          return String(hit.room_number).trim();
+        }
+      }
+    } catch (e) {}
+
+    // If it's a UUID and wasn't resolved, do NOT return raw UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    if (!isUuid) {
+      return str;
+    }
+    return null;
+  };
+
+  const collectItems = (val) => {
+    const list = [];
+    if (!val) return list;
+    if (Array.isArray(val)) {
+      val.forEach((v) => list.push(...collectItems(v)));
+    } else if (typeof val === "string") {
+      val.split(",").forEach((s) => {
+        const t = s.trim();
+        if (t) list.push(t);
+      });
+    } else if (typeof val === "number") {
+      list.push(String(val));
+    }
+    return list;
+  };
+
+  // 1. Primary sources: Current active room_id / room_ids / room_numbers / room_number
+  const activeRoomItems = [
+    ...collectItems(booking.room_ids),
+    ...collectItems(booking.room_id),
+    ...collectItems(booking.room_numbers),
+    ...collectItems(booking.room_number),
+    ...collectItems(booking.roomNo),
+  ];
+
+  if (Array.isArray(booking.rooms_config)) {
+    booking.rooms_config.forEach((r) => {
+      activeRoomItems.push(...collectItems(r?.room_number || r?.room_id));
+    });
+  }
+  if (Array.isArray(booking.rooms)) {
+    booking.rooms.forEach((r) => {
+      activeRoomItems.push(...collectItems(r?.room_number || r?.room_id));
+    });
+  }
+
+  const primaryResolved = [];
+  activeRoomItems.forEach((item) => {
+    const res = resolveItem(item);
+    if (res && !primaryResolved.includes(res)) {
+      primaryResolved.push(res);
+    }
+  });
+
+  // If primary rooms are resolved, return all of them
+  if (primaryResolved.length > 0) {
+    return primaryResolved.join(", ");
+  }
+
+  // 2. Fallback: If primary room is missing or was a deleted room that couldn't be resolved
+  const fallbackResolved = [];
+
+  // Check booking.services: if room was transferred or deleted, find all rooms in services
+  if (booking.services && typeof booking.services === "object") {
+    Object.keys(booking.services).forEach((rKey) => {
+      const res = resolveItem(rKey);
+      if (res && !fallbackResolved.includes(res)) {
+        fallbackResolved.push(res);
+      }
+    });
+  }
+
+  // Check booking.room_charges
+  if (fallbackResolved.length === 0 && booking.room_charges && typeof booking.room_charges === "object") {
+    Object.keys(booking.room_charges).forEach((k) => {
+      const res = resolveItem(k);
+      if (res && !fallbackResolved.includes(res)) {
+        fallbackResolved.push(res);
+      }
+    });
+  }
+
+  return fallbackResolved.filter(Boolean).join(", ");
+};
+
   // Get checked-in bookings
   const checkedInBookings =
     bookings?.filter((booking) => booking.status === "Checked-in") || [];
@@ -129,15 +283,13 @@ const CheckOut = () => {
   // Filter bookings based on search
   const filteredBookings = checkedInBookings.filter((booking) => {
     const guest = guests?.find((g) => g.guest_id === booking.guest_id);
-    const room = rooms?.find(
-      (r) => String(r.room_id) === String(booking.room_id)
-    );
+    const bookingRoomNumbers = formatBookingRoomNumbers(booking, rooms);
     const searchLower = searchTerm.toLowerCase();
     return (
       booking.booking_id?.toLowerCase().includes(searchLower) ||
       guest?.full_name?.toLowerCase().includes(searchLower) ||
       guest?.mobile?.includes(searchTerm) ||
-      room?.room_number?.includes(searchTerm) ||
+      bookingRoomNumbers.toLowerCase().includes(searchLower) ||
       booking.room_type?.toLowerCase().includes(searchLower)
     );
   });
@@ -649,20 +801,22 @@ const CheckOut = () => {
     return !hkHold && !rstHold;
   };
 
-  // Helper function to check if booking is overdue (after 1.5 hours grace period)
+  // Helper function to check if booking is overdue (after 2 hours grace period)
   const isBookingOverdue = (checkoutDate) => {
+    if (!checkoutDate) return false;
     const now = getCurrentIndianTime();
     const checkout = toIndianTime(new Date(checkoutDate));
-    const gracePeriodMs = 1.5 * 60 * 60 * 1000; // 1.5 hours in milliseconds
+    const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
     const overdueThreshold = new Date(checkout.getTime() + gracePeriodMs);
     return now > overdueThreshold;
   };
 
-  // Calculate checkout date with grace period logic
+  // Calculate checkout date with grace period logic (2 hours grace)
   const calculateCheckoutDateWithGracePeriod = (booking) => {
+    if (!booking || !booking.checkout_date) return new Date().toISOString();
     const now = getCurrentIndianTime();
     const originalCheckoutDate = toIndianTime(new Date(booking.checkout_date));
-    const gracePeriodMs = 1.5 * 60 * 60 * 1000; // 1.5 hours in milliseconds
+    const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
     const gracePeriodEnd = new Date(
       originalCheckoutDate.getTime() + gracePeriodMs
     );
@@ -670,9 +824,9 @@ const CheckOut = () => {
     // If current time is within grace period, use original checkout date
     // If current time is beyond grace period, use current time
     if (now <= gracePeriodEnd) {
-      return originalCheckoutDate.toISOString();
+      return new Date(booking.checkout_date).toISOString();
     } else {
-      return now.toISOString();
+      return new Date().toISOString();
     }
   };
 
@@ -756,12 +910,11 @@ const CheckOut = () => {
 
     // Fetch complete bill data and log it
     try {
+      const allRoomIds = getBookingAllRoomIds(booking);
       const bookingData = {
         booking_id: booking.booking_id,
         guest_id: booking.guest_id,
-        room_id: Array.isArray(booking.room_id)
-          ? booking.room_id
-          : [booking.room_id],
+        room_id: allRoomIds,
         rate_plan_id: booking.rate_plan_id,
         checkin_date: booking.checkin_date,
         checkout_date: calculateCheckoutDateWithGracePeriod(booking),
@@ -844,7 +997,7 @@ const CheckOut = () => {
     }
   };
 
-  const processCheckout = () => {
+  const processCheckout = async () => {
     if (!selectedBooking) return;
 
     // Check if booking can be checked out
@@ -873,10 +1026,12 @@ const CheckOut = () => {
 
     const billDataExtracted = extractBillData();
 
+    const allRoomIds = getBookingAllRoomIds(selectedBooking);
     const checkoutData = {
       booking_id: selectedBooking.booking_id,
       guest_id: selectedBooking.guest_id,
-      room_id: selectedBooking.room_id,
+      room_id: allRoomIds,
+      room_ids: allRoomIds,
       payment_mode: checkoutFormData.payment_mode,
       upi_platform:
         checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
@@ -954,7 +1109,56 @@ const CheckOut = () => {
     console.log("=== END DEBUG ===");
 
     // Call the checkout API
-    checkoutGuest({ bookingDetails: checkoutData });
+    await checkoutGuest({ bookingDetails: checkoutData });
+
+    // Update checked out room(s) status to Dirty so they become available for housekeeping cleaning
+    try {
+      const checkoutRoomIds = new Set();
+      const addRoomId = (val) => {
+        if (!val) return;
+        if (Array.isArray(val)) {
+          val.forEach(addRoomId);
+          return;
+        }
+        const valStr = String(val).trim();
+        const rObj = (rooms || []).find((r) => 
+          String(r.room_id) === valStr || 
+          String(r.id) === valStr || 
+          String(r.room_number) === valStr
+        );
+        if (rObj) {
+          checkoutRoomIds.add(rObj.room_id || rObj.id);
+        } else if (valStr) {
+          checkoutRoomIds.add(valStr);
+        }
+      };
+
+      addRoomId(selectedBooking.room_id);
+      addRoomId(selectedBooking.room_ids);
+      addRoomId(selectedBooking.room_number);
+      addRoomId(selectedBooking.room_numbers);
+      if (Array.isArray(selectedBooking.rooms)) {
+        selectedBooking.rooms.forEach((r) => addRoomId(r?.room_id || r?.room_number));
+      }
+      if (Array.isArray(selectedBooking.rooms_config)) {
+        selectedBooking.rooms_config.forEach((r) => addRoomId(r?.room_id || r?.room_number));
+      }
+
+      if (typeof updateRoomStatus === "function") {
+        for (const rid of checkoutRoomIds) {
+          try {
+            await updateRoomStatus(rid, "Dirty");
+          } catch (statusErr) {
+            console.warn("Could not update room status to Dirty:", statusErr);
+          }
+        }
+      }
+      if (typeof fetchRooms === "function") {
+        fetchRooms().catch((err) => console.error("Error refreshing rooms:", err));
+      }
+    } catch (roomErr) {
+      console.error("Error updating rooms to Dirty on checkout:", roomErr);
+    }
 
     // If payment is cash, add the amount to cash drawer as received
     if (checkoutFormData.payment_mode === "Cash") {
@@ -1011,6 +1215,27 @@ const CheckOut = () => {
       company_id: "",
       gst_no: "",
     });
+
+    try {
+      const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+      const store = JSON.parse(rawStore);
+      if (store[selectedBooking.booking_id]) {
+        delete store[selectedBooking.booking_id];
+        localStorage.setItem("hotel_bookings_meta", JSON.stringify(store));
+      }
+    } catch (e) {}
+
+    if (typeof fetchBookings === "function") {
+      fetchBookings().catch((err) =>
+        console.error("Error refreshing bookings:", err)
+      );
+    }
+    if (typeof fetchRooms === "function") {
+      fetchRooms().catch((err) =>
+        console.error("Error refreshing rooms:", err)
+      );
+    }
+
     toast("Guest checked out successfully!");
   };
 
@@ -1158,32 +1383,21 @@ const CheckOut = () => {
 
   const generateBill = () => {
     // Navigate to bill page or generate PDF
+    const allRoomIds = getBookingAllRoomIds(selectedBooking);
     navigate(
       `/dashboard/registrations/bill?booking_id=${
         selectedBooking.booking_id
       }&guest_id=${selectedBooking.guest_id}&room_id=${
-        selectedBooking.room_id
+        allRoomIds.join(",")
       }&gst_type="IGST"&rate_plan_id=${
         selectedBooking.rate_plan_id
       }&checkin_date=${
         selectedBooking.checkin_date
-      }&checkout_date=${getCurrentIndianTime().toISOString()}`
+      }&checkout_date=${calculateCheckoutDateWithGracePeriod(selectedBooking)}`
     );
   };
 
-  const roomNumbers = selectedBooking?.room_id
-    ? Array.isArray(selectedBooking.room_id)
-      ? selectedBooking.room_id
-          .map(
-            (rid) =>
-              rooms?.find((r) => String(r.room_id) === String(rid))?.room_number
-          )
-          .filter(Boolean)
-          .join(", ")
-      : rooms?.find(
-          (r) => String(r.room_id) === String(selectedBooking.room_id)
-        )?.room_number
-    : "";
+  const roomNumbers = formatBookingRoomNumbers(selectedBooking, rooms);
 
   const ErrorMessage = ({ error }) => {
     if (!error) return null;
@@ -1315,15 +1529,7 @@ const CheckOut = () => {
                     return (
                       <TableRow key={booking.booking_id}>
                         <TableCell className="font-medium">
-                          {(() => {
-                            return booking?.room_id
-                              ?.map(
-                                (rid) =>
-                                  rooms?.find((room) => rid === room.room_id)
-                                    ?.room_number
-                              )
-                              ?.join(", ");
-                          })()}
+                          {formatBookingRoomNumbers(booking, rooms) || "N/A"}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
@@ -1400,18 +1606,19 @@ const CheckOut = () => {
                                 isCheckoutEnabled ? "default" : "secondary"
                               }
                               onClick={() => {
+                                const allRoomIds = getBookingAllRoomIds(booking);
                                 navigate(
                                   `/dashboard/registrations/bill?booking_id=${
                                     booking.booking_id
                                   }&guest_id=${
                                     booking.guest_id
                                   }&room_id=${
-                                    booking.room_id
+                                    allRoomIds.join(",")
                                   }&gst_type="IGST"&rate_plan_id=${
                                     booking.rate_plan_id
                                   }&checkin_date=${
                                     booking.checkin_date
-                                  }&checkout_date=${getCurrentIndianTime().toISOString()}`
+                                  }&checkout_date=${calculateCheckoutDateWithGracePeriod(booking)}`
                                 );
                               }}
                               disabled={!isCheckoutEnabled}
@@ -1511,7 +1718,7 @@ const CheckOut = () => {
                     const originalCheckoutDate = toIndianTime(
                       new Date(selectedBooking.checkout_date)
                     );
-                    const gracePeriodMs = 1.5 * 60 * 60 * 1000; // 1.5 hours in milliseconds
+                    const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
                     const gracePeriodEnd = new Date(
                       originalCheckoutDate.getTime() + gracePeriodMs
                     );

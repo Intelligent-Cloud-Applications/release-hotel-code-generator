@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import {
 } from "@/Development/components/ui/accordion.js";
 import { Button } from "@/Development/components/ui/button.js";
 import { Hash, Utensils, Bed, Shirt, Coffee, Plus } from "lucide-react";
+import { fetchRestaurantReceipt, normalizeRestaurantOrders } from "@/Development/utils/restaurantReceiptService.js";
 
 const categoryMap = {
   food: {
@@ -99,14 +100,51 @@ function extractChargesByType(servicesData, type) {
   return { linked, unlinked };
 }
 
-function findOrderById(orders, chargeType, order_id) {
-  if (!orders || !orders[chargeType]) return null;
-  return orders[chargeType].find((order) => order.orderId === order_id);
+function findOrderById(orders, chargeType, order_id, fetchedFoodOrders = {}) {
+  if (chargeType === "food" && fetchedFoodOrders && fetchedFoodOrders[order_id]) {
+    return fetchedFoodOrders[order_id];
+  }
+  if (orders && orders[chargeType]) {
+    const found = orders[chargeType].find((order) => order.orderId === order_id || order.token === order_id);
+    if (found) return found;
+  }
+  if (chargeType === "laundry") {
+    try {
+      const local = JSON.parse(localStorage.getItem("hotel_laundry_orders") || "[]");
+      const found = local.find((o) => o.orderId === order_id || o.token === order_id);
+      if (found) return found;
+    } catch (e) {}
+  }
+  return null;
 }
 
 export function OrderDetailsDialog({ orders, servicesData }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [fetchedFoodOrders, setFetchedFoodOrders] = useState({});
   const chargeTypes = Object.keys(categoryMap);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const { linked } = extractChargesByType(servicesData, "food");
+    const missingOrderIds = linked
+      .map((c) => String(c.order_id).trim())
+      .filter((id) => id && !findOrderById(orders, "food", id, fetchedFoodOrders));
+
+    if (missingOrderIds.length > 0) {
+      fetchRestaurantReceipt({ orderIds: missingOrderIds })
+        .then((data) => {
+          const norm = normalizeRestaurantOrders(data, missingOrderIds);
+          setFetchedFoodOrders((prev) => {
+            const next = { ...prev };
+            norm.forEach((o) => {
+              next[o.orderId] = o;
+            });
+            return next;
+          });
+        })
+        .catch((err) => console.error("Error fetching dialog food orders:", err));
+    }
+  }, [isOpen, servicesData, orders]);
 
   // Compute if anything to show for the button
   const hasAnyCharges = chargeTypes.some((type) => {
@@ -169,7 +207,8 @@ export function OrderDetailsDialog({ orders, servicesData }) {
                       const order = findOrderById(
                         orders,
                         chargeType,
-                        charge.order_id
+                        charge.order_id,
+                        fetchedFoodOrders
                       );
                       return (
                         <AccordionItem
@@ -233,6 +272,55 @@ export function OrderDetailsDialog({ orders, servicesData }) {
                                           </div>
                                         </div>
                                       ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {chargeType === "laundry" && order.items && (
+                                  <div>
+                                    <h4 className="font-medium text-sm mb-3">
+                                      {`Laundry Garments & Care Types (${order.totalGarments || order.items.length} pcs)`}
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {order.items.map((item, index) => (
+                                        <div
+                                          key={index}
+                                          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                                        >
+                                          <div>
+                                            <p className="font-medium text-sm">
+                                              {item.name}
+                                            </p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                              <span className="text-xs px-2 py-0.5 rounded font-semibold bg-purple-100 text-purple-800">
+                                                {item.careType === "wash_and_press"
+                                                  ? "Wash & Press"
+                                                  : item.careType === "press_only"
+                                                  ? "Iron Only"
+                                                  : "Dry Clean"}
+                                              </span>
+                                              {item.notes && (
+                                                <span className="text-xs text-muted-foreground italic">
+                                                  Note: {item.notes}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="font-medium text-sm">
+                                              ₹{item.unitRate || item.price} × {item.quantity}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground font-semibold">
+                                              ₹{(Number(item.unitRate || item.price || 0) * Number(item.quantity || 1)).toFixed(2)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {order.surchargeAmount > 0 && (
+                                        <div className="flex justify-between items-center px-3 py-1.5 bg-blue-50 text-blue-900 rounded text-xs font-semibold">
+                                          <span>Express Surcharge ({order.serviceSpeedLabel || `${order.surchargePercent}%`}):</span>
+                                          <span>₹{order.surchargeAmount}</span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 )}

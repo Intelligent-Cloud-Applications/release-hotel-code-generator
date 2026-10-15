@@ -8,3 +8,4 @@ export { default as BillFooter } from './BillFooter.jsx';
 export { default as RestaurantBill } from './RestaurantBill.jsx';
 export { default as SplitBill } from './SplitBill.jsx';
 export { default as PrintBill } from './PrintBill.jsx';
+export { default as ExtraPaxFolio } from './ExtraPaxFolio.jsx';

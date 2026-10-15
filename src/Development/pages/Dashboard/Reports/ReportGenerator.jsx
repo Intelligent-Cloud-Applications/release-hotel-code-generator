@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
+import { useAuthContext } from "../../../context/AuthContext.jsx";
 import { Button } from "../../../components/ui/button.js";
 import {
   Card,
@@ -35,12 +36,23 @@ import {
   DollarSign,
   UtensilsCrossed,
   Receipt,
+  Shirt,
+  Package,
+  ArrowUpFromLine,
+  ShoppingCart,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { get } from "aws-amplify/api";
 import { useInstitutionContext } from "../../../context/InstitutionContext.jsx";
+import { institutionId as defaultInstitutionId } from "../../../../Operation/data.json";
+import {
+  fetchLaundryOrdersBackend,
+  fetchDeliveriesBackend,
+} from "../Laundry/laundryCatalog.js";
 
 const ReportGenerator = () => {
   const {
@@ -64,9 +76,16 @@ const ReportGenerator = () => {
     fetchRestaurantOrders,
     loading,
   } = useAppContext();
+  const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
   console.log("listExpenses", expenses);
-  const [selectedReport, setSelectedReport] = useState("");
+  const [selectedReport, setSelectedReport] = useState(
+    userData?.userType === "store"
+      ? "stock_inventory"
+      : userData?.userType === "laundry"
+      ? "laundry"
+      : ""
+  );
   const [dateRange, setDateRange] = useState({ from: null, to: null });
   const [filters, setFilters] = useState({});
   const [reportData, setReportData] = useState([]);
@@ -114,6 +133,80 @@ const ReportGenerator = () => {
     showPaidBy: false,
   });
 
+  // Store Stock specific state & filters
+  const [stockHistory, setStockHistory] = useState([]);
+  const [stockFilters, setStockFilters] = useState({
+    department: "all",
+    category: "all",
+  });
+
+  // Dedicated backend laundry orders state
+  const [backendLaundryOrders, setBackendLaundryOrders] = useState([]);
+
+  const loadBackendLaundryData = async () => {
+    try {
+      const instId = institutionData?.institutionId || defaultInstitutionId;
+      const [remoteOrders, remoteDeliveries] = await Promise.all([
+        fetchLaundryOrdersBackend(instId).catch(() => []),
+        fetchDeliveriesBackend(instId).catch(() => []),
+      ]);
+
+      const ordersMap = new Map();
+      (remoteOrders || []).forEach((o) => {
+        const k = o.orderId || o.order_id || o.service_id || o.token || o.id;
+        if (k) ordersMap.set(String(k), o);
+        if (o.token && String(o.token) !== String(k)) ordersMap.set(String(o.token), o);
+      });
+
+      (remoteDeliveries || []).forEach((del) => {
+        const k = del.order_id || del.service_id || del.token || del.id;
+        const matched = ordersMap.get(String(k)) || (del.token ? ordersMap.get(String(del.token)) : null);
+        if (matched) {
+          const merged = {
+            ...matched,
+            status: del.status || matched.status,
+            delivery_status: del.delivery_status || matched.delivery_status,
+            is_delivered: del.is_delivered ?? matched.is_delivered,
+            delivered_to_room: del.delivered_to_room ?? del.is_delivered ?? matched.delivered_to_room,
+            delivered_at: del.delivered_at || matched.delivered_at,
+            delivered_by: del.delivered_by || matched.delivered_by,
+          };
+          ordersMap.set(String(k), merged);
+          if (del.token) ordersMap.set(String(del.token), merged);
+        } else if (k) {
+          ordersMap.set(String(k), {
+            orderId: del.order_id || del.token,
+            token: del.token,
+            roomNumber: del.room_number || "Walk-In",
+            guestName: del.guest_name || "Guest",
+            totalGarments: del.total_garments || 1,
+            grandTotal: del.grand_total || 0,
+            totalAmount: del.grand_total || 0,
+            status: del.status || "collected",
+            delivery_status: del.delivery_status || (del.is_delivered ? "delivered_to_room" : "pending_delivery"),
+            is_delivered: Boolean(del.is_delivered),
+            delivered_to_room: Boolean(del.is_delivered),
+            delivered_at: del.delivered_at || null,
+            delivered_by: del.delivered_by || null,
+            createdAt: del.created_at || new Date().toISOString(),
+            items: [],
+          });
+        }
+      });
+
+      const uniqueList = Array.from(new Set(ordersMap.values()));
+      setBackendLaundryOrders(uniqueList);
+    } catch (err) {
+      console.warn("Could not load backend laundry data for reports:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedReport === "laundry") {
+      loadBackendLaundryData();
+    }
+  }, [selectedReport, institutionData?.institutionId]);
+
   const getUniqueCompanyNames = () => {
     if (!companies || companies.length === 0) return [];
     return [
@@ -135,26 +228,48 @@ const ReportGenerator = () => {
   // Robust date helpers
   const toDateObj = (val) => {
     if (!val) return null;
-    if (val instanceof Date) return val;
+    if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
     if (typeof val === "number") return new Date(val > 1e10 ? val : val * 1000);
-    if (typeof val === "string" && val.includes("T")) {
-      const d = new Date(val);
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (!trimmed) return null;
+      // Numeric string timestamp
+      if (/^\d{10,13}$/.test(trimmed)) {
+        const num = Number(trimmed);
+        return new Date(num > 1e10 ? num : num * 1000);
+      }
+      // ISO strings or strings containing 'T'
+      if (trimmed.includes("T")) {
+        const d = new Date(trimmed);
+        if (!isNaN(d.getTime())) return d;
+      }
+      // Format YYYY-MM-DD or YYYY/MM/DD
+      if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(trimmed)) {
+        const parts = trimmed.split(/[-/]/);
+        const y = Number(parts[0]);
+        const m = Number(parts[1]) - 1;
+        const d = Number(parts[2].slice(0, 2));
+        const dt = new Date(y, m, d);
+        if (!isNaN(dt.getTime())) return dt;
+      }
+      // Format DD-MM-YYYY or DD/MM/YYYY or MM/DD/YYYY
+      if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(trimmed)) {
+        const [p1, p2, p3] = trimmed.split(/[-/]/).map(Number);
+        let day = p1;
+        let month = p2;
+        // In Indian context, DD/MM/YYYY is standard.
+        // If second number > 12, format is MM/DD/YYYY
+        if (p2 > 12) {
+          day = p2;
+          month = p1;
+        }
+        const dt = new Date(p3, month - 1, day);
+        if (!isNaN(dt.getTime())) return dt;
+      }
+      const d = new Date(trimmed);
       return isNaN(d.getTime()) ? null : d;
     }
-    if (typeof val === "string" && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(val)) {
-      const [a, b, y] = val.split("/").map(Number);
-      const isDMY = a > 12;
-      const d = isDMY ? a : b;
-      const m = isDMY ? b : a;
-      const dt = new Date(y, m - 1, d);
-      return isNaN(dt.getTime()) ? null : dt;
-    }
-    if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      const d = new Date(val);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? null : d;
+    return null;
   };
 
   const toYMD = (dateLike) => {
@@ -180,6 +295,20 @@ const ReportGenerator = () => {
       }
     }
   }, []);
+
+  // Enforce store-only reports when userType is store, and laundry-only reports when userType is laundry
+  useEffect(() => {
+    if (userData?.userType === "store") {
+      const storeReports = ["stock_inventory", "stock_issues", "stock_purchases"];
+      if (!storeReports.includes(selectedReport)) {
+        setSelectedReport("stock_inventory");
+      }
+    } else if (userData?.userType === "laundry") {
+      if (selectedReport !== "laundry") {
+        setSelectedReport("laundry");
+      }
+    }
+  }, [userData?.userType, selectedReport]);
 
   // Report configurations
   const reportConfigs = {
@@ -361,6 +490,75 @@ const ReportGenerator = () => {
         { key: "status", label: "Status", type: "text" },
         { key: "advance_payment", label: "Advance Payment", type: "currency" },
         { key: "discount", label: "Discount", type: "currency" },
+        { key: "total_amount", label: "Total Amount", type: "currency" },
+      ],
+    },
+    laundry: {
+      title: "Laundry Revenue Report",
+      icon: Shirt,
+      description: "Granular laundry revenue itemized by care type (Washing vs Pressing vs Dry Clean), room folios & direct settlements",
+      dataSource: "laundry",
+      columns: [
+        { key: "token", label: "Tag / Token", type: "text" },
+        { key: "date", label: "Date", type: "date" },
+        { key: "guest", label: "Guest / Room", type: "text" },
+        { key: "garments", label: "Garments (Pcs)", type: "number" },
+        { key: "care_types", label: "Care Types", type: "text" },
+        { key: "speed", label: "Speed", type: "text" },
+        { key: "subtotal", label: "Items Subtotal", type: "currency" },
+        { key: "surcharge", label: "Express Fee", type: "currency" },
+        { key: "cgst", label: "CGST", type: "currency" },
+        { key: "sgst", label: "SGST", type: "currency" },
+        { key: "total_amount", label: "Total Amount", type: "currency" },
+        { key: "settlement", label: "Settlement", type: "text" },
+        { key: "status", label: "Status", type: "text" },
+      ],
+    },
+    stock_inventory: {
+      title: "Store Stock Inventory Report",
+      icon: Package,
+      description: "Live store stock quantities, category, unit, par levels, rates and total valuation",
+      dataSource: "stock",
+      columns: [
+        { key: "itemName", label: "Item Name", type: "text" },
+        { key: "category", label: "Category", type: "text" },
+        { key: "quantity", label: "Current Qty", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "parLevel", label: "Par Level", type: "number" },
+        { key: "status", label: "Status", type: "text" },
+        { key: "price", label: "Last Rate", type: "currency" },
+        { key: "total_valuation", label: "Valuation", type: "currency" },
+      ],
+    },
+    stock_issues: {
+      title: "Store Issue & Consumption Report",
+      icon: ArrowUpFromLine,
+      description: "Date-wise departmental consumption (Kitchen, Housekeeping, Laundry & other depts)",
+      dataSource: "stock",
+      columns: [
+        { key: "date", label: "Issue Date", type: "date" },
+        { key: "department", label: "Department", type: "text" },
+        { key: "itemName", label: "Item Name", type: "text" },
+        { key: "quantity", label: "Quantity", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "type", label: "Type", type: "text" },
+        { key: "description", label: "Remarks / Purpose", type: "text" },
+      ],
+    },
+    stock_purchases: {
+      title: "Store Purchase Register",
+      icon: ShoppingCart,
+      description: "Vendor inward purchase invoices, GRN numbers and total expenditure",
+      dataSource: "stock",
+      columns: [
+        { key: "date", label: "Bill Date", type: "date" },
+        { key: "grnNo", label: "GRN No", type: "text" },
+        { key: "billNo", label: "Bill No", type: "text" },
+        { key: "vendorName", label: "Vendor", type: "text" },
+        { key: "itemName", label: "Item", type: "text" },
+        { key: "quantity", label: "Quantity", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "price", label: "Rate", type: "currency" },
         { key: "total_amount", label: "Total Amount", type: "currency" },
       ],
     },
@@ -650,13 +848,344 @@ const ReportGenerator = () => {
     });
   };
 
+  // Helper to process laundry orders and room services
+  const processLaundryReportData = () => {
+    const orderIdMap = new Set();
+    const rows = [];
+
+    // Candidate orders collected from backend and local cache
+    const candidateOrders = [];
+
+    // 1. Backend laundry orders and deliveries
+    (backendLaundryOrders || []).forEach((o) => candidateOrders.push(o));
+
+    // 2. Local storage cache fallback
+    try {
+      const savedOrders = localStorage.getItem("hotel_laundry_orders");
+      if (savedOrders) {
+        JSON.parse(savedOrders).forEach((o) => candidateOrders.push(o));
+      }
+      const savedDeliveries = localStorage.getItem("hotel_laundry_deliveries");
+      if (savedDeliveries) {
+        JSON.parse(savedDeliveries).forEach((o) => candidateOrders.push(o));
+      }
+    } catch (e) {}
+
+    // Process candidate orders
+    candidateOrders.forEach((ord) => {
+      const token = ord.token || ord.order_id || ord.orderId || ord.barcode || ord.id;
+      if (!token) return;
+      const tokenStr = String(token);
+      if (orderIdMap.has(tokenStr)) return;
+      orderIdMap.add(tokenStr);
+
+      const allItems = Array.isArray(ord.items) ? ord.items : [];
+      let distinctCare = Array.from(
+        new Set(
+          allItems.map((i) =>
+            i.careType === "wash_and_press"
+              ? "Wash & Press"
+              : i.careType === "press_only"
+              ? "Iron Only"
+              : i.careType === "dry_clean"
+              ? "Dry Clean"
+              : i.careType === "wash_only"
+              ? "Wash"
+              : i.name || "Care"
+          )
+        )
+      ).join(", ");
+
+      const roomNum = ord.roomNumber || ord.room_number || "";
+      const roomText = roomNum && roomNum !== "Walk-In" ? `Room ${roomNum}` : "Walk-In";
+
+      // Robust date extraction
+      let dateStr = "";
+      if (ord.created_date && typeof ord.created_date === "string" && ord.created_date.includes("-")) {
+        dateStr = ord.created_date.trim();
+      } else if (ord.orderDate && typeof ord.orderDate === "string" && ord.orderDate.includes("-")) {
+        dateStr = ord.orderDate.trim();
+      } else if (ord.date && typeof ord.date === "string" && ord.date.includes("-")) {
+        dateStr = ord.date.trim();
+      } else {
+        const tokenMatch = tokenStr.match(/LND-(\d{4})(\d{2})(\d{2})/i);
+        if (tokenMatch) {
+          dateStr = `${tokenMatch[1]}-${tokenMatch[2]}-${tokenMatch[3]}`;
+        } else {
+          dateStr = toYMD(ord.createdAt || ord.created_at || ord.timestamp || new Date());
+        }
+      }
+
+      const totalGarments = Number(
+        ord.totalGarments ||
+        ord.total_garments ||
+        (allItems.length > 0 ? allItems.reduce((acc, i) => acc + (Number(i.quantity) || 1), 0) : 1)
+      );
+
+      const totalAmt = Number(ord.grandTotal || ord.totalAmount || ord.total_amount || ord.itemsSubtotal || ord.subtotal || 0);
+      const subtotal = Number(ord.itemsSubtotal || ord.subtotal || Math.round((totalAmt / 1.05) * 100) / 100);
+      const cgst = Number(ord.cgstAmount || ord.tax?.cgstAmount || Math.round(subtotal * 0.025 * 100) / 100);
+      const sgst = Number(ord.sgstAmount || ord.tax?.sgstAmount || Math.round(subtotal * 0.025 * 100) / 100);
+
+      const isDelivered =
+        ord.is_delivered === true ||
+        ord.delivered_to_room === true ||
+        String(ord.delivery_status || "").toLowerCase().includes("delivered") ||
+        String(ord.status || "").toLowerCase().includes("delivered");
+
+      const settlementLabel =
+        ord.settlementType === "ROOM_FOLIO" ||
+        ord.settlementType === "room_folio" ||
+        ord.paymentMethod === "ROOM_FOLIO" ||
+        ord.paymentMethod === "folio" ||
+        Boolean(roomNum && roomNum !== "Walk-In")
+          ? `Room Folio (${roomNum || ""})`
+          : `Direct (${ord.paymentMethod || "CASH"})`;
+
+      rows.push({
+        token: tokenStr,
+        date: dateStr,
+        guest: `${ord.guestName || ord.guest_name || ord.name || "Guest"} (${roomText})`,
+        room_number: roomNum,
+        garments: totalGarments,
+        care_types: distinctCare || "Laundering",
+        speed: ord.serviceSpeedLabel || ord.turnaroundSpeed || ord.turnaround_speed || "Standard",
+        subtotal: subtotal,
+        surcharge: Number(ord.surchargeAmount || 0),
+        cgst: cgst,
+        sgst: sgst,
+        total_amount: totalAmt,
+        settlement: settlementLabel,
+        status: isDelivered ? "Delivered" : (ord.status || "Completed"),
+      });
+    });
+
+    // 3. Scan bookings for any folio laundry services in detailedServices
+    (bookings || []).forEach((bk) => {
+      const guestName = bk.guest_name || bk.booking_name || bk.name || "In-House Guest";
+      
+      // A. Scan detailedServices
+      if (bk.detailedServices && typeof bk.detailedServices === "object") {
+        Object.entries(bk.detailedServices).forEach(([roomKey, byDate]) => {
+          if (!byDate || typeof byDate !== "object") return;
+          Object.entries(byDate).forEach(([dateKey, items]) => {
+            if (Array.isArray(items)) {
+              items.forEach((item) => {
+                const isLaundry =
+                  item &&
+                  (item.service_type === "laundry" ||
+                   item.serviceType === "laundry" ||
+                   Number(item.laundry_charges) > 0 ||
+                   String(item.order_id || item.token || "").startsWith("LND-"));
+                if (!isLaundry) return;
+
+                const token = item.token || item.order_id || item.service_id || `LND-${roomKey}-${dateKey}`;
+                if (orderIdMap.has(String(token))) return;
+                orderIdMap.add(String(token));
+
+                const charge = Number(item.totalAmount || item.laundry_charges || item.charge || 0);
+                const subtotal = Number(item.itemsSubtotal || Math.round((charge / 1.05) * 100) / 100);
+                const cgst = Number(item.cgstAmount || Math.round((subtotal * 0.025) * 100) / 100);
+                const sgst = Number(item.sgstAmount || Math.round((subtotal * 0.025) * 100) / 100);
+                const tokenMatch = String(token).match(/LND-(\d{4})(\d{2})(\d{2})/i);
+                const dateStr = tokenMatch ? `${tokenMatch[1]}-${tokenMatch[2]}-${tokenMatch[3]}` : (toYMD(item.created_at || item.createdAt || dateKey) || toYMD(new Date()));
+
+                rows.push({
+                  token: String(token),
+                  date: dateStr,
+                  guest: `${item.guestName || guestName} (Room ${roomKey})`,
+                  room_number: roomKey,
+                  garments: Number(item.totalGarments || (item.items || []).length || 1),
+                  care_types: "Laundering",
+                  speed: "Standard",
+                  subtotal,
+                  surcharge: 0,
+                  cgst,
+                  sgst,
+                  total_amount: charge,
+                  settlement: `Room Folio (${roomKey})`,
+                  status: item.is_delivered || item.delivery_status === "delivered_to_room" || item.status === "Delivered" ? "Delivered" : "Completed",
+                });
+              });
+            }
+          });
+        });
+      }
+
+      // B. Scan standard booking.services
+      if (bk.services && typeof bk.services === "object") {
+        Object.entries(bk.services).forEach(([roomKey, byDate]) => {
+          if (!byDate || typeof byDate !== "object") return;
+          Object.entries(byDate).forEach(([dateKey, serviceObj]) => {
+            if (!serviceObj) return;
+            const laundryCharge = Number(serviceObj.laundry_charges || (Array.isArray(serviceObj) ? serviceObj.reduce((s, x) => s + Number(x?.laundry_charges || 0), 0) : 0));
+            if (laundryCharge > 0) {
+              const token = `LND-${roomKey}-${dateKey}`;
+              if (orderIdMap.has(String(token))) return;
+              orderIdMap.add(String(token));
+
+              const subtotal = Math.round((laundryCharge / 1.05) * 100) / 100;
+              const cgst = Math.round((subtotal * 0.025) * 100) / 100;
+              const sgst = Math.round((subtotal * 0.025) * 100) / 100;
+
+              rows.push({
+                token,
+                date: toYMD(dateKey) || dateKey,
+                guest: `${guestName} (Room ${roomKey})`,
+                room_number: roomKey,
+                garments: 1,
+                care_types: "Laundering",
+                speed: "Standard",
+                subtotal,
+                surcharge: 0,
+                cgst,
+                sgst,
+                total_amount: laundryCharge,
+                settlement: `Room Folio (${roomKey})`,
+                status: "Delivered",
+              });
+            }
+          });
+        });
+      }
+    });
+
+    return rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+  };
+
+  // Helper to process stock inventory data
+  const processStockInventoryData = () => {
+    const map = {};
+    const sorted = [...(stockHistory || [])].sort((a, b) => (a.dateEpoch || 0) - (b.dateEpoch || 0));
+
+    sorted.forEach((entry) => {
+      const key = `${entry.itemName}_${entry.unit}_${entry.category}`;
+      if (!map[key]) {
+        const catLower = (entry.category || "").toLowerCase();
+        let defaultPar = 10;
+        if (catLower.includes("linen") || catLower.includes("towel")) defaultPar = 25;
+        if (catLower.includes("chemical") || catLower.includes("clean")) defaultPar = 15;
+        if (catLower.includes("consumable")) defaultPar = 20;
+
+        map[key] = {
+          itemName: entry.itemName,
+          category: entry.category,
+          unit: entry.unit,
+          quantity: 0,
+          parLevel: Number(entry.parLevel) || defaultPar,
+          price: Number(entry.price) || 0,
+        };
+      }
+      if (entry.parLevel) map[key].parLevel = Number(entry.parLevel);
+      if (entry.price && Number(entry.price) > 0) map[key].price = Number(entry.price);
+
+      const q = Number(entry.quantity) || 0;
+      if (entry.actionType === "add" || entry.actionType === "purchase-entry" || entry.actionType === "return") map[key].quantity += q;
+      if (entry.actionType === "distributed" || entry.actionType === "issue_entry") map[key].quantity -= q;
+      if (entry.actionType === "adjustment" || entry.actionType === "wastage") map[key].quantity = q;
+    });
+
+    return Object.values(map).map((item) => {
+      const isCritical = item.quantity === 0;
+      const isLow = item.quantity <= item.parLevel;
+      const status = isCritical ? "OUT OF STOCK" : isLow ? "LOW STOCK" : "OK";
+      const total_valuation = (item.quantity * item.price).toFixed(2);
+      return {
+        ...item,
+        status,
+        total_valuation: Number(total_valuation),
+      };
+    });
+  };
+
+  // Helper to process stock departmental issues
+  const processStockIssuesData = () => {
+    const issueLogs = (stockHistory || []).filter(
+      (log) => log.actionType === "issue_entry" || log.actionType === "distributed" || log.actionType === "return"
+    );
+
+    return issueLogs.map((log) => {
+      const d = log.issueDate ? toDateObj(log.issueDate) : toDateObj(log.dateEpoch);
+      return {
+        date: d ? toYMD(d) : "",
+        department: (log.department || "General").toUpperCase(),
+        itemName: log.itemName || "—",
+        quantity: Number(log.adjustmentQuantity || log.quantity || 0),
+        unit: log.unit || "pcs",
+        type: log.actionType === "return" ? "Return" : "Issue",
+        description: log.description || "—",
+      };
+    }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
+  };
+
+  // Helper to process stock purchase register
+  const processStockPurchasesData = () => {
+    const purchaseLogs = (stockHistory || []).filter((log) => log.actionType === "purchase-entry");
+
+    return purchaseLogs.map((log) => {
+      const d = log.billDate ? toDateObj(log.billDate) : toDateObj(log.dateEpoch);
+      const q = Number(log.quantity) || 0;
+      const p = Number(log.price) || 0;
+      return {
+        date: d ? toYMD(d) : "",
+        grnNo: log.grnNo || "—",
+        billNo: log.billNo || "—",
+        vendorName: log.vendorName || "—",
+        itemName: log.itemName || "—",
+        quantity: q,
+        unit: log.unit || "pcs",
+        price: p,
+        total_amount: Number((q * p).toFixed(2)),
+      };
+    }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
+  };
+
   // Fetch data based on selected report
   useEffect(() => {
     const fetchData = async () => {
       if (!selectedReport) return;
 
       try {
+        if (selectedReport === "stock_inventory" || selectedReport === "stock_issues" || selectedReport === "stock_purchases") {
+          const instId = institutionData?.institutionId || defaultInstitutionId;
+          let allStock = [];
+          let lastEvaluatedKey = null;
+          let page = 0;
+          const MAX_PAGES = 30;
+
+          do {
+            let query = `institutionId=${encodeURIComponent(instId)}&limit=500`;
+            if (lastEvaluatedKey) {
+              const keyStr = typeof lastEvaluatedKey === "object"
+                ? JSON.stringify(lastEvaluatedKey)
+                : String(lastEvaluatedKey);
+              query += `&exclusiveStartKey=${encodeURIComponent(keyStr)}`;
+            }
+            const { body } = await get({
+              apiName: "frontdesk",
+              path: `/stock?${query}`,
+            }).response;
+            const res = await body.json();
+            if (res?.success && Array.isArray(res.stockHistory)) {
+              allStock = allStock.concat(res.stockHistory);
+              lastEvaluatedKey = res.lastEvaluatedKey || null;
+              if (res.stockHistory.length < 500 || !lastEvaluatedKey) break;
+            } else {
+              break;
+            }
+            page++;
+          } while (lastEvaluatedKey && page < MAX_PAGES);
+
+          setStockHistory(allStock);
+          return;
+        }
+
         switch (selectedReport) {
+          case "laundry":
+            await fetchBookings();
+            await listTotalBill();
+            await loadBackendLaundryData();
+            break;
           case "rooms":
             await fetchRooms();
             break;
@@ -729,6 +1258,9 @@ const ReportGenerator = () => {
       };
     } else {
       switch (selectedReport) {
+        case "laundry":
+          data = processLaundryReportData();
+          break;
         case "rooms":
           data = rooms || [];
           break;
@@ -763,42 +1295,40 @@ const ReportGenerator = () => {
           data = processRestaurantData(restaurantOrders);
           break;
         case "settlement": {
-          // Only guests who checked out today
-          const today = new Date();
-          const start = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            today.getDate(),
-            0,
-            0,
-            0,
-            0
-          ).getTime();
-          const end = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            today.getDate(),
-            23,
-            59,
-            59,
-            999
-          ).getTime();
-          const todaysCheckedOut = (bookings || []).filter((b) => {
-            const co =
-              typeof b.checkout_date === "string"
-                ? new Date(b.checkout_date).getTime()
-                : Number(b.checkout_date);
+          const hasDateFilter = Boolean(dateRange?.from);
+          const checkedOutBookings = (bookings || []).filter((b) => {
             const status = String(b.status || "").toLowerCase();
-            return (
-              Number.isFinite(co) &&
-              co >= start &&
-              co <= end &&
-              (status === "checked-out" ||
-                status === "checkedout" ||
-                status === "checked_out")
+            const isCheckedOut = (
+              status === "checked-out" ||
+              status === "checkedout" ||
+              status === "checked_out"
             );
+            if (!isCheckedOut) return false;
+
+            if (!hasDateFilter) {
+              // Default to today if no date filter specified
+              const today = new Date();
+              const start = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                0, 0, 0, 0
+              ).getTime();
+              const end = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                23, 59, 59, 999
+              ).getTime();
+              const co =
+                typeof b.checkout_date === "string"
+                  ? new Date(b.checkout_date).getTime()
+                  : Number(b.checkout_date);
+              return Number.isFinite(co) && co >= start && co <= end;
+            }
+            return true;
           });
-          data = todaysCheckedOut.map((booking) => {
+          data = checkedOutBookings.map((booking) => {
             const roomCharges = Object.values(
               booking.room_charges || {}
             ).reduce((sum, charge) => sum + charge, 0);
@@ -851,6 +1381,7 @@ const ReportGenerator = () => {
               guest_name: guestName || "N/A",
               room_number: Object.keys(booking.room_charges || {})[0] || "N/A",
               checkout_date: booking.checkout_date || null,
+              date: booking.checkout_date || null,
               status: booking.status || "Checked-out",
               advance_payment:
                 booking.advance_payment || booking.partial_payment_amount || 0,
@@ -860,42 +1391,63 @@ const ReportGenerator = () => {
           });
           break;
         }
+        case "stock_inventory":
+          data = processStockInventoryData();
+          break;
+        case "stock_issues":
+          data = processStockIssuesData();
+          break;
+        case "stock_purchases":
+          data = processStockPurchasesData();
+          break;
         default:
           data = [];
       }
     }
 
-    // Apply date filter if date range is selected (skip for rooms & companies UI lists)
+    // Apply date filter if date range is selected (skip for rooms, companies, and current stock inventory snapshot)
     if (
-      dateRange.from &&
-      dateRange.to &&
+      dateRange?.from &&
       selectedReport !== "rooms" &&
-      selectedReport !== "companies"
+      selectedReport !== "companies" &&
+      selectedReport !== "stock_inventory"
     ) {
+      const fromDate = new Date(
+        dateRange.from.getFullYear(),
+        dateRange.from.getMonth(),
+        dateRange.from.getDate(),
+        0, 0, 0, 0
+      );
+      const toObj = dateRange.to || dateRange.from;
+      const toDate = new Date(
+        toObj.getFullYear(),
+        toObj.getMonth(),
+        toObj.getDate(),
+        23, 59, 59, 999
+      );
+
       data = data.filter((item) => {
         const itemDateRaw =
           item.date ||
-          item.created_at ||
+          item.billDate ||
+          item.bill_date ||
+          item.checkout_date ||
           item.checkin_date ||
-          item.booking_date;
+          item.created_at ||
+          item.createdAt ||
+          item.booking_date ||
+          item.orderDate ||
+          item.order_date ||
+          item.purchaseDate ||
+          item.issueDate ||
+          item.dateEpoch ||
+          item.timestamp ||
+          item.billHeader?.billDate;
+
         const itemDateObj = toDateObj(itemDateRaw);
         if (!itemDateObj) return false;
-        const itemDateOnly = new Date(
-          itemDateObj.getFullYear(),
-          itemDateObj.getMonth(),
-          itemDateObj.getDate()
-        );
-        const fromDate = new Date(
-          dateRange.from.getFullYear(),
-          dateRange.from.getMonth(),
-          dateRange.from.getDate()
-        );
-        const toDate = new Date(
-          dateRange.to.getFullYear(),
-          dateRange.to.getMonth(),
-          dateRange.to.getDate()
-        );
-        return itemDateOnly >= fromDate && itemDateOnly <= toDate;
+        const itemTime = itemDateObj.getTime();
+        return itemTime >= fromDate.getTime() && itemTime <= toDate.getTime();
       });
     }
 
@@ -1466,6 +2018,24 @@ const ReportGenerator = () => {
       }
     }
 
+    // Apply stock issues specific filters (Department filter)
+    if (selectedReport === "stock_issues") {
+      if (stockFilters.department && stockFilters.department !== "all") {
+        data = data.filter(
+          (item) => String(item.department || "").toUpperCase() === String(stockFilters.department).toUpperCase()
+        );
+      }
+    }
+
+    // Apply stock inventory specific filters (Category filter)
+    if (selectedReport === "stock_inventory") {
+      if (stockFilters.category && stockFilters.category !== "all") {
+        data = data.filter(
+          (item) => String(item.category || "").toLowerCase() === String(stockFilters.category).toLowerCase()
+        );
+      }
+    }
+
     setReportData(data);
     setCurrentPage(1);
   }, [
@@ -1487,6 +2057,8 @@ const ReportGenerator = () => {
     restaurantFilters,
     restaurantDisplayOptions,
     expenses,
+    stockHistory,
+    stockFilters,
   ]);
 
   // Pagination
@@ -1604,14 +2176,20 @@ const ReportGenerator = () => {
 
       const formattedData = formatDataForExport(reportData, columns);
 
-      const doc = new jsPDF();
+      const isLandscape = selectedReport === "laundry" || columns.length > 7;
+      const doc = new jsPDF({
+        orientation: isLandscape ? "landscape" : "portrait",
+        unit: "mm",
+        format: "a4",
+      });
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
 
       doc.setFillColor(240, 240, 240);
       doc.rect(0, 0, pageWidth, 40, "F");
 
       if (institutionData?.name || institutionData?.companyName) {
-        doc.setFontSize(20);
+        doc.setFontSize(isLandscape ? 18 : 20);
         doc.setFont("courier", "bold");
         doc.setTextColor(0, 0, 0);
         const companyName =
@@ -1631,7 +2209,12 @@ const ReportGenerator = () => {
         doc.setFontSize(10);
         doc.setFont("courier", "normal");
         doc.setTextColor(80, 80, 80);
-        const dateRangeText = `${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`;
+        const formatDMY = (d) => {
+          if (!d) return "";
+          const dt = d instanceof Date ? d : new Date(d);
+          return isNaN(dt.getTime()) ? "" : `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+        };
+        const dateRangeText = `${formatDMY(dateRange.from)} - ${formatDMY(dateRange.to)}`;
         const dateRangeWidth = doc.getTextWidth(dateRangeText);
 
         const totalWidth = titleWidth + 40 + dateRangeWidth;
@@ -1658,12 +2241,15 @@ const ReportGenerator = () => {
         currentY += 6;
       }
 
+      const fixedTableWidth = isLandscape ? pageWidth - 20 : pageWidth * 0.92;
+      const tableLeftMargin = (pageWidth - fixedTableWidth) / 2;
+
       doc.setTextColor(0, 0, 0);
       currentY += 8;
       doc.setLineWidth(0.5);
       doc.setDrawColor(0, 0, 0);
       doc.setLineDashPattern([2, 1], 0);
-      doc.line(20, currentY, pageWidth - 20, currentY);
+      doc.line(tableLeftMargin, currentY, pageWidth - tableLeftMargin, currentY);
       doc.setLineDashPattern([], 0);
 
       const tableStartY = currentY + 15;
@@ -1673,10 +2259,7 @@ const ReportGenerator = () => {
 
       doc.setLineWidth(0.2);
       doc.setDrawColor(80, 80, 80);
-      doc.rect(5, 5, pageWidth - 11, doc.internal.pageSize.getHeight() - 10);
-
-      const fixedTableWidth = pageWidth * 0.9;
-      const tableLeftMargin = (pageWidth - fixedTableWidth) / 2;
+      doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
 
       autoTable(doc, {
         head: [columns.map((col) => col.label)],
@@ -1693,27 +2276,30 @@ const ReportGenerator = () => {
         showHead: "everyPage",
         styles: {
           fontSize:
-            selectedReport === "rooms"
+            selectedReport === "laundry"
+              ? 6.5
+              : selectedReport === "rooms"
               ? 8
               : selectedReport === "companies"
               ? 8
               : 7,
           font: "helvetica",
-          cellPadding: { horizontal: 2, vertical: 3 },
+          cellPadding: selectedReport === "laundry" ? { horizontal: 1.5, vertical: 2 } : { horizontal: 2, vertical: 3 },
           overflow: "linebreak",
           halign: "left",
-          valign: "top",
-          lineWidth: 0.2,
+          valign: "middle",
+          lineWidth: 0.15,
           lineColor: [220, 220, 220],
           textColor: [0, 0, 0],
           fillColor: [255, 255, 255],
-          cellWidth: "wrap",
         },
         headStyles: {
-          fillColor: [220, 220, 220],
+          fillColor: [230, 230, 230],
           textColor: [0, 0, 0],
           fontSize:
-            selectedReport === "rooms"
+            selectedReport === "laundry"
+              ? 7.5
+              : selectedReport === "rooms"
               ? 10
               : selectedReport === "companies"
               ? 9
@@ -1722,7 +2308,7 @@ const ReportGenerator = () => {
           fontStyle: "bold",
           halign: "center",
           valign: "middle",
-          cellPadding: { horizontal: 1, vertical: 2 },
+          cellPadding: selectedReport === "laundry" ? { horizontal: 1, vertical: 2 } : { horizontal: 1, vertical: 2 },
           lineWidth: 0.2,
           lineColor: [180, 180, 180],
         },
@@ -1736,7 +2322,22 @@ const ReportGenerator = () => {
           ...Object.fromEntries(
             columns.map((col, index) => {
               let width = "auto";
-              if (selectedReport === "rooms") {
+              if (selectedReport === "laundry") {
+                if (col.key === "token") width = "7%";
+                else if (col.key === "date") width = "7%";
+                else if (col.key === "guest") width = "13%";
+                else if (col.key === "garments") width = "6%";
+                else if (col.key === "care_types") width = "12%";
+                else if (col.key === "speed") width = "7%";
+                else if (col.key === "subtotal") width = "8%";
+                else if (col.key === "surcharge") width = "7%";
+                else if (col.key === "cgst") width = "6%";
+                else if (col.key === "sgst") width = "6%";
+                else if (col.key === "total_amount") width = "8%";
+                else if (col.key === "settlement") width = "8%";
+                else if (col.key === "status") width = "5%";
+                else width = "auto";
+              } else if (selectedReport === "rooms") {
                 if (col.key.includes("room_number")) width = "15%";
                 else if (col.key.includes("room_type")) width = "20%";
                 else if (col.key.includes("status")) width = "25%";
@@ -1782,13 +2383,18 @@ const ReportGenerator = () => {
                 else if (col.key.includes("payment")) width = "12%";
                 else width = "10%";
               }
+
+              const isRight = col.type === "currency" || col.type === "number";
+              const isCenter = col.key === "token" || col.key === "date" || col.key === "status" || col.key === "speed";
+
               return [
                 index,
                 {
                   cellWidth: width,
+                  halign: isRight ? "right" : isCenter ? "center" : "left",
                   textColor: [0, 0, 0],
                   overflow: "linebreak",
-                  cellPadding: { horizontal: 2, vertical: 3 },
+                  cellPadding: selectedReport === "laundry" ? { horizontal: 1.5, vertical: 2 } : { horizontal: 2, vertical: 3 },
                 },
               ];
             })
@@ -1865,7 +2471,6 @@ const ReportGenerator = () => {
       });
 
       const finalY = doc.lastAutoTable.finalY || tableStartY + 200;
-      const pageHeight = doc.internal.pageSize.getHeight();
       const footerY = pageHeight - 25;
       const summaryY = Math.max(finalY + 10, footerY - 40);
 
@@ -1989,6 +2594,10 @@ const ReportGenerator = () => {
       showOrderSource: false,
       showPaidBy: false,
     });
+    setStockFilters({
+      department: "all",
+      category: "all",
+    });
   };
 
   // Compute displayed columns for table head and body consistently
@@ -2076,14 +2685,24 @@ const ReportGenerator = () => {
                       <SelectValue placeholder="Choose a report type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.entries(reportConfigs).map(([key, config]) => (
-                        <SelectItem key={key} value={key}>
-                          <div className="flex items-center gap-2">
-                            <config.icon className="h-4 w-4" />
-                            {config.title}
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {Object.entries(reportConfigs)
+                        .filter(([key]) => {
+                          if (userData?.userType === "store") {
+                            return ["stock_inventory", "stock_issues", "stock_purchases"].includes(key);
+                          }
+                          if (userData?.userType === "laundry") {
+                            return key === "laundry";
+                          }
+                          return true;
+                        })
+                        .map(([key, config]) => (
+                          <SelectItem key={key} value={key}>
+                            <div className="flex items-center gap-2">
+                              <config.icon className="h-4 w-4" />
+                              {config.title}
+                            </div>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -2475,6 +3094,71 @@ const ReportGenerator = () => {
                       </>
                     )}
 
+                    {/* Store Issues Report Filters */}
+                    {selectedReport === "stock_issues" && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-sm text-gray-700 mb-3">
+                          Department Filter
+                        </h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Filter by Department</Label>
+                            <Select
+                              value={stockFilters.department || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, department: val }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All Departments" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Departments</SelectItem>
+                                <SelectItem value="KITCHEN">Kitchen</SelectItem>
+                                <SelectItem value="HOUSEKEEPING">Housekeeping</SelectItem>
+                                <SelectItem value="LAUNDRY">Laundry</SelectItem>
+                                <SelectItem value="FRONT DESK">Front Desk</SelectItem>
+                                <SelectItem value="RESTAURANT">Restaurant</SelectItem>
+                                <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Store Inventory Report Filters */}
+                    {selectedReport === "stock_inventory" && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-sm text-gray-700 mb-3">
+                          Category Filter
+                        </h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Filter by Category</Label>
+                            <Select
+                              value={stockFilters.category || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, category: val }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All Categories" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Categories</SelectItem>
+                                <SelectItem value="Linen">Linen</SelectItem>
+                                <SelectItem value="Chemicals">Chemicals</SelectItem>
+                                <SelectItem value="Consumables">Consumables</SelectItem>
+                                <SelectItem value="Amenities">Amenities</SelectItem>
+                                <SelectItem value="Kitchen">Kitchen</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <Button
                         onClick={clearFilters}
@@ -2582,8 +3266,8 @@ const ReportGenerator = () => {
                       </div>
 
                       {/* Data Preview Table */}
-                      <div className="w-full overflow-hidden">
-                        <table className="w-full divide-y divide-gray-200 table-fixed">
+                      <div className="w-full overflow-x-auto border border-gray-200 rounded-md">
+                        <table className="w-full divide-y divide-gray-200 min-w-[950px]">
                           <thead className="bg-gray-50">
                             <tr>
                               {displayedColumns.map((column) => (
@@ -2869,6 +3553,68 @@ const ReportGenerator = () => {
                                         >
                                           <span className="text-gray-700 font-medium">
                                             {value || "N/A"}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                  }
+
+                                  // Special handling for store stock reports
+                                  if (selectedReport === "stock_inventory") {
+                                    if (column.key === "status") {
+                                      const isCritical = value === "OUT OF STOCK";
+                                      const isLow = value === "LOW STOCK";
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span
+                                            className={`inline-flex px-2 py-0.5 text-xs font-bold rounded ${
+                                              isCritical
+                                                ? "bg-red-100 text-red-800"
+                                                : isLow
+                                                ? "bg-amber-100 text-amber-800"
+                                                : "bg-emerald-100 text-emerald-800"
+                                            }`}
+                                          >
+                                            {value}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                  }
+
+                                  if (selectedReport === "stock_issues") {
+                                    if (column.key === "department") {
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span className="inline-flex px-2 py-0.5 text-xs font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                            {value}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                    if (column.key === "type") {
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span
+                                            className={`inline-flex px-2 py-0.5 text-xs font-bold rounded ${
+                                              value === "Return"
+                                                ? "bg-emerald-100 text-emerald-800"
+                                                : "bg-blue-100 text-blue-800"
+                                            }`}
+                                          >
+                                            {value}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                  }
+
+                                  if (selectedReport === "stock_purchases") {
+                                    if (column.key === "grnNo") {
+                                      return (
+                                        <td key={column.key} className="px-3 py-4 text-sm truncate">
+                                          <span className="inline-flex px-2 py-0.5 text-xs font-mono font-bold rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                            {value}
                                           </span>
                                         </td>
                                       );

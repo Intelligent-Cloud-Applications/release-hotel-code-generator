@@ -153,7 +153,13 @@ const GuestDetails = ({
                 Pax (No. of Adults)
               </td>
               <td className="px-3 py-2">
-                {billData.bookingDetails?.no_of_adults || "---"}
+                <span>{billData.bookingDetails?.no_of_adults || "---"}</span>
+                {Array.isArray(billData.extraPaxList) && billData.extraPaxList.length > 0 && (
+                  <div className="text-[11px] text-gray-700 mt-0.5">
+                    <span className="font-semibold text-gray-900">Extra Occupant(s): </span>
+                    {billData.extraPaxList.map((p) => p.full_name).filter(Boolean).join(", ")}
+                  </div>
+                )}
               </td>
             </tr>
 

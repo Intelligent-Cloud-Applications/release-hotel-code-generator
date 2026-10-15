@@ -42,6 +42,7 @@ import RoomList from "./pages/Dashboard/FrontDesk/RoomList.jsx";
 import AmendBooking from "./pages/Dashboard/FrontDesk/AmendBooking.jsx";
 import CancelBooking from "./pages/Dashboard/FrontDesk/CancelBooking.jsx";
 import FrontDesk from "./pages/Dashboard/FrontDesk/FrontDesk.jsx";
+import AvailabilityForecaster from "./pages/Dashboard/FrontDesk/AvailabilityForecaster.jsx";
 import NewBooking from "./pages/Dashboard/Registrations/NewBooking.jsx";
 import AdminReports from "./pages/Dashboard/Admin/Reports.jsx";
 import Registrations from "./pages/Dashboard/Registrations/Registrations.jsx";
@@ -92,6 +93,22 @@ import AccountingLayout from "./layouts/AccountingLayout.jsx";
 import BillPosting from "./pages/Dashboard/Accounting/BillPosting.jsx";
 import RevenuePosting from "./pages/Dashboard/Accounting/RevenuePosting.jsx";
 import DailyRevenue from "./pages/Dashboard/Accounting/DailyRevenue.jsx";
+import LaundryPage from "./pages/Dashboard/Laundry/index.jsx";
+import { useAuthContext } from "@/Development/context/AuthContext.jsx";
+
+const DashboardIndexRedirect = () => {
+  const { userData } = useAuthContext();
+  const userType = userData?.userType || "frontdesk";
+  const routes = {
+    admin: "/dashboard/admin/room_list",
+    frontdesk: "/dashboard/frontdesk",
+    housekeeping: "/dashboard/housekeeping/room_status_list",
+    accountant: "/dashboard/accounting/bill-posting",
+    laundry: "/dashboard/laundry",
+    store: "/dashboard/store",
+  };
+  return <Navigate to={routes[userType] || "/dashboard/frontdesk"} replace />;
+};
 
 const AppRoutes = () => {
   return (
@@ -130,6 +147,7 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
+        <Route index element={<DashboardIndexRedirect />} />
         <Route
           path="/dashboard/bookings"
           element={
@@ -169,6 +187,15 @@ const AppRoutes = () => {
           />
           <Route path="/dashboard/frontdesk/check_in" element={<CheckIn />} />
           <Route path="/dashboard/frontdesk/check_out" element={<CheckOut />} />
+          <Route path="/dashboard/frontdesk/bill" element={<Bill />} />
+          <Route
+            path="/dashboard/frontdesk/availability"
+            element={<Navigate to="/dashboard/frontdesk/room_list" replace />}
+          />
+          <Route
+            path="/dashboard/frontdesk/forecaster"
+            element={<Navigate to="/dashboard/frontdesk/room_list" replace />}
+          />
         </Route>
 
         {/* Registrations */}
@@ -198,6 +225,14 @@ const AppRoutes = () => {
             element={<CheckOut />}
           />
           <Route path="/dashboard/registrations/bill" element={<Bill />} />
+          <Route
+            path="/dashboard/registrations/availability"
+            element={<AvailabilityForecaster />}
+          />
+          <Route
+            path="/dashboard/registrations/forecaster"
+            element={<AvailabilityForecaster />}
+          />
         </Route>
 
         {/* Guest History */}
@@ -283,7 +318,7 @@ const AppRoutes = () => {
         <Route
           path="/dashboard/reports"
           element={
-            <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
+            <RoleBasedRoute allowedRoles={["admin", "frontdesk", "laundry", "store"]}>
               {product === "dashboard-booking" ? (
                 <ReportGenerator />
               ) : (
@@ -311,8 +346,22 @@ const AppRoutes = () => {
         <Route
           path="/dashboard/store"
           element={
-            <RoleBasedRoute allowedRoles={["admin", "frontdesk"]}>
+            <RoleBasedRoute allowedRoles={["admin", "frontdesk", "store"]}>
               {product === "dashboard-booking" ? <Store /> : <SubscribeNow />}
+            </RoleBasedRoute>
+          }
+        />
+
+        {/* Laundry Management & Granular Billing */}
+        <Route
+          path="/dashboard/laundry"
+          element={
+            <RoleBasedRoute allowedRoles={["laundry", "admin"]}>
+              {product === "dashboard-booking" ? (
+                <LaundryPage />
+              ) : (
+                <SubscribeNow />
+              )}
             </RoleBasedRoute>
           }
         />
@@ -365,6 +414,7 @@ const AppRoutes = () => {
             </RoleBasedRoute>
           }
         >
+          <Route index element={<Navigate to="/dashboard/housekeeping/room_status_list" replace />} />
           <Route
             path="/dashboard/housekeeping/room_status_list"
             element={<RoomStatusList />}
@@ -384,6 +434,7 @@ const AppRoutes = () => {
             </RoleBasedRoute>
           }
         >
+          <Route index element={<Navigate to="/dashboard/admin/room_list" replace />} />
           <Route path="/dashboard/admin/guest_list" element={<Guests />} />
           <Route path="/dashboard/admin/room_list" element={<Rooms />} />
           <Route path="/dashboard/admin/staff_list" element={<Staffs />} />
