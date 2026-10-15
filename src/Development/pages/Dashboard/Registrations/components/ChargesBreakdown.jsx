@@ -100,15 +100,16 @@ const ChargesBreakdown = ({
                       const chargeKey = `${dayIndex}-${roomIndex}`;
                       const editingData = editingChargeAmounts[chargeKey];
 
+                      const ratePlanAmt = Number(
+                        isAmountEditing && editingData && editingData.ratePlanCharges !== undefined
+                          ? editingData.ratePlanCharges
+                          : (charges.ratePlanCharges || 0)
+                      );
+                      const ratePlanDesc = billData?.bookingDetails?.ratePlanName
+                        ? `Rate Plan (${billData.bookingDetails.ratePlanName})`
+                        : "Rate Plan Charges";
+
                       const particulars = [
-                        {
-                          description: `Rate Plan Base Tariff`,
-                          amount: Number(
-                            billData?.bookingDetails
-                              ?.ratePlanBaseTariff || 0
-                          ),
-                          type: "ratePlanBaseTariff",
-                        },
                         {
                           description: `Room Charges`,
                           amount: Number(isAmountEditing && editingData
@@ -116,6 +117,15 @@ const ChargesBreakdown = ({
                             : charges.roomCharges) || 0,
                           type: "roomCharges",
                         },
+                        ...(ratePlanAmt > 0
+                          ? [
+                              {
+                                description: ratePlanDesc,
+                                amount: ratePlanAmt,
+                                type: "ratePlanCharges",
+                              },
+                            ]
+                          : []),
                         // Show charge types that have values OR are being actively edited
                         ...(() => {
                           const chargeTypes = [
@@ -166,6 +176,7 @@ const ChargesBreakdown = ({
                         getFilteredCharges({
                           ...charges,
                           roomCharges: editingData.roomCharges || 0,
+                          ratePlanCharges: editingData.ratePlanCharges !== undefined ? editingData.ratePlanCharges : (charges.ratePlanCharges || 0),
                           foodCharges: editingData.foodCharges || 0,
                           laundryCharges: editingData.laundryCharges || 0,
                           minibarCharges: editingData.minibarCharges || 0,
@@ -173,13 +184,13 @@ const ChargesBreakdown = ({
                           manualCharges: editingData.manualCharges || 0,
                           extraPaxCharges: editingData.extraPaxCharges || 0,
                           dailyTotal: (editingData.roomCharges || 0) + 
+                            (editingData.ratePlanCharges !== undefined ? editingData.ratePlanCharges : (charges.ratePlanCharges || 0)) +
                             (editingData.foodCharges || 0) + 
                             (editingData.laundryCharges || 0) + 
                             (editingData.minibarCharges || 0) + 
                             (editingData.extraBedCharges || 0) + 
                             (editingData.manualCharges || 0) + 
-                            (editingData.extraPaxCharges || 0) + 
-                            (billData?.bookingDetails?.ratePlanBaseTariff || 0)
+                            (editingData.extraPaxCharges || 0)
                         }) : 
                         getFilteredCharges(charges);
 
@@ -267,7 +278,7 @@ const ChargesBreakdown = ({
                                       <span className="line-through text-gray-400">
                                         ₹{(Number(particular.amount) || 0).toFixed(2)}
                                       </span>
-                                    ) : isAmountEditing && editingData && particular.type !== "ratePlanBaseTariff" ? (
+                                    ) : isAmountEditing && editingData ? (
                                       <div className="flex items-center justify-end">
                                         <span className="text-xs mr-1">₹</span>
                                         <input

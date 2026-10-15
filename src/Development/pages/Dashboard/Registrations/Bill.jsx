@@ -1664,12 +1664,24 @@ const Bill = () => {
 
             const dateServices = getServiceChargesForRoomDate(roomNumber, date);
 
+            const singleRatePlan = Number(
+              roomDetails.tariffVariation ??
+              booking?.breakdown?.ratePlan?.base_tariff ??
+              billData?.bookingDetails?.ratePlanBaseTariff ??
+              0
+            );
+
             let dailyRoomCharges = 0;
             if (serviceDayData.room_charges !== undefined && serviceDayData.room_charges !== null) {
               dailyRoomCharges = Number(serviceDayData.room_charges);
+            } else if (roomDetails.baseTariff !== undefined && roomDetails.baseTariff !== null) {
+              dailyRoomCharges = Number(roomDetails.baseTariff);
             } else if (roomDetails.finalRoomTariff || roomDetails.tariff) {
-              dailyRoomCharges = Number(roomDetails.finalRoomTariff || roomDetails.tariff || 0);
+              const fullTariff = Number(roomDetails.finalRoomTariff || roomDetails.tariff || 0);
+              dailyRoomCharges = Math.max(0, fullTariff - singleRatePlan);
             }
+
+            const ratePlanCharges = singleRatePlan;
 
             const dailyServiceCharges = dateServices.daily_total;
 
@@ -1706,17 +1718,12 @@ const Bill = () => {
                 extraBedCharges: dateServices.extra_bed_charges || 0,
                 manualCharges: dateServices.manual_charges || 0,
                 roomCharges: dailyRoomCharges,
-                ratePlanCharges:
-                  booking?.breakdown?.ratePlan?.base_tariff ||
-                  billData?.bookingDetails?.ratePlanBaseTariff ||
-                  0,
+                ratePlanCharges: ratePlanCharges,
                 extraPaxCharges: roomSpecificExtraPax,
                 dailyTotal:
                   dailyRoomCharges +
+                  ratePlanCharges +
                   dailyServiceCharges +
-                  (booking?.breakdown?.ratePlan?.base_tariff ||
-                    billData?.bookingDetails?.ratePlanBaseTariff ||
-                    0) +
                   roomSpecificExtraPax,
               },
             };
@@ -1727,13 +1734,25 @@ const Bill = () => {
             const roomNumber = roomUsage.room_number;
             const dateServices = getServiceChargesForRoomDate(roomNumber, date);
 
-            let dailyRoomCharges = roomUsage.tariff || 0;
+            const singleRatePlan = Number(
+              roomUsage.tariffVariation ??
+              booking?.breakdown?.ratePlan?.base_tariff ??
+              billData?.bookingDetails?.ratePlanBaseTariff ??
+              0
+            );
+
+            let dailyRoomCharges = roomUsage.baseTariff !== undefined && roomUsage.baseTariff !== null
+              ? Number(roomUsage.baseTariff)
+              : Math.max(0, (Number(roomUsage.tariff) || 0) - singleRatePlan);
+
             const servicesRoomCharges =
               allServicesObj?.[roomNumber]?.[formattedDate]?.room_charges ??
               allServicesObj?.[roomNumber]?.[date]?.room_charges;
             if (servicesRoomCharges !== undefined) {
               dailyRoomCharges = Number(servicesRoomCharges);
             }
+
+            const ratePlanCharges = singleRatePlan;
 
             const dailyServiceCharges = dateServices.daily_total;
             let roomSpecificExtraPax = dateServices.extra_pax_charges || 0;
@@ -1769,17 +1788,12 @@ const Bill = () => {
                 extraBedCharges: dateServices.extra_bed_charges || 0,
                 manualCharges: dateServices.manual_charges || 0,
                 roomCharges: dailyRoomCharges,
-                ratePlanCharges:
-                  booking?.breakdown?.ratePlan?.base_tariff ||
-                  billData?.bookingDetails?.ratePlanBaseTariff ||
-                  0,
+                ratePlanCharges: ratePlanCharges,
                 extraPaxCharges: roomSpecificExtraPax,
                 dailyTotal:
                   dailyRoomCharges +
+                  ratePlanCharges +
                   dailyServiceCharges +
-                  (booking?.breakdown?.ratePlan?.base_tariff ||
-                    billData?.bookingDetails?.ratePlanBaseTariff ||
-                    0) +
                   roomSpecificExtraPax,
               },
             };
@@ -1793,11 +1807,19 @@ const Bill = () => {
             const roomNumber = room.room_number;
             const dateServices = getServiceChargesForRoomDate(roomNumber, date);
 
-            let dailyRoomCharges =
-              room.finalRoomTariff ||
-              room.baseTariff ||
-              room.averageTariffPerNight ||
-              0;
+            const singleRatePlan = Number(
+              room.tariffVariation ??
+              booking?.breakdown?.ratePlan?.base_tariff ??
+              billData?.bookingDetails?.ratePlanBaseTariff ??
+              0
+            );
+
+            let dailyRoomCharges = room.baseTariff !== undefined && room.baseTariff !== null
+              ? Number(room.baseTariff)
+              : Math.max(
+                  0,
+                  (Number(room.finalRoomTariff || room.tariff || room.averageTariffPerNight || 0)) - singleRatePlan
+                );
 
             const servicesRoomCharges =
               allServicesObj?.[roomNumber]?.[formattedDate]?.room_charges ??
@@ -1805,6 +1827,8 @@ const Bill = () => {
             if (servicesRoomCharges !== undefined) {
               dailyRoomCharges = Number(servicesRoomCharges);
             }
+
+            const ratePlanCharges = singleRatePlan;
 
             const dailyServiceCharges = dateServices.daily_total;
             let roomSpecificExtraPax = dateServices.extra_pax_charges || 0;
@@ -1840,17 +1864,12 @@ const Bill = () => {
                 extraBedCharges: dateServices.extra_bed_charges || 0,
                 manualCharges: dateServices.manual_charges || 0,
                 roomCharges: dailyRoomCharges,
-                ratePlanCharges:
-                  booking?.breakdown?.ratePlan?.base_tariff ||
-                  billData?.bookingDetails?.ratePlanBaseTariff ||
-                  0,
+                ratePlanCharges: ratePlanCharges,
                 extraPaxCharges: roomSpecificExtraPax,
                 dailyTotal:
                   dailyRoomCharges +
+                  ratePlanCharges +
                   dailyServiceCharges +
-                  (booking?.breakdown?.ratePlan?.base_tariff ||
-                    billData?.bookingDetails?.ratePlanBaseTariff ||
-                    0) +
                   roomSpecificExtraPax,
               },
             };
@@ -2144,7 +2163,6 @@ const Bill = () => {
       const discountAmount = billData?.billingSummary?.totalDiscount || 0;
       const advanceReceived = billData?.billingSummary?.partialPayment || 0;
 
-      // Include rate plan base tariff and extra pax in effective tariff
       const effectiveTariff = totalRoomCharges + totalRatePlanFromBreakdown + totalExtraPaxFromBreakdown;
 
       // Calculate subtotal: effective room charges + service charges - discount
@@ -2504,18 +2522,17 @@ const Bill = () => {
             charges.extraPaxCharges = editingData.extraPaxCharges || 0;
           }
 
-          // Recalculate daily total including rate plan charges and extra pax
-          const ratePlanCharges =
-            billData?.bookingDetails?.ratePlanBaseTariff || 0;
-          charges.ratePlanCharges = ratePlanCharges;
+          charges.ratePlanCharges = editingData?.ratePlanCharges !== undefined
+            ? Number(editingData.ratePlanCharges)
+            : (charges.ratePlanCharges || 0);
           charges.dailyTotal =
             charges.roomCharges +
+            charges.ratePlanCharges +
             charges.foodCharges +
             charges.laundryCharges +
             charges.minibarCharges +
             charges.extraBedCharges +
             charges.manualCharges +
-            ratePlanCharges +
             charges.extraPaxCharges;
 
           return {
