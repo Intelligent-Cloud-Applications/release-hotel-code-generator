@@ -1,8 +1,8 @@
 {
-  "institutionId": "HOTEL001",
+  "institutionId": "HOTE9687",
   "product": "dashboard-booking",
   "template": "template2",
-  "s3BucketName": "templatehm.awsaiapp.com",
-  "cloudFrontId": "E2MTGS0B7WKXTR",
-  "domain": "https://templatehm.awsaiapp.com"
+  "s3BucketName": "hotelcitypride.tekkzy.com",
+  "cloudFrontId": "E1V327ZP7U8ZKN",
+  "domain": "https://hotelcitypride.tekkzy.com"
 }
