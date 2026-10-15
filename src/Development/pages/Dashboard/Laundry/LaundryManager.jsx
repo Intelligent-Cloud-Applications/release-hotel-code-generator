@@ -49,6 +49,7 @@ import {
   Eye,
   TrendingUp,
   BarChart3,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -61,6 +62,7 @@ import {
   calculateLaundryTotals,
   createLaundryOrderBackend,
   fetchLaundryOrdersBackend,
+  fetchDeliveriesBackend,
   updateLaundryStatusBackend,
   markDeliveryDeliveredBackend,
   LAUNDRY_SAC_CODE,
@@ -368,6 +370,19 @@ const paymentBadge = (ord) => {
   return { text: ord.paymentMethod || "Paid", cls: "bg-gray-100 text-gray-800 border-gray-200" };
 };
 
+const isOrderDelivered = (ord) => {
+  if (!ord) return false;
+  const s = String(ord.status || "").toLowerCase();
+  const ds = String(ord.delivery_status || "").toLowerCase();
+  return (
+    ord.is_delivered === true ||
+    ord.delivered_to_room === true ||
+    ds === "delivered_to_room" ||
+    ds === "delivered" ||
+    s === "delivered"
+  );
+};
+
 export default function LaundryManager({ initialRoomNumber = null, onOrderCreated = null }) {
   const {
     bookings = [],
@@ -543,15 +558,8 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     return { name: (name || "").trim(), phone: (phone || "").trim() };
   };
 
-  /* Orders ----------------------------------------------------------------- */
-  const [allOrders, setAllOrders] = useState(() => {
-    try {
-      const saved = localStorage.getItem("hotel_laundry_orders");
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  /* Orders: 100% sourced from backend database (no localStorage) ---------- */
+  const [allOrders, setAllOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   const loadLaundryOrders = async () => {
@@ -561,42 +569,144 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       if (catalogData) {
         if (Array.isArray(catalogData.catalog) && catalogData.catalog.length > 0) {
           setCatalog(catalogData.catalog);
-          try {
-            localStorage.setItem("hotel_laundry_catalog_cache", JSON.stringify(catalogData.catalog));
-          } catch (e) {}
         }
         if (Array.isArray(catalogData.serviceSpeeds) && catalogData.serviceSpeeds.length > 0) {
           setServiceSpeeds(catalogData.serviceSpeeds);
-          try {
-            localStorage.setItem("hotel_laundry_speeds_cache", JSON.stringify(catalogData.serviceSpeeds));
-          } catch (e) {}
         }
       }
-      const remoteOrders = await fetchLaundryOrdersBackend(currentInstitutionId);
-      if (Array.isArray(remoteOrders) && remoteOrders.length > 0) {
-        setAllOrders((prevOrders) => {
-          const map = new Map();
-          remoteOrders.forEach((o) => {
-            const key = o.orderId || o.token || o.id;
-            if (key) map.set(String(key), o);
-          });
-          (prevOrders || []).forEach((o) => {
-            const key = o.orderId || o.token || o.id;
-            if (key) {
-              if (map.has(String(key))) {
-                map.set(String(key), { ...map.get(String(key)), ...o });
-              } else {
-                map.set(String(key), o);
-              }
+
+      // Query database for orders and deliveries
+      const [remoteOrders, remoteDeliveries] = await Promise.all([
+        fetchLaundryOrdersBackend(currentInstitutionId).catch(() => []),
+        fetchDeliveriesBackend(currentInstitutionId).catch(() => []),
+      ]);
+
+      const ordersMap = new Map();
+
+      // 1. Add orders returned from backend database
+      (remoteOrders || []).forEach((o) => {
+        const key = o.orderId || o.order_id || o.service_id || o.token || o.id;
+        if (key) ordersMap.set(String(key), o);
+        if (o.token && String(o.token) !== String(key)) {
+          ordersMap.set(String(o.token), o);
+        }
+      });
+
+      // 2. Merge delivery statuses from /laundry/deliveries endpoint (ensures delivered/pending status is 100% accurate from DB)
+      (remoteDeliveries || []).forEach((del) => {
+        const key = del.order_id || del.service_id || del.token || del.id;
+        const matched = ordersMap.get(String(key)) || (del.token ? ordersMap.get(String(del.token)) : null);
+        if (matched) {
+          const updated = {
+            ...matched,
+            status: del.status || matched.status,
+            delivery_status: del.delivery_status || matched.delivery_status,
+            is_delivered: del.is_delivered ?? matched.is_delivered,
+            delivered_to_room: del.delivered_to_room ?? del.is_delivered ?? matched.delivered_to_room,
+            delivered_at: del.delivered_at || matched.delivered_at,
+            delivered_by: del.delivered_by || matched.delivered_by,
+            target_delivery_time: del.target_delivery_time || matched.target_delivery_time,
+          };
+          ordersMap.set(String(key), updated);
+          if (del.token) ordersMap.set(String(del.token), updated);
+        } else if (key) {
+          const adapted = {
+            orderId: del.order_id || del.token,
+            order_id: del.order_id || del.token,
+            service_id: del.order_id || del.token,
+            token: del.token,
+            barcode: del.barcode || del.token,
+            roomNumber: del.room_number || "Walk-In",
+            guestName: del.guest_name || "Guest",
+            guestMobile: del.guest_phone || "",
+            totalGarments: del.total_garments || 0,
+            grandTotal: del.grand_total || 0,
+            totalAmount: del.grand_total || 0,
+            status: del.status || "collected",
+            delivery_status: del.delivery_status || (del.is_delivered ? "delivered_to_room" : "pending_delivery"),
+            is_delivered: Boolean(del.is_delivered),
+            delivered_to_room: Boolean(del.is_delivered),
+            delivered_at: del.delivered_at || null,
+            delivered_by: del.delivered_by || null,
+            target_delivery_time: del.target_delivery_time,
+            serviceSpeed: del.turnaround_speed || "standard",
+            createdAt: del.created_at
+              ? (typeof del.created_at === "number" ? new Date(del.created_at).toISOString() : del.created_at)
+              : new Date().toISOString(),
+            items: [],
+          };
+          ordersMap.set(String(key), adapted);
+        }
+      });
+
+      // 3. Scan active checked-in bookings for any room-posted laundry folio entries
+      (bookings || []).forEach((b) => {
+        if (b.detailedServices && typeof b.detailedServices === "object") {
+          Object.entries(b.detailedServices).forEach(([rNum, dateMap]) => {
+            if (dateMap && typeof dateMap === "object") {
+              Object.entries(dateMap).forEach(([dateStr, sList]) => {
+                if (Array.isArray(sList)) {
+                  sList.forEach((s) => {
+                    if (s && (s.service_type === "laundry" || s.serviceType === "laundry")) {
+                      const sKey = s.service_id || s.order_id || s.token || s.id;
+                      if (sKey) {
+                        const existing = ordersMap.get(String(sKey)) || (s.token ? ordersMap.get(String(s.token)) : null);
+                        if (!existing) {
+                          ordersMap.set(String(sKey), {
+                            orderId: sKey,
+                            order_id: sKey,
+                            service_id: sKey,
+                            token: s.token || sKey,
+                            barcode: s.barcode || s.token || sKey,
+                            roomNumber: rNum || s.roomNumber || b.room_id || "",
+                            bookingId: b.booking_id,
+                            guestName: s.guestName || b.guest_name || b.booking_name || `Guest (Room ${rNum})`,
+                            guestMobile: b.guest_phone || b.mobile || "",
+                            totalGarments: s.totalGarments || (s.items || []).length || 1,
+                            grandTotal: s.totalAmount || s.laundry_charges || 0,
+                            totalAmount: s.totalAmount || s.laundry_charges || 0,
+                            settlementType: "ROOM_FOLIO",
+                            paymentMethod: "ROOM_FOLIO",
+                            paymentStatus: "POSTED_TO_ROOM_BILL",
+                            status: s.status || "Received",
+                            delivery_status: s.delivery_status || "pending_delivery",
+                            is_delivered: Boolean(s.is_delivered || s.delivered_to_room),
+                            delivered_to_room: Boolean(s.is_delivered || s.delivered_to_room),
+                            createdAt: s.created_at
+                              ? (typeof s.created_at === "number" ? new Date(s.created_at).toISOString() : s.created_at)
+                              : `${dateStr}T12:00:00Z`,
+                            items: s.items || [],
+                          });
+                        }
+                      }
+                    }
+                  });
+                }
+              });
             }
           });
-          const merged = Array.from(map.values());
-          try {
-            localStorage.setItem("hotel_laundry_orders", JSON.stringify(merged));
-          } catch (e) {}
-          return merged;
-        });
-      }
+        }
+      });
+
+      // Deduplicate orders by unique key
+      const uniqueOrders = [];
+      const seenKeys = new Set();
+      ordersMap.forEach((ord) => {
+        const uniqueKey = ord.orderId || ord.order_id || ord.service_id || ord.token || ord.id;
+        if (uniqueKey && !seenKeys.has(String(uniqueKey))) {
+          seenKeys.add(String(uniqueKey));
+          uniqueOrders.push(ord);
+        }
+      });
+
+      // Sort descending by date
+      uniqueOrders.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.created_at || a.orderDate || 0).getTime();
+        const dateB = new Date(b.createdAt || b.created_at || b.orderDate || 0).getTime();
+        return dateB - dateA;
+      });
+
+      setAllOrders(uniqueOrders);
     } catch (err) {
       console.warn("Failed loading laundry data from backend:", err);
     } finally {
@@ -609,13 +719,14 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     if (typeof fetchGuests === "function" && (!guests || guests.length === 0)) fetchGuests();
   }, [currentInstitutionId]);
 
+  useEffect(() => {
+    if (activeTab === "deliveries" || activeTab === "tracker") {
+      loadLaundryOrders();
+    }
+  }, [activeTab]);
+
   const persistOrders = (updatedList) => {
     setAllOrders(updatedList);
-    try {
-      localStorage.setItem("hotel_laundry_orders", JSON.stringify(updatedList));
-    } catch (e) {
-      console.warn("Failed to persist laundry orders:", e);
-    }
   };
 
   const checkedInBookings = useMemo(
@@ -750,10 +861,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       (allOrders || []).forEach((order) => {
         const orderDate = getOrderDate(order);
         const grandTotal = Number(order.grandTotal || order.totalAmount || 0);
-        const isDelivered =
-          order.delivery_status === "delivered_to_room" ||
-          order.status === "Delivered" ||
-          order.status === "delivered";
+        const isDelivered = isOrderDelivered(order);
 
         if (orderDate) {
           if (!dailyMap[orderDate]) {
@@ -1087,7 +1195,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     } catch (backendErr) {
       console.warn("Backend save skipped:", backendErr);
     }
-    persistOrders([orderData, ...allOrders]);
+    await loadLaundryOrders();
     if (typeof onOrderCreated === "function") onOrderCreated(orderData);
     setPreviewOrder(orderData);
     handleResetOrder();
@@ -1223,6 +1331,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       );
     } catch (e) {}
     toast.success(`Room ${orderToRelease.roomNumber} hold released. ₹${orderToRelease.grandTotal} paid via ${payMethod}`);
+    await loadLaundryOrders();
   };
 
   const handleConvertHoldToRoomFolio = async (orderToPost) => {
@@ -1300,6 +1409,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
         );
       } catch (e) {}
       toast.success(`Added ₹${chargeAmt} to Room ${orderToPost.roomNumber} bill`);
+      await loadLaundryOrders();
     } catch (err) {
       console.error(err);
       toast.error("Could not post to room bill");
@@ -1310,23 +1420,27 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
 
   const handleMarkDeliveredToRoom = async (orderToDeliver) => {
     const by = userData?.userName || userData?.name || "Laundry Staff";
-    persistOrders(
-      allOrders.map((o) =>
-        o.orderId === orderToDeliver.orderId || o.token === orderToDeliver.token
-          ? {
-              ...o,
-              status: "Delivered",
-              delivery_status: "delivered_to_room",
-              delivered_to_room: true,
-              delivered_at: new Date().toISOString(),
-              delivered_by: by,
-            }
-          : o
-      )
+    const id = orderToDeliver.orderId || orderToDeliver.order_id || orderToDeliver.token || orderToDeliver.id;
+    // Optimistic UI update
+    setAllOrders((prev) =>
+      prev.map((o) => {
+        const oKey = o.orderId || o.order_id || o.token || o.id;
+        if (oKey === id || o.token === orderToDeliver.token) {
+          return {
+            ...o,
+            status: "Delivered",
+            delivery_status: "delivered_to_room",
+            delivered_to_room: true,
+            is_delivered: true,
+            delivered_at: new Date().toISOString(),
+            delivered_by: by,
+          };
+        }
+        return o;
+      })
     );
     try {
-      const id = orderToDeliver.orderId || orderToDeliver.token;
-      await markDeliveryDeliveredBackend(id, { delivered_by: by });
+      await markDeliveryDeliveredBackend(id, { delivered_by: by }, currentInstitutionId);
       await updateLaundryStatusBackend(
         id,
         { status: "delivered", delivery_status: "delivered_to_room", delivered_by: by },
@@ -1336,40 +1450,49 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       console.warn("Backend deliver status skipped:", e);
     }
     toast.success(`Delivered to Room ${orderToDeliver.roomNumber}`);
+    // Refresh directly from database
+    await loadLaundryOrders();
   };
 
-  const handleUpdateOrderStatus = (orderId, newStatus) => {
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
     const isNowDelivered = newStatus === "Delivered" || newStatus === "delivered";
-    persistOrders(
-      allOrders.map((o) =>
-        o.orderId === orderId || o.token === orderId
-          ? {
-              ...o,
-              status: newStatus,
-              ...(isNowDelivered
-                ? {
-                    delivery_status: "delivered_to_room",
-                    delivered_to_room: true,
-                    delivered_at: o.delivered_at || new Date().toISOString(),
-                    delivered_by: o.delivered_by || userData?.userName || userData?.name || "Laundry Staff",
-                  }
-                : {}),
-              updatedAt: new Date().toISOString(),
-            }
-          : o
-      )
+    setAllOrders((prev) =>
+      prev.map((o) => {
+        const oKey = o.orderId || o.order_id || o.token || o.id;
+        if (oKey === orderId || o.token === orderId) {
+          return {
+            ...o,
+            status: newStatus,
+            ...(isNowDelivered
+              ? {
+                  delivery_status: "delivered_to_room",
+                  delivered_to_room: true,
+                  is_delivered: true,
+                  delivered_at: o.delivered_at || new Date().toISOString(),
+                  delivered_by: o.delivered_by || userData?.userName || userData?.name || "Laundry Staff",
+                }
+              : {}),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return o;
+      })
     );
     try {
-      updateLaundryStatusBackend(
+      await updateLaundryStatusBackend(
         orderId,
         {
           status: newStatus,
-          ...(isNowDelivered ? { delivery_status: "delivered_to_room" } : {}),
+          ...(isNowDelivered ? { delivery_status: "delivered_to_room", delivered_to_room: true } : {}),
         },
         currentInstitutionId
       );
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Backend status update skipped:", e);
+    }
     toast.success(`Order ${orderId} is now "${newStatus}"`);
+    // Refresh directly from database
+    await loadLaundryOrders();
   };
 
   /* Rates ------------------------------------------------------------------ */
@@ -2024,16 +2147,29 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       {activeTab === "deliveries" && (
         <Panel className="flex-1 min-h-0 flex flex-col overflow-hidden">
           <div className="shrink-0 px-3 py-2 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
-            <Segmented
-              value={deliveryFilter}
-              onChange={setDeliveryFilter}
-              options={[
-                { id: "pending", label: `Awaiting (${pendingDeliveries.length})` },
-                { id: "held", label: `On hold (${heldOnRoomOrders.length})` },
-                { id: "delivered", label: `Delivered today (${deliveredTodayList.length})` },
-                { id: "all", label: `All (${allOrders.length})` },
-              ]}
-            />
+            <div className="flex items-center gap-2">
+              <Segmented
+                value={deliveryFilter}
+                onChange={setDeliveryFilter}
+                options={[
+                  { id: "pending", label: `Awaiting (${pendingDeliveries.length})` },
+                  { id: "held", label: `On hold (${heldOnRoomOrders.length})` },
+                  { id: "delivered", label: `Delivered today (${deliveredTodayList.length})` },
+                  { id: "all", label: `All (${allOrders.length})` },
+                ]}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadLaundryOrders}
+                disabled={loadingOrders}
+                className="!h-7 px-2 text-xs flex items-center gap-1.5"
+                title="Refresh deliveries from database"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingOrders ? "animate-spin text-blue-600" : "text-gray-600"}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
             {roomsToDeliver.length > 0 && (
               <span className="flex items-center gap-1.5 text-[11px] text-gray-600">
                 <Bed className="w-3.5 h-3.5 text-amber-600" />
@@ -2066,10 +2202,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
               return (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
                   {displayList.map((ord) => {
-                    const isDelivered =
-                      ord.delivery_status === "delivered_to_room" ||
-                      ord.status === "Delivered" ||
-                      ord.status === "delivered";
+                    const isDelivered = isOrderDelivered(ord);
                     const isHeld = ord.paymentStatus === "HELD_ON_ROOM";
                     const counts = {};
                     (ord.items || []).forEach((it) => {
@@ -2532,10 +2665,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                             })
                           : ord.orderDate || "—";
                         const pBadge = paymentBadge(ord);
-                        const isDelivered =
-                          ord.delivery_status === "delivered_to_room" ||
-                          ord.status === "Delivered" ||
-                          ord.status === "delivered";
+                        const isDelivered = isOrderDelivered(ord);
 
                         return (
                           <tr key={ord.orderId || ord.token} className="hover:bg-blue-50/40 transition-colors">
