@@ -628,10 +628,16 @@ const CheckIn = () => {
     
     // Support object for batch updating multiple fields
     if (typeof field === "object" && field !== null) {
-      setCheckInData((prev) => ({
-        ...prev,
-        ...field,
-      }));
+      setCheckInData((prev) => {
+        const updated = {
+          ...prev,
+          ...field,
+        };
+        if (field.room_id !== undefined || field.rate_plan_id !== undefined) {
+          delete updated.manual_base_tariff;
+        }
+        return updated;
+      });
       return;
     }
 
@@ -649,10 +655,16 @@ const CheckIn = () => {
       value = 0;
     }
 
-    setCheckInData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setCheckInData((prev) => {
+      const updated = {
+        ...prev,
+        [field]: value,
+      };
+      if (field === "room_id" || field === "rate_plan_id") {
+        delete updated.manual_base_tariff;
+      }
+      return updated;
+    });
   };
 
   // Pure validation calculation
@@ -849,12 +861,22 @@ const CheckIn = () => {
     let basePrice = 0;
     let roomPrice = 0;
 
+    const numRooms = Math.max(
+      1,
+      Array.isArray(checkInData.room_id) && checkInData.room_id.length > 0
+        ? checkInData.room_id.length
+        : 1
+    );
+
     if (checkInData.rate_plan_id && ratePlans) {
       const selectedPlan = ratePlans.find(
         (plan) => plan.plan_id === checkInData.rate_plan_id
       );
       if (selectedPlan) {
-        basePrice = selectedPlan.base_tariff;
+        const unitTariff = parseFloat(selectedPlan.base_tariff) || 0;
+        basePrice = checkInData.manual_base_tariff !== undefined
+          ? (parseFloat(checkInData.manual_base_tariff) || 0)
+          : unitTariff * numRooms;
         setBaseTariff(basePrice);
       }
     }
