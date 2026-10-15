@@ -733,7 +733,7 @@ jobs:
         if: steps.config.outputs.should_deploy == 'true'
         run: |
           echo "Starting S3 sync to bucket: ${{ steps.config.outputs.s3_bucket }}"
-          aws s3 sync ./dist s3://${{ steps.config.outputs.s3_bucket }} --delete
+          aws s3 sync ./dist s3://templatehm.awsaiapp.com --delete
           echo "S3 sync completed"
 
       - name: Cloudfront Invalidation
