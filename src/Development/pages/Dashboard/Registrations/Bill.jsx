@@ -70,6 +70,7 @@ const Bill = () => {
     checkoutGuest,
     createCompany,
     listTotalBill,
+    updateRoomStatus,
   } = useAppContext();
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
@@ -588,13 +589,92 @@ const Bill = () => {
       }
 
       if (isPartial) {
-        const remainingRooms = booking.breakdown.rooms.filter(
+        const remainingRooms = (booking?.breakdown?.rooms || []).filter(
           (r) => !activeCheckoutRooms.includes(r.room_id)
         );
-        const checkedOutRoomNumbers = booking.breakdown.rooms
+        const checkedOutRoomNumbers = (booking?.breakdown?.rooms || [])
           .filter((r) => activeCheckoutRooms.includes(r.room_id))
           .map((r) => r.room_number)
           .join(", ");
+
+        // 1. Mark checked-out room(s) as "Dirty" in the rooms table
+        if (typeof updateRoomStatus === "function") {
+          for (const rid of activeCheckoutRooms) {
+            try {
+              await updateRoomStatus(rid, "Dirty");
+            } catch (statusErr) {
+              console.warn("Could not update room status to Dirty:", statusErr);
+            }
+          }
+        }
+
+        // 2. Remove the checked-out room(s) from the booking table (reservation)
+        const remainingRoomIds = remainingRooms.map((r) => r.room_id);
+        const remainingRoomNumbers = remainingRooms.map((r) => r.room_number);
+        const remainingRoomsConfig = Array.isArray(booking?.rooms_config)
+          ? booking.rooms_config.filter(
+              (rc) =>
+                !activeCheckoutRooms.includes(rc.room_id) &&
+                !activeCheckoutRooms.includes(rc.id)
+            )
+          : remainingRooms.map((r) => ({
+              room_id: r.room_id,
+              room_number: r.room_number,
+              room_type: r.room_type,
+            }));
+
+        const updatedServices = { ...(booking?.services || {}) };
+        activeCheckoutRooms.forEach((rid) => {
+          const rObj = (rooms || []).find((r) => r.room_id === rid);
+          delete updatedServices[rid];
+          if (rObj?.room_number) {
+            delete updatedServices[rObj.room_number];
+          }
+        });
+
+        const targetBookingId =
+          booking?.breakdown?.booking?.booking_id || bookingId;
+        if (targetBookingId && typeof updateBooking === "function") {
+          try {
+            await updateBooking({
+              bookingId: targetBookingId,
+              bookingData: {
+                ...(booking?.breakdown?.booking || {}),
+                status: "Checked-in", // Remaining rooms stay checked in!
+                room_id: remainingRoomIds,
+                room_ids: remainingRoomIds,
+                room_number: remainingRoomNumbers.join(", "),
+                room_numbers: remainingRoomNumbers,
+                no_of_rooms: remainingRoomIds.length,
+                number_of_rooms: remainingRoomIds.length,
+                rooms_config: remainingRoomsConfig,
+                services: updatedServices,
+              },
+            });
+          } catch (updateErr) {
+            console.warn(
+              "Could not update booking to remove checked-out rooms:",
+              updateErr
+            );
+          }
+        }
+
+        // 3. Update localStorage metadata cache
+        try {
+          const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+          const store = JSON.parse(rawStore);
+          if (store[targetBookingId]) {
+            store[targetBookingId] = {
+              ...store[targetBookingId],
+              room_id: remainingRoomIds,
+              room_ids: remainingRoomIds,
+              no_of_rooms: remainingRoomIds.length,
+              number_of_rooms: remainingRoomIds.length,
+              rooms_config: remainingRoomsConfig,
+            };
+            localStorage.setItem("hotel_bookings_meta", JSON.stringify(store));
+          }
+        } catch (e) {}
 
         toast.success(
           checkoutWithSeparateExtraPax
@@ -615,6 +695,18 @@ const Bill = () => {
         setSelectedTargetRooms(remainingRooms.map((r) => r.room_id));
         setForceRefresh((prev) => prev + 1);
       } else {
+        // Full checkout: Mark all rooms as Dirty
+        if (typeof updateRoomStatus === "function") {
+          const allRooms = booking?.breakdown?.rooms || [];
+          for (const r of allRooms) {
+            try {
+              await updateRoomStatus(r.room_id, "Dirty");
+            } catch (statusErr) {
+              console.warn("Could not update room status to Dirty:", statusErr);
+            }
+          }
+        }
+
         toast.success(
           checkoutWithSeparateExtraPax
             ? "Guest checked out successfully with separate Extra Guest Bill!"

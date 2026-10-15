@@ -177,6 +177,34 @@ const RoomList = () => {
         return;
       }
 
+      // If room is physically Vacant or Clean today, it cannot be currently Occupied!
+      // Only match upcoming Reserved bookings, never stale Checked-in bookings
+      if (
+        isToday &&
+        (room.status === "Vacant" || room.status === "Clean")
+      ) {
+        const matchedReservation = activeBookings.find(
+          (b) => b.status === "Reserved" && doesBookingMatchRoom(b, room)
+        );
+        if (matchedReservation) {
+          assignedBookingIds.add(matchedReservation.booking_id);
+          const guest = getGuestDetails(matchedReservation);
+          map[room.room_id] = {
+            booking: matchedReservation,
+            guestName:
+              guest.full_name ||
+              matchedReservation.full_name ||
+              matchedReservation.guest_name ||
+              "Guest",
+            guestMobile: guest.mobile || matchedReservation.mobile || "",
+            guestEmail: guest.email || matchedReservation.email || "",
+            status: "Reserved",
+            isExplicit: true,
+          };
+        }
+        return;
+      }
+
       const matchedBooking = activeBookings.find((b) => doesBookingMatchRoom(b, room));
 
       if (matchedBooking) {
@@ -875,9 +903,15 @@ const RoomCard = ({ room, bookingInfo, isLoading, onClick, onDoubleClick }) => {
         ) : (
           <div
             className="truncate text-xs font-semibold max-w-[85px]"
-            title={bookingInfo?.guestName || getStatusText(room.status)}
+            title={
+              (room.status === "Occupied" || room.status === "Reserved") &&
+              bookingInfo?.guestName
+                ? bookingInfo.guestName
+                : getStatusText(room.status)
+            }
           >
-            {bookingInfo?.guestName
+            {(room.status === "Occupied" || room.status === "Reserved") &&
+            bookingInfo?.guestName
               ? bookingInfo.guestName
               : getStatusText(room.status)}
           </div>

@@ -1274,7 +1274,28 @@ export const AppContextProvider = ({ children }) => {
       }).response;
       const data = await body.json();
       listTotalBill();
-      setBookings((prev) => [...prev]);
+
+      // Immediately update local state so booking reflects Checked-out without delay
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.booking_id === bookingDetails.booking_id
+            ? { ...b, status: "Checked-out" }
+            : b
+        )
+      );
+
+      // Clean up localStorage metadata cache for this checked-out booking
+      try {
+        const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+        const store = JSON.parse(rawStore);
+        if (store[bookingDetails.booking_id]) {
+          delete store[bookingDetails.booking_id];
+          localStorage.setItem("hotel_bookings_meta", JSON.stringify(store));
+        }
+      } catch (e) {
+        // ignore
+      }
+
       return data.reservation_id; // Return the checked-out reservation ID
     } catch (error) {
       console.error("Error checking out guest:", error);

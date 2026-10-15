@@ -186,26 +186,43 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
     return list;
   };
 
-  // 1. Primary sources: Current active rooms from booking
-  const primaryRaw = [
+  const targetRoomCount =
+    parseInt(booking.no_of_rooms || booking.number_of_rooms || 1, 10) || 1;
+
+  // 1. Primary sources: Current active room_id / room_ids
+  const activeRoomIdItems = [
     ...collectItems(booking.room_id),
     ...collectItems(booking.room_ids),
-    ...collectItems(booking.room_number),
-    ...collectItems(booking.room_numbers),
-    ...collectItems(booking.roomNo),
   ];
 
   const primaryResolved = [];
-  primaryRaw.forEach((item) => {
+  activeRoomIdItems.forEach((item) => {
     const res = resolveItem(item);
     if (res && !primaryResolved.includes(res)) {
       primaryResolved.push(res);
     }
   });
 
-  // If primary rooms are resolved, return them (these are the current active rooms!)
+  // If primary room_ids are resolved, return them (these are the current active rooms!)
   if (primaryResolved.length > 0) {
-    return primaryResolved.join(", ");
+    return primaryResolved.slice(0, targetRoomCount).join(", ");
+  }
+
+  // 2. Secondary source: room_number / room_numbers only if room_id was not resolved
+  const roomNumberItems = [
+    ...collectItems(booking.room_number),
+    ...collectItems(booking.room_numbers),
+    ...collectItems(booking.roomNo),
+  ];
+  roomNumberItems.forEach((item) => {
+    const res = resolveItem(item);
+    if (res && !primaryResolved.includes(res)) {
+      primaryResolved.push(res);
+    }
+  });
+
+  if (primaryResolved.length > 0) {
+    return primaryResolved.slice(0, targetRoomCount).join(", ");
   }
 
   // 2. Fallback: If primary room is missing or was a deleted room that couldn't be resolved
@@ -1200,6 +1217,27 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
       company_id: "",
       gst_no: "",
     });
+
+    try {
+      const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+      const store = JSON.parse(rawStore);
+      if (store[selectedBooking.booking_id]) {
+        delete store[selectedBooking.booking_id];
+        localStorage.setItem("hotel_bookings_meta", JSON.stringify(store));
+      }
+    } catch (e) {}
+
+    if (typeof fetchBookings === "function") {
+      fetchBookings().catch((err) =>
+        console.error("Error refreshing bookings:", err)
+      );
+    }
+    if (typeof fetchRooms === "function") {
+      fetchRooms().catch((err) =>
+        console.error("Error refreshing rooms:", err)
+      );
+    }
+
     toast("Guest checked out successfully!");
   };
 

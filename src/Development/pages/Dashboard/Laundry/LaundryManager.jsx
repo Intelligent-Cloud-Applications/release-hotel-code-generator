@@ -120,44 +120,144 @@ const ymd = (d = new Date()) => {
 
 /**
  * Robust room number resolution helper
- * Ensures the human room number (e.g. "101", "102") is always returned instead of internal UUIDs
+ * Ensures human room numbers (e.g. "101", "102") are always returned instead of internal UUIDs
  */
-export const getDisplayRoomNumber = (booking, roomsList = []) => {
-  if (!booking) return "";
+export const resolveSingleRoomNumber = (item, roomsList = [], booking = null) => {
+  if (item === null || item === undefined) return "";
+  const str = String(item).replace(/^,+|,+$/g, "").trim();
+  if (!str) return "";
 
-  const joinIf = (v) => (Array.isArray(v) ? v.join(", ") : String(v));
-  if (booking.room_number) return joinIf(booking.room_number);
-  if (booking.roomNumber) return joinIf(booking.roomNumber);
-  if (booking.room_numbers) return joinIf(booking.room_numbers);
-  if (booking.allocated_room) return String(booking.allocated_room);
+  // 1. Direct lookup in roomsList by room_id or id or room_number
+  const matched = (roomsList || []).find(
+    (r) =>
+      String(r.room_id || r.id || "").toLowerCase() === str.toLowerCase() ||
+      String(r.room_number || r.number || "").toLowerCase() === str.toLowerCase()
+  );
+  if (matched?.room_number || matched?.number) {
+    return String(matched.room_number || matched.number).trim();
+  }
 
-  const rawRoomId = Array.isArray(booking.room_id) ? booking.room_id[0] : booking.room_id;
-  if (rawRoomId && roomsList && roomsList.length > 0) {
-    const matched = roomsList.find(
-      (r) =>
-        String(r.room_id || r.id || "").toLowerCase() === String(rawRoomId).toLowerCase() ||
-        String(r.room_number || r.number || "").toLowerCase() === String(rawRoomId).toLowerCase()
+  // 2. Lookup in cached hotel_rooms in localStorage
+  try {
+    const cached = localStorage.getItem("hotel_rooms");
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      const hit = (parsed || []).find(
+        (r) =>
+          String(r.room_id || r.id || "").toLowerCase() === str.toLowerCase() ||
+          String(r.room_number || r.number || "").toLowerCase() === str.toLowerCase()
+      );
+      if (hit?.room_number || hit?.number) {
+        return String(hit.room_number || hit.number).trim();
+      }
+    }
+  } catch (e) {}
+
+  // 3. Lookup in booking.rooms_config or booking.rooms
+  if (booking) {
+    const configArr = [
+      ...(Array.isArray(booking.rooms_config) ? booking.rooms_config : []),
+      ...(Array.isArray(booking.rooms) ? booking.rooms : []),
+    ];
+    const cfgHit = configArr.find(
+      (c) =>
+        String(c?.room_id || c?.id || "").toLowerCase() === str.toLowerCase() ||
+        String(c?.room_number || c?.number || "").toLowerCase() === str.toLowerCase()
     );
-    if (matched) {
-      return String(matched.room_number || matched.number || matched.room_name || rawRoomId);
+    if (cfgHit?.room_number || cfgHit?.number) {
+      return String(cfgHit.room_number || cfgHit.number).trim();
     }
   }
 
-  const fromList = (arr) => {
-    if (Array.isArray(arr) && arr.length > 0) {
-      const first = arr[0];
-      return typeof first === "object"
-        ? String(first.room_number || first.number || first.room_id || "")
-        : String(first);
-    }
-    return null;
-  };
-  const a = fromList(booking.rooms);
-  if (a !== null) return a;
-  const b = fromList(booking.rooms_config);
-  if (b !== null) return b;
+  // 4. If str is a UUID and not resolved, NEVER return raw UUID
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  if (isUuid) {
+    return "";
+  }
 
-  return rawRoomId ? String(rawRoomId) : "";
+  return str;
+};
+
+export const getBookingRoomNumbers = (booking, roomsList = []) => {
+  if (!booking) return [];
+
+  const rawItems = [];
+  const add = (val) => {
+    if (val === null || val === undefined) return;
+    if (Array.isArray(val)) {
+      val.forEach(add);
+    } else if (typeof val === "string") {
+      val.split(",").forEach((s) => {
+        const trimmed = s.trim();
+        if (trimmed) rawItems.push(trimmed);
+      });
+    } else if (typeof val === "number") {
+      rawItems.push(String(val));
+    }
+  };
+
+  // Add room_id and room_ids
+  add(booking.room_id);
+  add(booking.room_ids);
+
+  // Add rooms_config and rooms
+  if (Array.isArray(booking.rooms_config)) {
+    booking.rooms_config.forEach((r) => {
+      if (r?.room_number) add(r.room_number);
+      else if (r?.room_id) add(r.room_id);
+    });
+  }
+  if (Array.isArray(booking.rooms)) {
+    booking.rooms.forEach((r) => {
+      if (r?.room_number) add(r.room_number);
+      else if (r?.room_id) add(r.room_id);
+    });
+  }
+
+  // Add room_number and room_numbers
+  add(booking.room_number);
+  add(booking.room_numbers);
+  add(booking.roomNumber);
+  add(booking.roomNo);
+  add(booking.allocated_room);
+
+  // Add keys from room_charges and services
+  if (booking.room_charges && typeof booking.room_charges === "object") {
+    Object.keys(booking.room_charges).forEach(add);
+  }
+  if (booking.services && typeof booking.services === "object") {
+    Object.keys(booking.services).forEach(add);
+  }
+
+  const resolvedList = [];
+  rawItems.forEach((item) => {
+    const resolved = resolveSingleRoomNumber(item, roomsList, booking);
+    if (resolved && !resolvedList.includes(resolved)) {
+      resolvedList.push(resolved);
+    }
+  });
+
+  return resolvedList;
+};
+
+export const getDisplayRoomNumber = (booking, roomsList = []) => {
+  if (!booking) return "";
+  const list = getBookingRoomNumbers(booking, roomsList);
+  if (list.length > 0) {
+    return list.join(", ");
+  }
+  return booking.allocated_room ? String(booking.allocated_room) : "";
+};
+
+export const formatDisplayRoom = (roomVal, roomsList = []) => {
+  if (!roomVal || roomVal === "Walk-In") return roomVal || "Walk-In";
+  const str = String(roomVal);
+  if (!str.includes("-") && !str.includes(",")) return str;
+  const parts = str.split(",").map((s) => s.trim()).filter(Boolean);
+  const resolved = parts
+    .map((p) => resolveSingleRoomNumber(p, roomsList))
+    .filter(Boolean);
+  return resolved.length > 0 ? resolved.join(", ") : str;
 };
 
 /* Small shared pieces ------------------------------------------------------ */
@@ -526,33 +626,98 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
     [bookings]
   );
 
+  const roomPickupOptions = useMemo(() => {
+    const options = [];
+    (checkedInBookings || []).forEach((b) => {
+      const gInfo = resolveGuestDetails(b);
+      const bRooms = getBookingRoomNumbers(b, rooms);
+      if (bRooms.length > 1) {
+        bRooms.forEach((rNum) => {
+          options.push({
+            value: `${b.booking_id}:::${rNum}`,
+            booking_id: b.booking_id,
+            roomNumber: rNum,
+            guestInfo: gInfo,
+            label: `Room ${rNum} — ${gInfo.name || "In-House Guest"}${gInfo.phone ? ` (${gInfo.phone})` : ""}`,
+          });
+        });
+      } else if (bRooms.length === 1) {
+        const rNum = bRooms[0];
+        options.push({
+          value: `${b.booking_id}:::${rNum}`,
+          booking_id: b.booking_id,
+          roomNumber: rNum,
+          guestInfo: gInfo,
+          label: `Room ${rNum} — ${gInfo.name || "In-House Guest"}${gInfo.phone ? ` (${gInfo.phone})` : ""}`,
+        });
+      } else {
+        const rNum = getDisplayRoomNumber(b, rooms) || "Unassigned";
+        options.push({
+          value: b.booking_id,
+          booking_id: b.booking_id,
+          roomNumber: rNum !== "Unassigned" ? rNum : "",
+          guestInfo: gInfo,
+          label: `Room ${rNum} — ${gInfo.name || "In-House Guest"}${gInfo.phone ? ` (${gInfo.phone})` : ""}`,
+        });
+      }
+    });
+    return options;
+  }, [checkedInBookings, rooms, guests]);
+
+  const selectedPickupValue = useMemo(() => {
+    if (!selectedBookingId) return "";
+    if (selectedRoomNumber) {
+      const compound = `${selectedBookingId}:::${selectedRoomNumber}`;
+      const exists = roomPickupOptions.some((o) => o.value === compound);
+      if (exists) return compound;
+    }
+    const singleMatch = roomPickupOptions.find((o) => o.booking_id === selectedBookingId);
+    return singleMatch ? singleMatch.value : selectedBookingId;
+  }, [selectedBookingId, selectedRoomNumber, roomPickupOptions]);
+
   useEffect(() => {
     if (!initialRoomNumber) return;
+    const targetRoomStr = String(initialRoomNumber).trim();
     const found = checkedInBookings.find((b) => {
-      const displayNum = getDisplayRoomNumber(b, rooms);
-      return String(displayNum) === String(initialRoomNumber) || String(b.room_id) === String(initialRoomNumber);
+      const bRooms = getBookingRoomNumbers(b, rooms);
+      return bRooms.includes(targetRoomStr) || String(b.room_id) === targetRoomStr;
     });
     if (found) {
       setSelectedBookingId(found.booking_id);
-      setSelectedRoomNumber(getDisplayRoomNumber(found, rooms) || initialRoomNumber);
+      setSelectedRoomNumber(targetRoomStr);
       const gInfo = resolveGuestDetails(found);
       setGuestName(gInfo.name);
       setGuestMobile(gInfo.phone);
     } else {
-      setSelectedRoomNumber(initialRoomNumber);
+      setSelectedRoomNumber(targetRoomStr);
     }
     setCollectionSource("room_pickup");
   }, [initialRoomNumber, checkedInBookings, rooms, guests]);
 
-  const handleBookingSelect = (bId) => {
-    setSelectedBookingId(bId);
-    const bk = checkedInBookings.find((b) => b.booking_id === bId);
-    if (bk) {
-      setSelectedRoomNumber(getDisplayRoomNumber(bk, rooms));
-      const gInfo = resolveGuestDetails(bk);
-      setGuestName(gInfo.name);
-      setGuestMobile(gInfo.phone);
+  const handleRoomOptionSelect = (val) => {
+    if (!val) return;
+    const opt = roomPickupOptions.find((o) => o.value === val);
+    if (opt) {
+      setSelectedBookingId(opt.booking_id);
+      setSelectedRoomNumber(opt.roomNumber);
+      setGuestName(opt.guestInfo.name);
+      setGuestMobile(opt.guestInfo.phone);
+    } else {
+      const [bId, rNum] = val.split(":::");
+      setSelectedBookingId(bId);
+      const bk = checkedInBookings.find((b) => b.booking_id === bId);
+      if (bk) {
+        const fallbackRoom = rNum || getDisplayRoomNumber(bk, rooms);
+        setSelectedRoomNumber(fallbackRoom);
+        const gInfo = resolveGuestDetails(bk);
+        setGuestName(gInfo.name);
+        setGuestMobile(gInfo.phone);
+      }
     }
+  };
+
+  const handleBookingSelect = (bId) => {
+    handleRoomOptionSelect(bId);
   };
 
   /* Statistics: one pass, grouped by day ----------------------------------- */
@@ -1543,24 +1708,19 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
               />
               {collectionSource === "room_pickup" ? (
                 <>
-                  <Select value={selectedBookingId} onValueChange={handleBookingSelect}>
+                  <Select value={selectedPickupValue} onValueChange={handleRoomOptionSelect}>
                     <SelectTrigger className="!h-7 text-xs">
                       <SelectValue placeholder="Select checked-in room *" />
                     </SelectTrigger>
                     <SelectContent className="max-h-56">
-                      {checkedInBookings.length === 0 ? (
+                      {roomPickupOptions.length === 0 ? (
                         <div className="p-2 text-xs text-gray-500 text-center">No checked-in rooms found</div>
                       ) : (
-                        checkedInBookings.map((b) => {
-                          const gInfo = resolveGuestDetails(b);
-                          const rNum = getDisplayRoomNumber(b, rooms) || "Unassigned";
-                          return (
-                            <SelectItem key={b.booking_id} value={b.booking_id}>
-                              Room {rNum} — {gInfo.name || "In-House Guest"}
-                              {gInfo.phone ? ` (${gInfo.phone})` : ""}
-                            </SelectItem>
-                          );
-                        })
+                        roomPickupOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))
                       )}
                     </SelectContent>
                   </Select>
@@ -1928,7 +2088,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm">
-                              {ord.roomNumber === "Walk-In" ? "Walk-in" : `Room ${ord.roomNumber}`}
+                              {ord.roomNumber === "Walk-In" ? "Walk-in" : `Room ${formatDisplayRoom(ord.roomNumber, rooms)}`}
                             </span>
                             <span className="font-mono text-[10px] text-gray-500">#{ord.token || ord.orderId}</span>
                           </div>
@@ -2387,7 +2547,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                             </td>
                             <td className="py-2 px-2 font-semibold text-gray-900 whitespace-nowrap">
                               {ord.roomNumber && ord.roomNumber !== "Walk-In"
-                                ? `Room ${ord.roomNumber}`
+                                ? `Room ${formatDisplayRoom(ord.roomNumber, rooms)}`
                                 : "Walk-In"}
                             </td>
                             <td className="py-2 px-2 text-gray-800 font-medium">
@@ -2730,7 +2890,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                       <tr key={ord.orderId || ord.token} className="hover:bg-gray-50">
                         <td className="py-1.5 px-3 font-mono font-semibold text-blue-800">#{ord.token || ord.orderId}</td>
                         <td className="py-1.5 px-3">
-                          <div className="font-semibold">{ord.roomNumber === "Walk-In" ? "Walk-in" : `Room ${ord.roomNumber}`}</div>
+                          <div className="font-semibold">{ord.roomNumber === "Walk-In" ? "Walk-in" : `Room ${formatDisplayRoom(ord.roomNumber, rooms)}`}</div>
                           <div className="text-[10px] text-gray-500">{ord.guestName}</div>
                         </td>
                         <td className="py-1.5 px-3">{ord.totalGarments || ord.items?.length}</td>
@@ -2786,7 +2946,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                   <Receipt className="w-4 h-4 text-blue-600" />
                   Laundry bill #{previewOrder.token || previewOrder.orderId}
                   {previewOrder.roomNumber && previewOrder.roomNumber !== "Walk-In" && (
-                    <Badge className="bg-blue-600 text-white text-[10px]">Room {previewOrder.roomNumber}</Badge>
+                    <Badge className="bg-blue-600 text-white text-[10px]">Room {formatDisplayRoom(previewOrder.roomNumber, rooms)}</Badge>
                   )}
                 </span>
                 <Segmented
@@ -2962,7 +3122,7 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
                       </div>
                       <div className="font-semibold text-gray-900 text-sm">
                         {ord.roomNumber && ord.roomNumber !== "Walk-In"
-                          ? `Room ${ord.roomNumber}`
+                          ? `Room ${formatDisplayRoom(ord.roomNumber, rooms)}`
                           : "Walk-In"}
                       </div>
                       <div className="text-gray-700">

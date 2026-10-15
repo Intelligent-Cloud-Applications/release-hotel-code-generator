@@ -250,13 +250,40 @@ const AmendBooking = () => {
   const isRoomOccupied = (roomOrId, currentBookingId = null) => {
     if (!roomOrId) return false;
     const room = typeof roomOrId === "object" ? roomOrId : getRoomDetails(roomOrId);
-    const roomIdStr = String(room?.room_id || room?.id || roomOrId || "").trim();
-    const roomNumStr = String(room?.room_number || roomOrId || "").trim();
+    const roomIdStr = String(room?.room_id || room?.id || roomOrId || "").trim().toLowerCase();
+    const roomNumStr = String(room?.room_number || roomOrId || "").trim().toLowerCase();
+
+    // If this room belongs to editingBooking or currentBookingId, it is their OWN room!
+    const targetBooking =
+      editingBooking ||
+      (currentBookingId
+        ? (bookings || []).find(
+            (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+          )
+        : null);
+
+    if (targetBooking) {
+      const myRooms = getCurrentRoomIds(targetBooking)
+        .map((r) => {
+          const detail = getRoomDetails(r);
+          return [
+            String(r || "").trim().toLowerCase(),
+            String(detail?.room_id || "").trim().toLowerCase(),
+            String(detail?.room_number || "").trim().toLowerCase(),
+          ];
+        })
+        .flat()
+        .filter(Boolean);
+
+      if (myRooms.includes(roomIdStr) || myRooms.includes(roomNumStr)) {
+        return false;
+      }
+    }
 
     const checkMatch = (val) => {
       if (!val) return false;
       if (Array.isArray(val)) return val.some(checkMatch);
-      const str = String(val).trim();
+      const str = String(val).trim().toLowerCase();
       return (
         (roomIdStr && str === roomIdStr) ||
         (roomNumStr && str === roomNumStr)
@@ -271,34 +298,26 @@ const AmendBooking = () => {
         checkMatch(b.room_number) ||
         checkMatch(b.room_numbers) ||
         checkMatch(b.roomNo) ||
-        (Array.isArray(b.rooms) && b.rooms.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number))) ||
-        (Array.isArray(b.rooms_config) && b.rooms_config.some((r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)))
+        (Array.isArray(b.rooms) &&
+          b.rooms.some(
+            (r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)
+          )) ||
+        (Array.isArray(b.rooms_config) &&
+          b.rooms_config.some(
+            (r) => checkMatch(r?.room_id) || checkMatch(r?.room_number)
+          ))
       );
     };
-
-    // If currentBookingId (or editingBooking) already owns this room, it is THEIR OWN room!
-    if (currentBookingId) {
-      if (
-        editingBooking &&
-        String(editingBooking.booking_id).trim() === String(currentBookingId).trim() &&
-        bookingMatchesRoom(editingBooking)
-      ) {
-        return false;
-      }
-      const myBooking = (bookings || []).find(
-        (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
-      );
-      if (myBooking && bookingMatchesRoom(myBooking)) {
-        return false;
-      }
-    }
 
     // Check if any OTHER checked-in booking occupies this room
     const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
       if (b.status !== "Checked-in") return false;
+      const bId = String(b.booking_id || "").trim();
       if (
-        currentBookingId &&
-        String(b.booking_id).trim() === String(currentBookingId).trim()
+        (editingBooking &&
+          bId === String(editingBooking.booking_id).trim()) ||
+        (currentBookingId &&
+          bId === String(currentBookingId).trim())
       ) {
         return false;
       }
@@ -1189,9 +1208,17 @@ const AmendBooking = () => {
       guestPayload.marital_status = formData.marital_status;
       guestPayload.anniversary_date = formData.anniversary_date;
     }
+    const newRoomNumbers = (formData.room_ids || []).map((rid) => {
+      const r = getRoomDetails(rid);
+      return r?.room_number || rid;
+    });
+
     const bookingPayloadBase = {
       booking_id: editingBooking.booking_id,
       room_id: formData.room_ids,
+      room_ids: formData.room_ids,
+      room_number: newRoomNumbers.join(", "),
+      room_numbers: newRoomNumbers,
       room_type: formData.room_type,
       room_category: formData.room_category || formData.room_type,
       no_of_rooms: parseInt(formData.no_of_rooms) || (formData.room_ids ? formData.room_ids.length : 1),
@@ -1409,6 +1436,19 @@ const AmendBooking = () => {
         }
         if (fetchRooms) await fetchRooms();
       }
+      try {
+        const rawStore = localStorage.getItem("hotel_bookings_meta") || "{}";
+        const store = JSON.parse(rawStore);
+        store[editingBooking.booking_id] = {
+          ...(store[editingBooking.booking_id] || {}),
+          room_id: formData.room_ids,
+          room_ids: formData.room_ids,
+          no_of_rooms: formData.room_ids ? formData.room_ids.length : 1,
+          number_of_rooms: formData.room_ids ? formData.room_ids.length : 1,
+        };
+        localStorage.setItem("hotel_bookings_meta", JSON.stringify(store));
+      } catch (e) {}
+
       toast.success('Check-in amended successfully!');
       setShowEditDialog(false);
       setEditingBooking(null);

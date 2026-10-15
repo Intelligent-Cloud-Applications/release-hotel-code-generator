@@ -101,18 +101,42 @@ const CheckIn = () => {
     };
 
     // If currentBookingId (or selectedBooking) owns this room, it's this booking's own room
-    if (currentBookingId) {
-      if (
-        selectedBooking &&
-        String(selectedBooking.booking_id).trim() === String(currentBookingId).trim() &&
-        bookingMatchesRoom(selectedBooking)
-      ) {
-        return false;
+    const targetBooking =
+      selectedBooking ||
+      (currentBookingId
+        ? (bookings || []).find(
+            (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
+          )
+        : null);
+
+    if (targetBooking) {
+      const myRooms = [];
+      const add = (v) => {
+        if (!v) return;
+        if (Array.isArray(v)) v.forEach(add);
+        else myRooms.push(String(v).trim().toLowerCase());
+      };
+      add(targetBooking.room_id);
+      add(targetBooking.room_ids);
+      add(targetBooking.room_number);
+      add(targetBooking.room_numbers);
+      if (Array.isArray(targetBooking.rooms_config)) {
+        targetBooking.rooms_config.forEach((rc) => {
+          add(rc.room_id);
+          add(rc.room_number);
+        });
       }
-      const myBooking = (bookings || []).find(
-        (b) => String(b.booking_id).trim() === String(currentBookingId).trim()
-      );
-      if (myBooking && bookingMatchesRoom(myBooking)) {
+      if (Array.isArray(targetBooking.rooms)) {
+        targetBooking.rooms.forEach((r) => {
+          add(r.room_id);
+          add(r.room_number);
+        });
+      }
+
+      if (
+        myRooms.includes(roomIdStr.toLowerCase()) ||
+        myRooms.includes(roomNumStr.toLowerCase())
+      ) {
         return false;
       }
     }
@@ -120,9 +144,10 @@ const CheckIn = () => {
     // Check if any OTHER checked-in booking occupies this room
     const isOccupiedByAnotherBooking = (bookings || []).some((b) => {
       if (b.status !== "Checked-in") return false;
+      const bId = String(b.booking_id || "").trim();
       if (
-        currentBookingId &&
-        String(b.booking_id).trim() === String(currentBookingId).trim()
+        (selectedBooking && bId === String(selectedBooking.booking_id).trim()) ||
+        (currentBookingId && bId === String(currentBookingId).trim())
       ) {
         return false;
       }
@@ -306,7 +331,7 @@ const CheckIn = () => {
       });
 
       if (targetRoom) {
-        if (isRoomOccupied(targetRoom)) {
+        if (isRoomOccupied(targetRoom, selectedBooking?.booking_id)) {
           toast.error(
             `Room ${targetRoom.room_number} is currently Occupied by another guest and cannot be checked in.`
           );
