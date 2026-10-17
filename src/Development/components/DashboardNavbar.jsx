@@ -75,7 +75,7 @@ const DashboardNavbar = () => {
         { id: "guest_history", label: "Guest History", hasDropdown: false },
         { id: "company", label: "Company Details", hasDropdown: false },
         { id: "expenses", label: "Cash Drawer", hasDropdown: false },
-        { id: "store", label: "Store", hasDropdown: false },
+        // { id: "store", label: "Store", hasDropdown: false },
       ];
 
       // if (hasLaundryAccess) {
