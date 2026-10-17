@@ -148,16 +148,16 @@ const SplitBill = ({
 
                 // Laundry charge (SAC 996312) - dedicated Laundry Folio
                 if (isLaundryModule || laundryCharge > 0) {
-                  const lndId =
+                  const lndId = String(
                     service.order_id ||
                     service.token ||
                     service.service_id ||
-                    `LND-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`;
+                    `LND-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`
+                  ).trim();
                   if (
                     !laundryServices.some(
                       (s) =>
-                        (s.order_id || s.token || s.service_id) === lndId ||
-                        (s.roomNumber === roomNumber && s.date === date)
+                        String(s.order_id || s.token || s.service_id || "").trim() === lndId
                     )
                   ) {
                     laundryServices.push({
@@ -173,28 +173,26 @@ const SplitBill = ({
 
                 // Food / Restaurant charge (SAC 996331) - dedicated F&B Folio
                 if (isRestaurantModule || foodCharge > 0) {
-                  const oid = String(
-                    service.order_id ||
-                      `FNB-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}`
-                  ).trim();
-                  if (!foodOrderIds.includes(oid)) {
-                    foodOrderIds.push(oid);
-                  }
-                  if (
-                    !fallbackFoodServices.some(
-                      (s) =>
-                        s.order_id === oid ||
-                        (s.roomNumber === roomNumber && s.date === date)
-                    )
-                  ) {
-                    fallbackFoodServices.push({
-                      ...service,
-                      roomNumber,
-                      date,
-                      order_id: oid,
-                      food_charges: foodCharge,
-                      name: service.name || "In-Room Dining / Food Service",
-                    });
+                  const rawOid = service.order_id ? String(service.order_id).trim() : "";
+                  const oid = rawOid || (foodCharge > 0 ? `FNB-${roomNumber}-${date.replace(/[^a-zA-Z0-9]/g, "")}` : "");
+                  if (oid) {
+                    if (!foodOrderIds.includes(oid)) {
+                      foodOrderIds.push(oid);
+                    }
+                    if (
+                      !fallbackFoodServices.some(
+                        (s) => String(s.order_id).trim() === oid
+                      )
+                    ) {
+                      fallbackFoodServices.push({
+                        ...service,
+                        roomNumber,
+                        date,
+                        order_id: oid,
+                        food_charges: foodCharge,
+                        name: service.name || "In-Room Dining / Food Service",
+                      });
+                    }
                   }
                 }
 
@@ -419,6 +417,8 @@ const SplitBill = ({
             const charge = Number(
               serviceData?.food_charges || serviceData?.charge || 0
             );
+            if (charge <= 0) return;
+
             const cgstRate = Number(institutionData?.cgst ?? 2.5);
             const sgstRate = Number(institutionData?.sgst ?? 2.5);
             const cgst = (charge * cgstRate) / 100;
@@ -479,42 +479,6 @@ const SplitBill = ({
             } catch (e) {}
           }
 
-          const laundryItems =
-            orderItems && orderItems.length > 0
-              ? orderItems.map((lItem) => {
-                  const careLabel =
-                    lItem.careType === "wash_and_press"
-                      ? "Wash & Iron"
-                      : lItem.careType === "press_only"
-                      ? "Iron"
-                      : lItem.careType === "dry_clean"
-                      ? "Dry Clean"
-                      : lItem.careType === "wash_only"
-                      ? "Wash"
-                      : "Care";
-                  return {
-                    name: `${lItem.name} [${careLabel}]`,
-                    itemName: `${lItem.name} [${careLabel}]`,
-                    price: Number(lItem.rate || lItem.unitRate || lItem.price || 0),
-                    quantity: Number(lItem.quantity) || 1,
-                    type: "laundry",
-                    category: lItem.category || "Laundry",
-                    sac: "996312",
-                  };
-                })
-              : [
-                  {
-                    name: service.name || `Laundry Service #${service.order_id}`,
-                    itemName:
-                      service.name || `Laundry Service #${service.order_id}`,
-                    price: Number(service.laundry_charges) || 0,
-                    quantity: 1,
-                    type: "laundry",
-                    category: "Laundry",
-                    sac: "996312",
-                  },
-                ];
-
           const grossCharge = Number(service.laundry_charges || service.totalAmount || 0);
           let subtotal =
             service.itemsSubtotal !== undefined
@@ -550,6 +514,62 @@ const SplitBill = ({
               : foundLaundryOrder?.grandTotal !== undefined
               ? Number(foundLaundryOrder.grandTotal)
               : grossCharge || Math.round(subtotal + cgst + sgst);
+
+          const totalOrderQty = (orderItems || []).reduce(
+            (sum, it) => sum + (Number(it.quantity) || 1),
+            0
+          );
+
+          const laundryItems =
+            orderItems && orderItems.length > 0
+              ? orderItems.map((lItem) => {
+                  const careLabel =
+                    lItem.careType === "wash_and_press"
+                      ? "Wash & Iron"
+                      : lItem.careType === "press_only"
+                      ? "Iron"
+                      : lItem.careType === "dry_clean"
+                      ? "Dry Clean"
+                      : lItem.careType === "wash_only"
+                      ? "Wash"
+                      : "Care";
+
+                  const qty = Number(lItem.quantity) || 1;
+                  let itemPrice = Number(
+                    lItem.rate ||
+                    lItem.unitRate ||
+                    lItem.price ||
+                    0
+                  );
+                  if (itemPrice <= 0 && lItem.amount) {
+                    itemPrice = Number(lItem.amount) / qty;
+                  }
+                  if (itemPrice <= 0 && subtotal > 0 && totalOrderQty > 0) {
+                    itemPrice = Math.round((subtotal / totalOrderQty) * 100) / 100;
+                  }
+
+                  return {
+                    name: `${lItem.name} [${careLabel}]`,
+                    itemName: `${lItem.name} [${careLabel}]`,
+                    price: itemPrice,
+                    quantity: qty,
+                    type: "laundry",
+                    category: lItem.category || "Laundry",
+                    sac: "996312",
+                  };
+                })
+              : [
+                  {
+                    name: service.name || `Laundry Service #${service.order_id}`,
+                    itemName:
+                      service.name || `Laundry Service #${service.order_id}`,
+                    price: subtotal || Number(service.laundry_charges) || 0,
+                    quantity: 1,
+                    type: "laundry",
+                    category: "Laundry",
+                    sac: "996312",
+                  },
+                ];
 
           const exactLaundryDate =
             foundLaundryOrder?.createdAt ||
@@ -700,8 +720,11 @@ const SplitBill = ({
           });
         });
 
-        console.log("Setting multi-department bills data:", bills);
-        setRestaurantBillsData(bills);
+        const validBills = bills.filter(
+          (b) => Number(b.total || 0) > 0 || Number(b.subtotal || 0) > 0
+        );
+        console.log("Setting multi-department bills data:", validBills);
+        setRestaurantBillsData(validBills);
       }
     };
 

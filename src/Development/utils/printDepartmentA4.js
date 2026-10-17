@@ -96,7 +96,10 @@ export function printDepartmentA4Invoice({
   const itemsRowsHTML = items
     .map((item, idx) => {
       const qty = Number(item.quantity) || 1;
-      const rate = Number(item.price || item.unitRate || 0);
+      let rate = Number(item.price || item.unitRate || item.rate || 0);
+      if (rate <= 0 && subtotal > 0 && totalQty > 0) {
+        rate = Math.round((subtotal / totalQty) * 100) / 100;
+      }
       const rowTotal = qty * rate;
       const isEven = idx % 2 === 1;
       return `
