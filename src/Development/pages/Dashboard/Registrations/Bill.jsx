@@ -1677,8 +1677,7 @@ const Bill = () => {
             } else if (roomDetails.baseTariff !== undefined && roomDetails.baseTariff !== null) {
               dailyRoomCharges = Number(roomDetails.baseTariff);
             } else if (roomDetails.finalRoomTariff || roomDetails.tariff) {
-              const fullTariff = Number(roomDetails.finalRoomTariff || roomDetails.tariff || 0);
-              dailyRoomCharges = Math.max(0, fullTariff - singleRatePlan);
+              dailyRoomCharges = Number(roomDetails.finalRoomTariff || roomDetails.tariff || 0);
             }
 
             const ratePlanCharges = singleRatePlan;
@@ -1743,7 +1742,7 @@ const Bill = () => {
 
             let dailyRoomCharges = roomUsage.baseTariff !== undefined && roomUsage.baseTariff !== null
               ? Number(roomUsage.baseTariff)
-              : Math.max(0, (Number(roomUsage.tariff) || 0) - singleRatePlan);
+              : Number(roomUsage.tariff || 0);
 
             const servicesRoomCharges =
               allServicesObj?.[roomNumber]?.[formattedDate]?.room_charges ??
@@ -1816,10 +1815,7 @@ const Bill = () => {
 
             let dailyRoomCharges = room.baseTariff !== undefined && room.baseTariff !== null
               ? Number(room.baseTariff)
-              : Math.max(
-                  0,
-                  (Number(room.finalRoomTariff || room.tariff || room.averageTariffPerNight || 0)) - singleRatePlan
-                );
+              : Number(room.finalRoomTariff || room.tariff || room.averageTariffPerNight || 0);
 
             const servicesRoomCharges =
               allServicesObj?.[roomNumber]?.[formattedDate]?.room_charges ??
