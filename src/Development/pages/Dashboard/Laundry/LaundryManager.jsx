@@ -1082,6 +1082,9 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
           category: garment.category,
           careType,
           unitRate,
+          rate: unitRate,
+          price: unitRate,
+          amount: unitRate,
           quantity: 1,
           notes: "",
         },
@@ -1177,7 +1180,17 @@ export default function LaundryManager({ initialRoomNumber = null, onOrderCreate
       guestMobile: guestMobile || "",
       collectionSource,
       deliveryDateTime: `${deliveryDate} ${deliveryTime}`,
-      items: basket,
+      items: basket.map((it) => {
+        const r = Number(it.unitRate || it.rate || it.price || 0);
+        const q = Number(it.quantity) || 1;
+        return {
+          ...it,
+          unitRate: r,
+          rate: r,
+          price: r,
+          amount: Number(it.amount) || (r * q),
+        };
+      }),
       totalGarments: totals.totalGarments,
       serviceSpeed,
       serviceSpeedLabel: speedObj.label,
