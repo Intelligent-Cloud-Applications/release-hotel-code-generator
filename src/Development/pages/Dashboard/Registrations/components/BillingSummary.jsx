@@ -8,6 +8,30 @@ const BillingSummary = ({
   editingAdvancePayment,
   setEditingAdvancePayment,
 }) => {
+  const roomTariffTotal = (() => {
+    const fromSummary = Number(
+      billData?.billingSummary?.totalRoomServices ||
+      billData?.billingSummary?.roomCharges ||
+      0
+    );
+    if (fromSummary > 0) return fromSummary;
+
+    let total = 0;
+    if (billData?.serviceChargesByDate) {
+      billData.serviceChargesByDate.forEach((dayData) => {
+        const date = Object.keys(dayData)[0];
+        (dayData[date] || []).forEach((roomEntry) => {
+          const ch = roomEntry.charges || {};
+          total +=
+            Number(ch.roomCharges || 0) +
+            Number(ch.ratePlanCharges || 0) +
+            Number(ch.extraPaxCharges || 0);
+        });
+      });
+    }
+    return total;
+  })();
+
   return (
     <div className="grid grid-cols-2 gap-8 mb-6 section-gap">
       <div>
@@ -47,43 +71,8 @@ const BillingSummary = ({
                     className="w-20 text-right border border-gray-300 rounded px-1 py-0.5 text-xs"
                     value={(() => {
                       if (editingDiscount === 0) return "";
-                      let totalBeforeDiscount = 0;
-                      if (billData?.serviceChargesByDate) {
-                        billData.serviceChargesByDate.forEach((dayData) => {
-                          const date = Object.keys(dayData)[0];
-                          const roomEntries = dayData[date];
-                          roomEntries.forEach((roomEntry) => {
-                            const charges = roomEntry.charges;
-                            totalBeforeDiscount +=
-                              (charges.roomCharges || 0) +
-                              (charges.foodCharges || 0) +
-                              (charges.laundryCharges || 0) +
-                              (charges.minibarCharges || 0) +
-                              (charges.extraBedCharges || 0) +
-                              (charges.manualCharges || 0) +
-                              (charges.extraPaxCharges || 0);
-                          });
-                        });
-                      }
-                      
-                      let totalRatePlanFromBreakdown = 0;
-                      if (billData?.serviceChargesByDate) {
-                        billData.serviceChargesByDate.forEach((dayData) => {
-                          const date = Object.keys(dayData)[0];
-                          const roomEntries = dayData[date];
-                          roomEntries.forEach((roomEntry) => {
-                            const charges = roomEntry.charges;
-                            if (charges.ratePlanCharges) {
-                              totalRatePlanFromBreakdown += charges.ratePlanCharges;
-                            }
-                          });
-                        });
-                      }
-                      
-                      totalBeforeDiscount += totalRatePlanFromBreakdown;
-                      
-                      if (totalBeforeDiscount > 0) {
-                        return ((editingDiscount / totalBeforeDiscount) * 100).toFixed(2);
+                      if (roomTariffTotal > 0) {
+                        return ((editingDiscount / roomTariffTotal) * 100).toFixed(2);
                       }
                       return "";
                     })()}
@@ -100,44 +89,8 @@ const BillingSummary = ({
                       }
                       
                       const clampedPercentage = Math.min(Math.max(percentageValue, 0), 100);
-                      
-                      let totalBeforeDiscount = 0;
-                      if (billData?.serviceChargesByDate) {
-                        billData.serviceChargesByDate.forEach((dayData) => {
-                          const date = Object.keys(dayData)[0];
-                          const roomEntries = dayData[date];
-                          roomEntries.forEach((roomEntry) => {
-                            const charges = roomEntry.charges;
-                            totalBeforeDiscount +=
-                              (charges.roomCharges || 0) +
-                              (charges.foodCharges || 0) +
-                              (charges.laundryCharges || 0) +
-                              (charges.minibarCharges || 0) +
-                              (charges.extraBedCharges || 0) +
-                              (charges.manualCharges || 0) +
-                              (charges.extraPaxCharges || 0);
-                          });
-                        });
-                      }
-                      
-                      let totalRatePlanFromBreakdown = 0;
-                      if (billData?.serviceChargesByDate) {
-                        billData.serviceChargesByDate.forEach((dayData) => {
-                          const date = Object.keys(dayData)[0];
-                          const roomEntries = dayData[date];
-                          roomEntries.forEach((roomEntry) => {
-                            const charges = roomEntry.charges;
-                            if (charges.ratePlanCharges) {
-                              totalRatePlanFromBreakdown += charges.ratePlanCharges;
-                            }
-                          });
-                        });
-                      }
-                      
-                      totalBeforeDiscount += totalRatePlanFromBreakdown;
-                      
-                      const discountAmount = totalBeforeDiscount > 0 
-                        ? (clampedPercentage / 100) * totalBeforeDiscount
+                      const discountAmount = roomTariffTotal > 0 
+                        ? (clampedPercentage / 100) * roomTariffTotal
                         : 0;
                       
                       const formattedDiscountAmount = Math.round(discountAmount * 100) / 100;
@@ -150,43 +103,8 @@ const BillingSummary = ({
                 (() => {
                   const discountAmount = billData?.billingSummary?.totalDiscount || 0;
                   if (discountAmount > 0) {
-                    let totalBeforeDiscount = 0;
-                    if (billData?.serviceChargesByDate) {
-                      billData.serviceChargesByDate.forEach((dayData) => {
-                        const date = Object.keys(dayData)[0];
-                        const roomEntries = dayData[date];
-                        roomEntries.forEach((roomEntry) => {
-                          const charges = roomEntry.charges;
-                          totalBeforeDiscount +=
-                            (charges.roomCharges || 0) +
-                            (charges.foodCharges || 0) +
-                            (charges.laundryCharges || 0) +
-                            (charges.minibarCharges || 0) +
-                            (charges.extraBedCharges || 0) +
-                            (charges.manualCharges || 0) +
-                            (charges.extraPaxCharges || 0);
-                        });
-                      });
-                    }
-                    
-                    let totalRatePlanFromBreakdown = 0;
-                    if (billData?.serviceChargesByDate) {
-                      billData.serviceChargesByDate.forEach((dayData) => {
-                        const date = Object.keys(dayData)[0];
-                        const roomEntries = dayData[date];
-                        roomEntries.forEach((roomEntry) => {
-                          const charges = roomEntry.charges;
-                          if (charges.ratePlanCharges) {
-                            totalRatePlanFromBreakdown += charges.ratePlanCharges;
-                          }
-                        });
-                      });
-                    }
-                    
-                    totalBeforeDiscount += totalRatePlanFromBreakdown;
-                    
-                    const discountPercentage = totalBeforeDiscount > 0 
-                      ? ((discountAmount / totalBeforeDiscount) * 100).toFixed(2)
+                    const discountPercentage = roomTariffTotal > 0 
+                      ? ((discountAmount / roomTariffTotal) * 100).toFixed(2)
                       : "0.00";
                     
                     return `${discountPercentage}%`;
