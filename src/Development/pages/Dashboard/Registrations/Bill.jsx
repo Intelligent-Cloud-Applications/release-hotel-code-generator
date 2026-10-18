@@ -1530,7 +1530,21 @@ const Bill = () => {
               }
 
               if (it.food_charges !== undefined) {
-                food += Number(it.food_charges || 0);
+                const isHousekeeping =
+                  it.source === "housekeeping" ||
+                  it.service_type === "housekeeping" ||
+                  it.service_type === "extra_bed" ||
+                  it.service_type === "manual";
+                const rawOid = String(it.order_id || "").trim();
+                const isNonPosFood =
+                  isHousekeeping ||
+                  rawOid.startsWith("FNB-") ||
+                  rawOid.startsWith("HSK-") ||
+                  (!rawOid && Number(it.food_charges) > 0);
+
+                const rawAmt = Number(it.food_charges || 0);
+                const amtWithTax = isNonPosFood ? Math.round(rawAmt * 1.05) : rawAmt;
+                food += amtWithTax;
                 hasFood = true;
               } else if (it.service_type === "food" || it.service_type === "restaurant") {
                 food += Number(it.total_amount || 0);
@@ -1546,26 +1560,32 @@ const Bill = () => {
               }
 
               if (it.minibar_charges !== undefined) {
-                minibar += Number(it.minibar_charges || 0);
+                const rawAmt = Number(it.minibar_charges || 0);
+                minibar += Math.round(rawAmt * 1.05);
                 hasMinibar = true;
               } else if (it.service_type === "minibar") {
-                minibar += Number(it.total_amount || 0);
+                const rawAmt = Number(it.total_amount || 0);
+                minibar += Math.round(rawAmt * 1.05);
                 hasMinibar = true;
               }
 
               if (it.extra_bed_charges !== undefined) {
-                extraBed += Number(it.extra_bed_charges || 0);
+                const rawAmt = Number(it.extra_bed_charges || 0);
+                extraBed += Math.round(rawAmt * 1.05);
                 hasExtraBed = true;
               } else if (it.service_type === "extra_bed") {
-                extraBed += Number(it.total_amount || 0);
+                const rawAmt = Number(it.total_amount || 0);
+                extraBed += Math.round(rawAmt * 1.05);
                 hasExtraBed = true;
               }
 
               if (it.manual_charges !== undefined) {
-                manual += Number(it.manual_charges || 0);
+                const rawAmt = Number(it.manual_charges || 0);
+                manual += Math.round(rawAmt * 1.05);
                 hasManual = true;
               } else if (it.service_type === "manual" || it.service_type === "housekeeping") {
-                manual += Number(it.total_amount || 0);
+                const rawAmt = Number(it.total_amount || 0);
+                manual += Math.round(rawAmt * 1.05);
                 hasManual = true;
               }
 
@@ -1576,9 +1596,9 @@ const Bill = () => {
 
             const finalFood = hasFood ? food : Number(raw.food_charges ?? rawServicesFromAll.food_charges ?? 0);
             const finalLaundry = hasLaundry ? laundry : Number(raw.laundry_charges ?? rawServicesFromAll.laundry_charges ?? 0);
-            const finalMinibar = hasMinibar ? minibar : Number(raw.minibar_charges ?? rawServicesFromAll.minibar_charges ?? 0);
-            const finalExtraBed = hasExtraBed ? extraBed : Number(raw.extra_bed_charges ?? rawServicesFromAll.extra_bed_charges ?? 0);
-            const finalManual = hasManual ? manual : Number(raw.manual_charges ?? rawServicesFromAll.manual_charges ?? 0);
+            const finalMinibar = hasMinibar ? minibar : Math.round(Number(raw.minibar_charges ?? rawServicesFromAll.minibar_charges ?? 0) * 1.05);
+            const finalExtraBed = hasExtraBed ? extraBed : Math.round(Number(raw.extra_bed_charges ?? rawServicesFromAll.extra_bed_charges ?? 0) * 1.05);
+            const finalManual = hasManual ? manual : Math.round(Number(raw.manual_charges ?? rawServicesFromAll.manual_charges ?? 0) * 1.05);
 
             return {
               food_charges: finalFood,
@@ -1600,9 +1620,9 @@ const Bill = () => {
 
         const food = Number(raw.food_charges ?? rawServicesFromAll.food_charges ?? 0);
         const laundry = Number(raw.laundry_charges ?? rawServicesFromAll.laundry_charges ?? 0);
-        const minibar = Number(raw.minibar_charges ?? rawServicesFromAll.minibar_charges ?? 0);
-        const extraBed = Number(raw.extra_bed_charges ?? rawServicesFromAll.extra_bed_charges ?? 0);
-        const manual = Number(raw.manual_charges ?? rawServicesFromAll.manual_charges ?? 0);
+        const minibar = Math.round(Number(raw.minibar_charges ?? rawServicesFromAll.minibar_charges ?? 0) * 1.05);
+        const extraBed = Math.round(Number(raw.extra_bed_charges ?? rawServicesFromAll.extra_bed_charges ?? 0) * 1.05);
+        const manual = Math.round(Number(raw.manual_charges ?? rawServicesFromAll.manual_charges ?? 0) * 1.05);
         const extraPax = Number(raw.extra_pax_charges ?? rawServicesFromAll.extra_pax_charges ?? 0);
 
         return {
