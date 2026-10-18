@@ -160,11 +160,28 @@ const ChargesBreakdown = ({
                               // Show if it has amount OR is being actively edited OR had original amount > 0
                               return hasAmount || isActivelyEditing || (isAmountEditing && hadOriginalAmount);
                             })
-                            .map(chargeType => ({
-                              description: chargeType.description,
-                              amount: editingData ? editingData[chargeType.key] : (Number(charges[chargeType.key]) || 0),
-                              type: chargeType.key,
-                            }));
+                            .map(chargeType => {
+                              const amount = editingData ? editingData[chargeType.key] : (Number(charges[chargeType.key]) || 0);
+                              let description = chargeType.description;
+                              if (chargeType.key === "extraBedCharges" && amount > 0) {
+                                const baseRate = Math.round(amount / 1.05);
+                                const gstAmt = amount - baseRate;
+                                description = gstAmt > 0 ? `Extra Bed Charges (Rate ₹${baseRate} + ₹${gstAmt} GST)` : "Extra Bed Charges";
+                              } else if (chargeType.key === "minibarCharges" && amount > 0) {
+                                const baseRate = Math.round(amount / 1.05);
+                                const gstAmt = amount - baseRate;
+                                description = gstAmt > 0 ? `Bar Charges (Rate ₹${baseRate} + ₹${gstAmt} GST)` : "Bar Charges";
+                              } else if (chargeType.key === "manualCharges" && amount > 0) {
+                                const baseRate = Math.round(amount / 1.05);
+                                const gstAmt = amount - baseRate;
+                                description = gstAmt > 0 ? `Miscellaneous Charges (Rate ₹${baseRate} + ₹${gstAmt} GST)` : "Miscellaneous Charges";
+                              }
+                              return {
+                                description,
+                                amount,
+                                type: chargeType.key,
+                              };
+                            });
                         })(),
                       ].filter(
                         (particular) =>
