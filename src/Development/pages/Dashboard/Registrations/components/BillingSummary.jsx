@@ -83,7 +83,7 @@ const BillingSummary = ({
                       totalBeforeDiscount += totalRatePlanFromBreakdown;
                       
                       if (totalBeforeDiscount > 0) {
-                        return ((editingDiscount / totalBeforeDiscount) * 100).toFixed(1);
+                        return ((editingDiscount / totalBeforeDiscount) * 100).toFixed(2);
                       }
                       return "";
                     })()}
@@ -186,12 +186,12 @@ const BillingSummary = ({
                     totalBeforeDiscount += totalRatePlanFromBreakdown;
                     
                     const discountPercentage = totalBeforeDiscount > 0 
-                      ? ((discountAmount / totalBeforeDiscount) * 100).toFixed(1)
-                      : 0;
+                      ? ((discountAmount / totalBeforeDiscount) * 100).toFixed(2)
+                      : "0.00";
                     
                     return `${discountPercentage}%`;
                   } else {
-                    return `0%`;
+                    return `0.00%`;
                   }
                 })()
               )}
