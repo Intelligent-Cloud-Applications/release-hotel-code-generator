@@ -355,17 +355,24 @@ const RoomStatusList = () => {
     }
   };
 
-  // Filter rooms
-  const filteredRooms = rooms.filter((room) => {
-    const matchesSearch =
-      room.room_number.toString().includes(searchTerm) ||
-      room.room_type.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFloor =
-      selectedFloor === "all" || room.floor.toString() === selectedFloor;
-    const matchesStatus = filters[room.status];
+  // Filter and sort rooms serially by room number
+  const filteredRooms = rooms
+    .filter((room) => {
+      const matchesSearch =
+        room.room_number.toString().includes(searchTerm) ||
+        room.room_type.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesFloor =
+        selectedFloor === "all" || room.floor.toString() === selectedFloor;
+      const matchesStatus = filters[room.status];
 
-    return matchesSearch && matchesFloor && matchesStatus;
-  });
+      return matchesSearch && matchesFloor && matchesStatus;
+    })
+    .sort((a, b) => {
+      const numA = parseInt(String(a.room_number).replace(/\D/g, ""), 10) || 0;
+      const numB = parseInt(String(b.room_number).replace(/\D/g, ""), 10) || 0;
+      if (numA !== numB) return numA - numB;
+      return String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true });
+    });
 
   // Compact statistics
   const stats = {

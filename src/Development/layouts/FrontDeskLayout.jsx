@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Button } from "../components/ui/button.js";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useAppContext } from "../context/AppContext.jsx";
@@ -64,32 +64,191 @@ const FrontDeskLayout = () => {
     }
   }, [location.pathname]);
 
-  // Statistics data - using real-time room statuses
-  const keyStats = {
-    totalRooms: rooms?.length || 0,
-    vacant: rooms?.filter((room) => room.status === "Vacant").length || 0,
-    occupied: rooms?.filter((room) => room.status === "Occupied").length || 0,
-    reserved: rooms?.filter((room) => room.status === "Reserved").length || 0,
-    dirty: rooms?.filter((room) => room.status === "Dirty").length || 0,
-    maintenance:
-      rooms?.filter((room) => room.status === "Under Maintenance").length || 0,
-    arrivals:
-      bookings?.filter((booking) => booking.status === "Reserved").length || 0,
-    departures:
-      bookings?.filter(
-        (booking) =>
-          new Date(booking.checkout_date) <= new Date() &&
-          booking.status === "Checked-in"
-      ).length || 0,
-    overdue:
-      bookings?.filter(
-        (booking) =>
-          new Date(booking.checkout_date) < new Date() &&
-          booking.status === "Checked-in"
-      ).length || 0,
-    currentGuests:
-      bookings?.filter((booking) => booking.status === "Checked-in").length || 0,
-  };
+  // Statistics data - using real-time room statuses based on today's active bookings
+  const keyStats = useMemo(() => {
+    const totalRooms = rooms?.length || 0;
+    if (!rooms || rooms.length === 0) {
+      return {
+        totalRooms: 0,
+        vacant: 0,
+        occupied: 0,
+        reserved: 0,
+        dirty: 0,
+        maintenance: 0,
+        arrivals: 0,
+        departures: 0,
+        overdue: 0,
+        currentGuests: 0,
+      };
+    }
+
+    const normalizeDate = (dt) => {
+      if (!dt) return 0;
+      if (typeof dt === 'string') {
+        const trimmed = dt.trim();
+        if (!trimmed.includes('T') && !trimmed.includes('Z')) {
+          const dmy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+          if (dmy) {
+            return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10), 0, 0, 0, 0).getTime();
+          }
+          const ymd = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+          if (ymd) {
+            return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10), 0, 0, 0, 0).getTime();
+          }
+        }
+      }
+      let num = typeof dt === 'string' && !isNaN(Number(dt)) ? Number(dt) : dt;
+      if (typeof num === 'number' && num > 0 && num < 10000000000) {
+        num = num * 1000;
+      }
+      const obj = new Date(num);
+      if (isNaN(obj.getTime())) return 0;
+      return new Date(obj.getFullYear(), obj.getMonth(), obj.getDate(), 0, 0, 0, 0).getTime();
+    };
+
+    const now = new Date();
+    const todayTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+
+    const isBookingActiveOnDate = (b, targetDayTs) => {
+      if (!b || !targetDayTs) return false;
+      const st = String(b.status || '').toLowerCase().trim();
+      if (
+        st.includes('cancel') ||
+        st.includes('checkout') ||
+        st.includes('checked-out') ||
+        st === 'checked out'
+      ) {
+        return false;
+      }
+      if (b.status !== 'Checked-in' && b.status !== 'Reserved') {
+        return false;
+      }
+      const cin = normalizeDate(b.checkin_date);
+      const cout = normalizeDate(b.checkout_date);
+      if (!cin) return false;
+      if (!cout || cin === cout) return targetDayTs === cin;
+      return targetDayTs >= cin && targetDayTs <= cout;
+    };
+
+    const doesBookingMatchRoom = (b, room) => {
+      if (!b || !room) return false;
+      const targetId = String(room.room_id || '').toLowerCase().trim();
+      const targetNum = String(room.room_number || '').toLowerCase().trim();
+      const checkValue = (val) => {
+        if (val === undefined || val === null || val === '' || val === 'none') return false;
+        if (Array.isArray(val)) return val.some(checkValue);
+        if (typeof val === 'object') {
+          return (
+            checkValue(val.room_id) ||
+            checkValue(val.room_number) ||
+            checkValue(val.id) ||
+            checkValue(val.number)
+          );
+        }
+        const str = String(val).toLowerCase().trim();
+        return (targetId && str === targetId) || (targetNum && str === targetNum);
+      };
+      return (
+        checkValue(b.room_id) ||
+        checkValue(b.room_number) ||
+        checkValue(b.room_numbers) ||
+        checkValue(b.roomNumber) ||
+        checkValue(b.rooms_config) ||
+        checkValue(b.rooms) ||
+        checkValue(b.allocated_room) ||
+        checkValue(b.allocated_rooms)
+      );
+    };
+
+    const activeBookings = (bookings || []).filter((b) => isBookingActiveOnDate(b, todayTs));
+    const assignedBookingIds = new Set();
+    const roomStatusMap = {};
+
+    rooms.forEach((room) => {
+      if (
+        room.status === 'Under Maintenance' ||
+        room.status === 'Dirty' ||
+        room.status === 'Out of Order'
+      ) {
+        roomStatusMap[room.room_id] = room.status;
+        return;
+      }
+
+      const matchedBooking = activeBookings.find((b) => doesBookingMatchRoom(b, room));
+      if (matchedBooking) {
+        assignedBookingIds.add(matchedBooking.booking_id);
+        roomStatusMap[room.room_id] = matchedBooking.status === 'Checked-in' ? 'Occupied' : 'Reserved';
+      }
+    });
+
+    // Handle unassigned rooms matching category/type
+    const unassigned = activeBookings.filter((b) => !assignedBookingIds.has(b.booking_id));
+    const unassignedRooms = rooms.filter(
+      (r) => !roomStatusMap[r.room_id] && (r.status === 'Vacant' || r.status === 'Clean')
+    );
+
+    unassigned.forEach((b) => {
+      const bCat = (b.room_category || b.room_type || '').trim().toLowerCase();
+      const candidateRoom = unassignedRooms.find(
+        (r) => !roomStatusMap[r.room_id] && (r.room_type || '').trim().toLowerCase() === bCat
+      );
+      if (candidateRoom) {
+        roomStatusMap[candidateRoom.room_id] = b.status === 'Checked-in' ? 'Occupied' : 'Reserved';
+      }
+    });
+
+    // Default remaining rooms to Vacant
+    rooms.forEach((room) => {
+      if (!roomStatusMap[room.room_id]) {
+        roomStatusMap[room.room_id] = room.status === 'Clean' ? 'Vacant' : room.status || 'Vacant';
+      }
+    });
+
+    let vacant = 0;
+    let occupied = 0;
+    let reserved = 0;
+    let dirty = 0;
+    let maintenance = 0;
+
+    Object.values(roomStatusMap).forEach((st) => {
+      if (st === 'Occupied') occupied++;
+      else if (st === 'Reserved') reserved++;
+      else if (st === 'Dirty') dirty++;
+      else if (st === 'Under Maintenance' || st === 'Out of Order') maintenance++;
+      else vacant++;
+    });
+
+    const arrivals = (bookings || []).filter((b) => {
+      if (b.status !== 'Reserved') return false;
+      const cin = normalizeDate(b.checkin_date);
+      return cin === todayTs;
+    }).length;
+
+    const departures = (bookings || []).filter((b) => {
+      if (b.status !== 'Checked-in') return false;
+      const cout = normalizeDate(b.checkout_date);
+      return cout === todayTs;
+    }).length;
+
+    const overdue = (bookings || []).filter((b) => {
+      if (b.status !== 'Checked-in') return false;
+      const cout = normalizeDate(b.checkout_date);
+      return cout > 0 && cout < todayTs;
+    }).length;
+
+    return {
+      totalRooms,
+      vacant,
+      occupied,
+      reserved,
+      dirty,
+      maintenance,
+      arrivals,
+      departures,
+      overdue,
+      currentGuests: occupied,
+    };
+  }, [rooms, bookings]);
 
   // Debug logging for statistics
   console.log('FrontDeskLayout - Rooms data:', rooms);
