@@ -58,6 +58,7 @@ const CheckOut = () => {
     companies = [],
     createCompany,
     calculateTotalBill,
+    dayCalculation,
     checkoutGuest,
     fetchBookings,
     fetchGuests,
@@ -409,6 +410,18 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
       });
 
       totalRoomCharges = billData.summary.roomCharges || 0;
+      const is24Hr = dayCalculation === "24_hour" || dayCalculation === "24hr";
+      if (is24Hr && selectedBooking) {
+        const stayDays = getDaysStayed(
+          selectedBooking.checkin_date,
+          calculateCheckoutDateWithGracePeriod(selectedBooking)
+        );
+        const backendNights = billData.breakdown?.stayDetails?.numberOfNights || 1;
+        if (backendNights > 0 && stayDays !== backendNights) {
+          const dailyTariff = (billData.summary.roomCharges || 0) / backendNights;
+          totalRoomCharges = Math.round(dailyTariff * stayDays);
+        }
+      }
       totalServiceCharges = billData.summary.serviceCharges || 0;
 
       // Get discount amount from bill summary
@@ -579,8 +592,9 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
 
       // If we still don't have the correct totals, use the bill summary (which includes grace period logic)
       if (
-        totalRoomCharges === 0 ||
-        totalRoomCharges < (billData?.summary?.roomCharges || 0)
+        !is24Hr &&
+        (totalRoomCharges === 0 ||
+          totalRoomCharges < (billData?.summary?.roomCharges || 0))
       ) {
         console.log(
           "Using bill summary totals as they include grace period logic"
@@ -832,9 +846,7 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
 
   // Check if company fields should be shown
   const shouldShowCompanyFields = () => {
-    return (
-      checkoutFormData.payment_mode === "BTC" && !selectedBooking?.company_id
-    );
+    return checkoutFormData.payment_mode === "BTC";
   };
 
   // Validation function for checkout form
@@ -872,9 +884,12 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
       errors.received_by_staff_id = "Staff selection is required";
     }
 
-    // Validate company fields for BTC when no company_id in booking
+    // Validate company fields for BTC
     if (shouldShowCompanyFields()) {
-      if (!checkoutFormData.company_id.trim()) {
+      const hasCompany =
+        (checkoutFormData.company_id && checkoutFormData.company_id.trim() && checkoutFormData.company_id !== "N/A") ||
+        (companyQuery && companyQuery.trim());
+      if (!hasCompany) {
         errors.company_id = "Company selection is required for BTC payments";
       }
       // GST is optional, so no validation needed
@@ -885,6 +900,13 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
   };
 
   const getDaysStayed = (checkinDate, checkoutDate = Date.now()) => {
+    const is24Hr = dayCalculation === "24_hour" || dayCalculation === "24hr";
+    if (is24Hr) {
+      const cin = new Date(checkinDate).getTime();
+      const cout = new Date(checkoutDate).getTime();
+      const elapsedHours = Math.max(0, cout - cin) / (1000 * 60 * 60);
+      return Math.max(1, Math.ceil(elapsedHours / 24));
+    }
     const days = Math.ceil(
       (checkoutDate - checkinDate) / (1000 * 60 * 60 * 24)
     );
@@ -918,6 +940,7 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
         rate_plan_id: booking.rate_plan_id,
         checkin_date: booking.checkin_date,
         checkout_date: calculateCheckoutDateWithGracePeriod(booking),
+        dayCalculation: dayCalculation || "night_wise",
         gst_type: booking.gst_type || "IGST",
       };
 
@@ -1024,6 +1047,33 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
         ? checkoutFormData.custom_upi_platform
         : checkoutFormData.upi_platform;
 
+    // If BTC and company is typed without selection, auto-match or auto-create company
+    let finalCompanyId = selectedBooking.company_id || checkoutFormData.company_id || null;
+    let finalGstNo = selectedBooking.gst_no || checkoutFormData.gst_no || null;
+    const typedCompName = (companyQuery || "").trim().toUpperCase();
+
+    if (checkoutFormData.payment_mode === "BTC" && !finalCompanyId && typedCompName) {
+      const existing = (companies || []).find(
+        (c) => getCompanyName(c).trim().toUpperCase() === typedCompName
+      );
+      if (existing) {
+        finalCompanyId = getCompanyId(existing);
+        if (!finalGstNo) finalGstNo = getCompanyGst(existing) || null;
+      } else if (typeof createCompany === "function") {
+        try {
+          const created = await createCompany({
+            name: typedCompName,
+            gst_no: (checkoutFormData.gst_no || "").trim(),
+          });
+          const compObj = created?.company || created?.data || created;
+          finalCompanyId = compObj?.company_id || compObj?.id || compObj?._id || created?.company_id || null;
+          if (compObj?.gst_no || created?.gst_no) finalGstNo = compObj?.gst_no || created.gst_no;
+        } catch (e) {
+          console.error("Auto-create company in CheckOut failed:", e);
+        }
+      }
+    }
+
     const billDataExtracted = extractBillData();
 
     const allRoomIds = getBookingAllRoomIds(selectedBooking);
@@ -1033,6 +1083,7 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
       room_id: allRoomIds,
       room_ids: allRoomIds,
       payment_mode: checkoutFormData.payment_mode,
+      dayCalculation: dayCalculation || "night_wise",
       upi_platform:
         checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
       received_by_staff_id:
@@ -1054,9 +1105,9 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
       refund_amount: 0,
       services: billDataExtracted.services,
       // Always include company_id if available (from booking or form)
-      company_id:
-        selectedBooking.company_id || checkoutFormData.company_id || null,
-      gst_no: selectedBooking.gst_no || checkoutFormData.gst_no || null,
+      company_id: finalCompanyId,
+      company_name: typedCompName || (finalCompanyId ? getCompanyNameById(finalCompanyId) : null),
+      gst_no: finalGstNo,
       // Include complete bill summary
       bill_summary: {
         roomCharges: billDataExtracted.totalRoomCharges,
@@ -1279,6 +1330,11 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
       }));
     }
 
+    // When payment mode changes to "BTC", open company dropdown
+    if (field === "payment_mode" && value === "BTC") {
+      setShowCompanyDropdown(true);
+    }
+
     // Clear company fields when payment mode changes from "BTC"
     if (field === "payment_mode" && value !== "BTC") {
       setCheckoutFormData((prev) => ({
@@ -1321,9 +1377,17 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
     setShowCompanyDropdown(true);
-    if (checkoutFormData?.company_id) {
+    const trimmed = value.trim();
+    const matched = (companies || []).find(
+      (c) => getCompanyName(c).trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (matched) {
+      handleFieldChange("company_id", getCompanyId(matched));
+      if (getCompanyGst(matched)) {
+        handleFieldChange("gst_no", getCompanyGst(matched));
+      }
+    } else if (checkoutFormData?.company_id) {
       handleFieldChange("company_id", "");
-      handleFieldChange("gst_no", "");
     }
   };
 

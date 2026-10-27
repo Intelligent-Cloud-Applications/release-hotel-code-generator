@@ -38,7 +38,7 @@ const GuestDetails = ({
   const companyNameDisplay =
     billData.bookingDetails?.companyName &&
     billData.bookingDetails.companyName !== "N/A"
-      ? billData.bookingDetails.companyName
+      ? billData.bookingDetails.companyName.toUpperCase()
       : "";
 
   const grcNumber = billData.bookingDetails?.grc_no || "";
@@ -232,18 +232,18 @@ const GuestDetails = ({
             </tr>
 
             {/* Company Name + GSTIN */}
-            {gstInDisplay && (
+            {(companyNameDisplay || gstInDisplay) && (
               <tr className="border-b border-black">
                 <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
                   Company Name
                 </td>
-                <td className="px-3 py-2 border-r border-black">
-                  {companyNameDisplay}
+                <td className="px-3 py-2 border-r border-black uppercase font-medium">
+                  {companyNameDisplay || "---"}
                 </td>
                 <td className="bg-gray-100 px-3 py-2 font-semibold border-r border-black">
                   GST No.
                 </td>
-                <td className="px-3 py-2">{gstInDisplay}</td>
+                <td className="px-3 py-2">{gstInDisplay || "---"}</td>
               </tr>
             )}
           </tbody>
