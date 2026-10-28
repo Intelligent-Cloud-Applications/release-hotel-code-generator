@@ -98,8 +98,11 @@ export function normalizeRestaurantOrders(apiData, requestedOrderIds = []) {
       const serviceTax = Number(order.serviceTax) || 0;
       const totalAmount = Number(order.totalAmount) || Math.round(subtotal + cgst + sgst + serviceTax);
 
+      const billNo = order.bill_no || order.billNo || order.billNumber || null;
       return {
         orderId: String(order.orderId || ""),
+        bill_no: billNo,
+        billNo: billNo,
         orderType: "restaurant",
         tableName: order.tableName || "N/A",
         createdAt: order.createdAt,
@@ -145,9 +148,12 @@ export function normalizeRestaurantOrders(apiData, requestedOrderIds = []) {
     const serviceTax = Number(apiData.totalServiceTax) || 0;
     const totalAmount = Number(apiData.totalAmount) || Math.round(subtotal + cgst + sgst + serviceTax);
 
+    const fallbackBillNo = apiData.bill_no || apiData.billNo || apiData.billNumber || null;
     return [
       {
         orderId: fallbackId,
+        bill_no: fallbackBillNo,
+        billNo: fallbackBillNo,
         orderType: "restaurant",
         tableName: "N/A",
         createdAt: Date.now(),

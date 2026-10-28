@@ -63,6 +63,7 @@ const Bill = () => {
     updateGuest,
     addExpense,
     updateBooking,
+    dayCalculation,
     calculateTotalBill,
     companies,
     bills,
@@ -151,11 +152,24 @@ const Bill = () => {
   // Keep hooks (useMemo) before any early returns to preserve hook order across renders
   const filteredCompanies = useMemo(() => {
     const q = (companyQuery || "").trim().toLowerCase();
-    if (!q) return [];
+    if (!q) return (companies || []).slice(0, 10);
     return (companies || []).filter((c) =>
       getCompanyName(c).toLowerCase().includes(q),
-    );
+    ).slice(0, 10);
   }, [companies, companyQuery]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (
+        companyFieldRef.current &&
+        !companyFieldRef.current.contains(e.target)
+      ) {
+        setShowCompanyDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // State to force refresh bill data
   const [forceRefresh, setForceRefresh] = useState(0);
@@ -231,10 +245,23 @@ const Bill = () => {
       upi_platform: "",
       custom_upi_platform: "",
       received_by_staff_id: "",
+      company_id: "",
     };
 
     if (!checkoutFormData.payment_mode.trim()) {
       errors.payment_mode = "Payment mode is required";
+    }
+
+    if (checkoutFormData.payment_mode === "BTC") {
+      const bObj = (bookings || []).find((b) => b.booking_id === bookingId);
+      const bCompId = bObj?.company_id && bObj.company_id !== "N/A" ? bObj.company_id : "";
+      const hasCompany =
+        bCompId ||
+        (checkoutFormData.company_id && checkoutFormData.company_id.trim() && checkoutFormData.company_id !== "N/A") ||
+        (companyQuery && companyQuery.trim());
+      if (!hasCompany) {
+        errors.company_id = "Company selection is required for BTC payments";
+      }
     }
 
     if (
@@ -320,16 +347,17 @@ const Bill = () => {
   };
 
   useEffect(() => {
-    const bookingData = bookings.find((b) => b.booking_id === bookingId);
-    if (bookingData?.company_id) {
-      const name = getCompanyNameById(bookingData.company_id);
-      const gst = getCompanyGstById(bookingData.company_id);
+    const bookingData = (bookings || []).find((b) => b.booking_id === bookingId) || booking?.breakdown?.booking;
+    const compId = bookingData?.company_id && bookingData.company_id !== "N/A" ? bookingData.company_id : "";
+    if (compId) {
+      const name = getCompanyNameById(compId) || bookingData?.company_name || "";
+      const gst = getCompanyGstById(compId) || bookingData?.gst_no || "";
 
       setCompanyQuery(name);
       setCheckoutFormData((prev) => ({
         ...prev,
-        company_id: bookingData.company_id,
-        gst_no: gst || bookingData.gst_no || "",
+        company_id: compId,
+        gst_no: gst || prev.gst_no || "",
       }));
     } else {
       // Clear company fields if no company in booking
@@ -340,7 +368,7 @@ const Bill = () => {
         gst_no: "",
       }));
     }
-  }, []);
+  }, [isCheckoutModalOpen, bookings, booking, bookingId, companies]);
 
   // Process checkout
   const processCheckout = async () => {
@@ -350,32 +378,50 @@ const Bill = () => {
 
     setIsProcessingCheckout(true);
 
-    // If BTC and a new company is typed with GST, auto-create the company first
+    let finalCompanyId = checkoutFormData.company_id || null;
+    let finalCompanyName = (companyQuery || "").trim().toUpperCase() || null;
+    let finalGstNo = checkoutFormData.gst_no || "";
+
+    // If BTC and a company name is typed without selection, auto-match or auto-create the company
     if (
       checkoutFormData.payment_mode === "BTC" &&
-      !checkoutFormData.company_id &&
-      (companyQuery || "").trim() &&
-      (checkoutFormData.gst_no || "").trim()
+      !finalCompanyId &&
+      (companyQuery || "").trim()
     ) {
       try {
-        if (typeof createCompany === "function") {
-          const created = await createCompany({
-            name: (companyQuery || "").trim(),
+        const typedName = (companyQuery || "").trim().toUpperCase();
+        const matched = (companies || []).find(
+          (c) => getCompanyName(c).trim().toUpperCase() === typedName
+        );
+        if (matched) {
+          finalCompanyId = getCompanyId(matched);
+          finalGstNo = getCompanyGst(matched) || finalGstNo;
+          finalCompanyName = getCompanyName(matched) || typedName;
+          setCheckoutFormData((prev) => ({
+            ...prev,
+            company_id: finalCompanyId,
+            gst_no: finalGstNo || prev.gst_no,
+          }));
+        } else if (typeof createCompany === "function") {
+          const res = await createCompany({
+            name: typedName,
             gst_no: (checkoutFormData.gst_no || "").trim(),
           });
-          const newId = created?.company_id || created?.id || created?._id;
+          const compObj = res?.company || res?.data || res;
+          const newId = compObj?.company_id || compObj?.id || compObj?._id || res?.company_id;
           if (newId) {
-            // Update local state so downstream uses the id
+            finalCompanyId = newId;
+            finalCompanyName = compObj?.name || typedName;
+            if (compObj?.gst_no) finalGstNo = compObj.gst_no;
             setCheckoutFormData((prev) => ({
               ...prev,
-              company_id: newId,
-              gst_no: created?.gst_no || prev.gst_no,
+              company_id: finalCompanyId,
+              gst_no: finalGstNo || prev.gst_no,
             }));
           }
         }
       } catch (e) {
         console.error("Auto-create company (checkout) failed:", e);
-        // Continue without blocking checkout
       }
     }
 
@@ -466,10 +512,35 @@ const Bill = () => {
       services: services,
     };
 
-    const activeCheckoutRooms =
+    const rawBookingData = (bookings || []).find((b) => b.booking_id === bookingId);
+    const rawBookingRoomIds = Array.isArray(rawBookingData?.room_id)
+      ? rawBookingData.room_id
+      : (rawBookingData?.room_id ? [rawBookingData.room_id] : []);
+
+    const rawActiveRooms =
       selectedTargetRooms && selectedTargetRooms.length > 0
         ? selectedTargetRooms
         : (booking?.breakdown?.rooms || []).map((r) => r.room_id);
+
+    const activeCheckoutRooms = rawActiveRooms.map((rId) => {
+      const cleanId = String(rId || "").trim();
+      const cleanNum = cleanId.replace(/^virtual_/, "");
+      if (rawBookingRoomIds.includes(cleanId)) return cleanId;
+      if (rawBookingRoomIds.includes(cleanNum)) return cleanNum;
+      const foundRoom = (rooms || []).find(
+        (rm) =>
+          String(rm.room_id) === cleanId ||
+          String(rm.room_number) === cleanNum ||
+          String(rm.room_id) === cleanNum
+      );
+      if (foundRoom) {
+        if (rawBookingRoomIds.includes(String(foundRoom.room_id))) return String(foundRoom.room_id);
+        if (rawBookingRoomIds.includes(String(foundRoom.room_number))) return String(foundRoom.room_number);
+        return String(foundRoom.room_id);
+      }
+      if (rawBookingRoomIds.length === 1) return rawBookingRoomIds[0];
+      return cleanNum || cleanId;
+    });
 
     const isPartial =
       booking?.breakdown?.rooms &&
@@ -481,11 +552,13 @@ const Bill = () => {
       room_id: activeCheckoutRooms,
       target_rooms: activeCheckoutRooms,
       payment_mode: checkoutFormData.payment_mode,
+      dayCalculation: dayCalculation || "night_wise",
       upi_platform:
         checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
       received_by_staff_id:
         userData.cognitoId || checkoutFormData.received_by_staff_id,
       notes: checkoutFormData.notes,
+      checkout_date: new Date().toISOString(),
       room_charges: roomCharges,
       laundry_charges: totalLaundryCharges,
       food_charges: totalFoodCharges,
@@ -501,8 +574,9 @@ const Bill = () => {
       total_amount: billDataExtracted.balanceDue || 0,
       refund_amount: 0,
       services: services,
-      company_id: checkoutFormData.company_id || null,
-      gst_no: checkoutFormData.gst_no || "N/A",
+      company_id: finalCompanyId,
+      company_name: finalCompanyName,
+      gst_no: finalGstNo && finalGstNo !== "N/A" ? finalGstNo : (booking?.gst_no || "N/A"),
       bill_summary: billSummary,
       original_bill_data: booking,
       bill_no: bills?.length + 1,
@@ -739,6 +813,10 @@ const Bill = () => {
       ...prev,
       [field]: value,
     }));
+
+    if (field === "payment_mode" && value === "BTC") {
+      setShowCompanyDropdown(true);
+    }
 
     if (validationErrors[field]) {
       setValidationErrors((prev) => ({
@@ -1021,6 +1099,7 @@ const Bill = () => {
           rate_plan_id: ratePlanId,
           checkin_date: Number(checkInDate),
           checkout_date: checkoutDate,
+          dayCalculation: dayCalculation || "night_wise",
           gst_type: "IGST",
         };
 
@@ -1118,26 +1197,65 @@ const Bill = () => {
         activeRooms.map((r) => String(r.room_number))
       );
 
+      // Helper to safely parse various timestamp and date formats
+      const parseTimestamp = (val) => {
+        if (!val) return null;
+        if (typeof val === "number") return val;
+        if (typeof val === "string") {
+          const trimmed = val.trim();
+          if (/^\d{10,13}$/.test(trimmed)) {
+            const num = parseInt(trimmed, 10);
+            return trimmed.length === 10 ? num * 1000 : num;
+          }
+          const ddmmyyyy = trimmed.match(
+            /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i
+          );
+          if (ddmmyyyy) {
+            let [_, d, mon, y, h, min, s, ampm] = ddmmyyyy;
+            h = parseInt(h || 0, 10);
+            if (ampm && ampm.toUpperCase() === "PM" && h < 12) h += 12;
+            if (ampm && ampm.toUpperCase() === "AM" && h === 12) h = 0;
+            return new Date(
+              parseInt(y, 10),
+              parseInt(mon, 10) - 1,
+              parseInt(d, 10),
+              h,
+              parseInt(min || 0, 10),
+              parseInt(s || 0, 10)
+            ).getTime();
+          }
+          const dt = new Date(trimmed);
+          if (!isNaN(dt.getTime())) {
+            return dt.getTime();
+          }
+        }
+        return null;
+      };
+
       // Calculate stay timestamps and dates
       const checkinTimestamp =
-        typeof booking?.breakdown?.stayDetails?.checkin_date === "string"
-          ? parseInt(booking.breakdown.stayDetails.checkin_date)
-          : booking?.breakdown?.stayDetails?.checkin_date || rawBookingData?.checkin_date;
+        parseTimestamp(booking?.breakdown?.stayDetails?.checkin_date) ||
+        parseTimestamp(rawBookingData?.checkin_date) ||
+        parseTimestamp(checkInDate) ||
+        Date.now();
 
-      let checkoutTimestamp;
-      const rawCheckoutVal =
-        booking?.breakdown?.stayDetails?.checkout_date || rawBookingData?.checkout_date;
-      if (typeof rawCheckoutVal === "string") {
-        if (rawCheckoutVal.includes("T")) {
-          checkoutTimestamp = new Date(rawCheckoutVal).getTime();
-        } else {
-          checkoutTimestamp = parseInt(rawCheckoutVal);
-        }
-      } else {
-        checkoutTimestamp = rawCheckoutVal;
+      const isStillCheckedIn =
+        rawBookingData?.status === "Checked-in" ||
+        booking?.breakdown?.booking?.status === "Checked-in";
+
+      let effectiveCheckoutTs =
+        parseTimestamp(checkoutDate) ||
+        parseTimestamp(booking?.breakdown?.stayDetails?.checkout_date);
+
+      if (isStillCheckedIn) {
+        effectiveCheckoutTs = Math.max(effectiveCheckoutTs || 0, Date.now());
+      } else if (!effectiveCheckoutTs) {
+        effectiveCheckoutTs =
+          parseTimestamp(rawBookingData?.checkout_date) || Date.now();
       }
 
       const allStayDates = [];
+      const roomStayDates = new Set();
       const getIndianDate = (ts) => {
         if (!ts) return new Date();
         const d = new Date(ts);
@@ -1154,34 +1272,60 @@ const Bill = () => {
       const checkinDateStr = formatIndianYMD(cinIndian);
       const cinDayStart = new Date(cinIndian.getFullYear(), cinIndian.getMonth(), cinIndian.getDate());
 
+      const coutIndian = getIndianDate(effectiveCheckoutTs);
+      const coutDayStart = new Date(coutIndian.getFullYear(), coutIndian.getMonth(), coutIndian.getDate());
+
+      const scheduledCoutIndian = getIndianDate(rawBookingData?.checkout_date);
+      const scheduledCoutDayStart = new Date(
+        scheduledCoutIndian.getFullYear(),
+        scheduledCoutIndian.getMonth(),
+        scheduledCoutIndian.getDate()
+      );
+
       const nowIndian = getIndianDate(Date.now());
       const todayDayStart = new Date(nowIndian.getFullYear(), nowIndian.getMonth(), nowIndian.getDate());
 
-      const coutIndian = getIndianDate(rawBookingData?.checkout_date || checkoutTimestamp);
-      const coutDayStart = new Date(coutIndian.getFullYear(), coutIndian.getMonth(), coutIndian.getDate());
-
-      const isStillCheckedIn =
-        rawBookingData?.status === "Checked-in" ||
-        booking?.breakdown?.booking?.status === "Checked-in";
       const effectiveEnd =
-        isStillCheckedIn && todayDayStart > coutDayStart
+        isStillCheckedIn && todayDayStart > scheduledCoutDayStart
           ? todayDayStart
           : coutDayStart;
 
-      let curr = new Date(cinDayStart);
-      if (cinDayStart >= effectiveEnd) {
-        allStayDates.push(checkinDateStr);
-      } else {
-        while (curr < effectiveEnd) {
-          allStayDates.push(formatIndianYMD(curr));
-          curr.setDate(curr.getDate() + 1);
+      const is24Hr = dayCalculation === "24_hour" || dayCalculation === "24hr";
+      let totalPeriods = 1;
+      if (is24Hr) {
+        const cinTs = cinIndian.getTime();
+        const coutTs = Math.max(cinTs + 1000, coutIndian.getTime());
+        const elapsedHours = (coutTs - cinTs) / (1000 * 60 * 60);
+        totalPeriods = Math.max(1, Math.ceil(elapsedHours / 24));
+        let curr24 = new Date(cinDayStart);
+        for (let p = 0; p < totalPeriods; p++) {
+          const dStr = formatIndianYMD(curr24);
+          if (!allStayDates.includes(dStr)) {
+            allStayDates.push(dStr);
+          }
+          roomStayDates.add(dStr);
+          curr24.setDate(curr24.getDate() + 1);
         }
-      }
+      } else {
+        let curr = new Date(cinDayStart);
+        if (cinDayStart >= effectiveEnd) {
+          allStayDates.push(checkinDateStr);
+          roomStayDates.add(checkinDateStr);
+        } else {
+          while (curr < effectiveEnd) {
+            const dStr = formatIndianYMD(curr);
+            allStayDates.push(dStr);
+            roomStayDates.add(dStr);
+            curr.setDate(curr.getDate() + 1);
+          }
+        }
 
-      if (todayDayStart > coutDayStart && isStillCheckedIn) {
-        const todayStr = formatIndianYMD(todayDayStart);
-        if (!allStayDates.includes(todayStr)) {
-          allStayDates.push(todayStr);
+        if ((todayDayStart >= coutDayStart || todayDayStart > scheduledCoutDayStart) && isStillCheckedIn) {
+          const todayStr = formatIndianYMD(todayDayStart);
+          if (!allStayDates.includes(todayStr)) {
+            allStayDates.push(todayStr);
+          }
+          roomStayDates.add(todayStr);
         }
       }
 
@@ -1207,7 +1351,9 @@ const Bill = () => {
         1,
         Math.round((coutDayStart.getTime() - cinDayStart.getTime()) / (1000 * 60 * 60 * 24))
       );
-      const numberOfNights = allDates.length > 0 ? allDates.length : Math.max(1, diffStayDays);
+      const numberOfNights = is24Hr
+        ? totalPeriods
+        : (allDates.length > 0 ? allDates.length : Math.max(1, diffStayDays));
 
       // Calculate extra pax charges if present (supporting multiple sources & multiple pax per room)
       const targetBId = String(
@@ -1291,14 +1437,39 @@ const Bill = () => {
       }
 
       // Find the company details from the companies array
-      // Try to get company_id from either the processed booking or raw booking data
-      const companyIdToUse = booking?.company_id || rawBookingData?.company_id;
+      // Try to get company_id from either the processed booking, raw booking data or checkout form
+      const companyIdToUse = booking?.company_id || rawBookingData?.company_id || checkoutFormData?.company_id;
       const grcNo = rawBookingData?.grc_no || "N/A";
       const no_of_adults = rawBookingData?.no_of_adults || 0;
+      const rawCompanyName =
+        booking?.company_name ||
+        rawBookingData?.company_name ||
+        booking?.breakdown?.booking?.company_name;
       const companyDetails =
         companies?.find((company) => {
-          return company.company_id === companyIdToUse;
-        }) || {};
+          const cId = company.company_id || company.id;
+          return cId && companyIdToUse && String(cId).trim() === String(companyIdToUse).trim();
+        }) ||
+        companies?.find((company) => {
+          const cName = company.name || company.company_name;
+          return cName && rawCompanyName && String(cName).trim().toLowerCase() === String(rawCompanyName).trim().toLowerCase();
+        }) ||
+        {};
+      const resolvedCompanyName = (
+        companyDetails.name ||
+        companyDetails.company_name ||
+        rawCompanyName ||
+        (companyQuery ? companyQuery.trim() : "") ||
+        "N/A"
+      ).toUpperCase();
+      const resolvedCompanyGst =
+        companyDetails.gst_no ||
+        companyDetails.gst_number ||
+        companyDetails.gstNo ||
+        rawBookingData?.gst_no ||
+        booking?.gst_no ||
+        checkoutFormData?.gst_no ||
+        "N/A";
       setBillData((prev) => {
         return {
           ...prev,
@@ -1338,11 +1509,11 @@ const Bill = () => {
             ratePlanBaseTariff: booking.breakdown.ratePlan.base_tariff,
             ratePlanTariffVariation:
               booking.breakdown.ratePlan.tariff_variation,
-            checkIn: booking.breakdown.stayDetails.checkin_date,
-            checkOut: booking.breakdown.stayDetails.checkout_date,
+            checkIn: booking.breakdown?.stayDetails?.checkin_date || checkinTimestamp,
+            checkOut: new Date().toISOString(),
             numberOfNights: numberOfNights,
-            companyName: companyDetails.name || "N/A",
-            companyGstNo: companyDetails.gst_no || "N/A",
+            companyName: resolvedCompanyName,
+            companyGstNo: resolvedCompanyGst,
             grc_no: grcNo,
             no_of_adults: no_of_adults,
             extra_pax: extra_pax,
@@ -1425,8 +1596,6 @@ const Bill = () => {
           },
         };
       });
-      const checkinDate = new Date(checkinTimestamp);
-      const checkoutDate = new Date(checkoutTimestamp);
 
       const serviceChargesByRoom =
         booking.breakdown?.charges?.serviceCharges?.serviceChargesByRoomAndDate ||
@@ -1691,16 +1860,17 @@ const Bill = () => {
               0
             );
 
+            const isRoomStayDate = roomStayDates.has(date) || roomStayDates.has(formattedDate);
             let dailyRoomCharges = 0;
             if (serviceDayData.room_charges !== undefined && serviceDayData.room_charges !== null) {
               dailyRoomCharges = Number(serviceDayData.room_charges);
-            } else if (roomDetails.baseTariff !== undefined && roomDetails.baseTariff !== null) {
+            } else if (isRoomStayDate && roomDetails.baseTariff !== undefined && roomDetails.baseTariff !== null) {
               dailyRoomCharges = Number(roomDetails.baseTariff);
-            } else if (roomDetails.finalRoomTariff || roomDetails.tariff) {
+            } else if (isRoomStayDate && (roomDetails.finalRoomTariff || roomDetails.tariff)) {
               dailyRoomCharges = Number(roomDetails.finalRoomTariff || roomDetails.tariff || 0);
             }
 
-            const ratePlanCharges = singleRatePlan;
+            const ratePlanCharges = isRoomStayDate ? singleRatePlan : 0;
 
             const dailyServiceCharges = dateServices.daily_total;
 
@@ -1760,18 +1930,20 @@ const Bill = () => {
               0
             );
 
-            let dailyRoomCharges = roomUsage.baseTariff !== undefined && roomUsage.baseTariff !== null
-              ? Number(roomUsage.baseTariff)
-              : Number(roomUsage.tariff || 0);
-
+            const isRoomStayDate = roomStayDates.has(date) || roomStayDates.has(formattedDate);
+            let dailyRoomCharges = 0;
             const servicesRoomCharges =
               allServicesObj?.[roomNumber]?.[formattedDate]?.room_charges ??
               allServicesObj?.[roomNumber]?.[date]?.room_charges;
             if (servicesRoomCharges !== undefined) {
               dailyRoomCharges = Number(servicesRoomCharges);
+            } else if (isRoomStayDate) {
+              dailyRoomCharges = roomUsage.baseTariff !== undefined && roomUsage.baseTariff !== null
+                ? Number(roomUsage.baseTariff)
+                : Number(roomUsage.tariff || 0);
             }
 
-            const ratePlanCharges = singleRatePlan;
+            const ratePlanCharges = isRoomStayDate ? singleRatePlan : 0;
 
             const dailyServiceCharges = dateServices.daily_total;
             let roomSpecificExtraPax = dateServices.extra_pax_charges || 0;
@@ -1833,18 +2005,20 @@ const Bill = () => {
               0
             );
 
-            let dailyRoomCharges = room.baseTariff !== undefined && room.baseTariff !== null
-              ? Number(room.baseTariff)
-              : Number(room.finalRoomTariff || room.tariff || room.averageTariffPerNight || 0);
-
+            const isRoomStayDate = roomStayDates.has(date) || roomStayDates.has(formattedDate);
+            let dailyRoomCharges = 0;
             const servicesRoomCharges =
               allServicesObj?.[roomNumber]?.[formattedDate]?.room_charges ??
               allServicesObj?.[roomNumber]?.[date]?.room_charges;
             if (servicesRoomCharges !== undefined) {
               dailyRoomCharges = Number(servicesRoomCharges);
+            } else if (isRoomStayDate) {
+              dailyRoomCharges = room.baseTariff !== undefined && room.baseTariff !== null
+                ? Number(room.baseTariff)
+                : Number(room.finalRoomTariff || room.tariff || room.averageTariffPerNight || 0);
             }
 
-            const ratePlanCharges = singleRatePlan;
+            const ratePlanCharges = isRoomStayDate ? singleRatePlan : 0;
 
             const dailyServiceCharges = dateServices.daily_total;
             let roomSpecificExtraPax = dateServices.extra_pax_charges || 0;
@@ -3022,10 +3196,18 @@ const Bill = () => {
 
   const handleCompanyInputChange = (value) => {
     setCompanyQuery(value);
-    setShowCompanyDropdown(!!value.trim());
-    if (checkoutFormData?.company_id) {
+    setShowCompanyDropdown(true);
+    const trimmed = value.trim();
+    const matched = (companies || []).find(
+      (c) => getCompanyName(c).trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (matched) {
+      handleFieldChange("company_id", getCompanyId(matched));
+      if (getCompanyGst(matched)) {
+        handleFieldChange("gst_no", getCompanyGst(matched));
+      }
+    } else if (checkoutFormData?.company_id) {
       handleFieldChange("company_id", "");
-      handleFieldChange("gst_no", "");
     }
   };
 
@@ -3052,9 +3234,12 @@ const Bill = () => {
               </Label>
               <Select
                 value={checkoutFormData.payment_mode}
-                onValueChange={(value) =>
-                  handleFieldChange("payment_mode", value)
-                }
+                onValueChange={(value) => {
+                  handleFieldChange("payment_mode", value);
+                  if (value === "BTC") {
+                    setShowCompanyDropdown(true);
+                  }
+                }}
               >
                 <SelectTrigger
                   className={`w-full mt-1 h-8 text-xs ${
@@ -3145,8 +3330,7 @@ const Bill = () => {
                 </div>
               )}
 
-            {checkoutFormData.payment_mode === "BTC" &&
-              !bookings.find((b) => b.booking_id === bookingId).company_id && (
+            {checkoutFormData.payment_mode === "BTC" && (
                 <>
                   <div ref={companyFieldRef} className="bg-gray-50 p-2 rounded">
                     <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
@@ -3160,9 +3344,9 @@ const Bill = () => {
                           handleCompanyInputChange(e.target.value)
                         }
                         onFocus={() =>
-                          setShowCompanyDropdown(!!companyQuery.trim())
+                          setShowCompanyDropdown(true)
                         }
-                        placeholder="Search company"
+                        placeholder="Search or enter company"
                         className={`h-8 text-xs pr-6 ${
                           validationErrors.company_id
                             ? "border-red-500"
@@ -3183,7 +3367,7 @@ const Bill = () => {
                       {showCompanyDropdown && (
                         <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
                           <ul className="max-h-56 overflow-auto py-1">
-                            {filteredCompanies.length > 0 &&
+                            {filteredCompanies.length > 0 ? (
                               filteredCompanies.map((c) => {
                                 const name = getCompanyName(c);
                                 const gst = getCompanyGst(c);
@@ -3206,7 +3390,14 @@ const Bill = () => {
                                     )}
                                   </li>
                                 );
-                              })}
+                              })
+                            ) : (
+                              <li className="px-3 py-2 text-xs text-gray-500">
+                                {companyQuery.trim()
+                                  ? `No match. Will create "${companyQuery.trim().toUpperCase()}" on checkout.`
+                                  : "No companies registered yet"}
+                              </li>
+                            )}
                           </ul>
                         </div>
                       )}

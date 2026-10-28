@@ -20,7 +20,32 @@ import {
 import { Input } from "../../../components/ui/input.js";
 import { Label } from "../../../components/ui/label.js";
 import { Textarea } from "../../../components/ui/textarea.js";
-import { Plus, Pencil, Trash, ArrowDown, ArrowUp, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash,
+  ArrowDown,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  X,
+} from "lucide-react";
+
+// Convert "dd/mm/yyyy" (or ISO) to "yyyy-mm-dd" for comparison
+const toISODate = (d) => {
+  if (!d) return "";
+  if (d.includes("/")) {
+    const [day, month, year] = d.split("/");
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  return d.slice(0, 10);
+};
+
+// Today's date in IST as yyyy-mm-dd (optionally offset by days)
+const getTodayIST = (offsetDays = 0) =>
+  new Date(Date.now() + 5.5 * 60 * 60 * 1000 + offsetDays * 86400000)
+    .toISOString()
+    .split("T")[0];
 
 const Expenses = () => {
   const {
@@ -32,7 +57,6 @@ const Expenses = () => {
     deleteExpense,
     listExpenses,
   } = useAppContext();
-  console.log("allExpenses", allExpenses);
 
   const [expenses, setExpenses] = React.useState([]);
   const [receivedAmounts, setReceivedAmounts] = React.useState([]);
@@ -69,13 +93,13 @@ const Expenses = () => {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [isReceivedDialogOpen, setIsReceivedDialogOpen] = React.useState(false);
   const [formData, setFormData] = React.useState({
-    date: new Date(Date.now() + (5.5 * 60 * 60 * 1000)).toISOString().split("T")[0],
+    date: getTodayIST(),
     name: "",
     description: "",
     amount: "",
   });
   const [receivedFormData, setReceivedFormData] = React.useState({
-    date: new Date(Date.now() + (5.5 * 60 * 60 * 1000)).toISOString().split("T")[0],
+    date: getTodayIST(),
     name: "",
     description: "",
     amount: "",
@@ -113,28 +137,75 @@ const Expenses = () => {
     }
   };
 
-  // Pagination state
+  // ---------------- Date filter state ----------------
+  const [filterFrom, setFilterFrom] = React.useState("");
+  const [filterTo, setFilterTo] = React.useState("");
+
+  // ---------------- Pagination state ----------------
   const [currentPage, setCurrentPage] = React.useState(1);
   const itemsPerPage = 15;
 
-  // Get all transactions for pagination
+  // All transactions (expenses + received), newest first
   const allTransactions = React.useMemo(() => {
     return [
-      ...(expenses || []).map(expense => ({ ...expense, type: 'expense', id: expense.expenseId || expense.name + expense.date })),
-      ...(receivedAmounts || []).map(received => ({ ...received, type: 'received', id: received.receivedId || received.name + received.date }))
+      ...(expenses || []).map((expense) => ({
+        ...expense,
+        type: "expense",
+        id: expense.expenseId || expense.name + expense.date,
+      })),
+      ...(receivedAmounts || []).map((received) => ({
+        ...received,
+        type: "received",
+        id: received.receivedId || received.name + received.date,
+      })),
     ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   }, [expenses, receivedAmounts]);
 
-  // Calculate pagination
-  const totalPages = Math.ceil(allTransactions.length / itemsPerPage);
+  // Apply date filter
+  const filteredTransactions = React.useMemo(() => {
+    return allTransactions.filter((t) => {
+      const d = toISODate(t.date);
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
+      return true;
+    });
+  }, [allTransactions, filterFrom, filterTo]);
+
+  // Totals for the filtered range
+  const filteredTotals = React.useMemo(() => {
+    let cashIn = 0;
+    let cashOut = 0;
+    filteredTransactions.forEach((t) => {
+      const amt = parseFloat(t.amount) || 0;
+      if (t.type === "expense") cashOut += amt;
+      else cashIn += amt;
+    });
+    return { cashIn, cashOut };
+  }, [filteredTransactions]);
+
+  const isFilterActive = Boolean(filterFrom || filterTo);
+
+  const clearFilter = () => {
+    setFilterFrom("");
+    setFilterTo("");
+  };
+
+  const setPreset = (offsetDays) => {
+    const d = getTodayIST(offsetDays);
+    setFilterFrom(d);
+    setFilterTo(d);
+  };
+
+  // Pagination (based on the filtered list)
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentTransactions = allTransactions.slice(startIndex, endIndex);
+  const currentTransactions = filteredTransactions.slice(startIndex, endIndex);
 
-  // Reset to first page when transactions change
+  // Reset to first page when the list or filter changes
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [allTransactions.length]);
+  }, [filteredTransactions.length, filterFrom, filterTo]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -156,28 +227,24 @@ const Expenses = () => {
     }));
   };
 
-
-
   const handleEditExpense = (expense) => {
-    console.log("Opening edit dialog for expense:", expense);
     setEditingExpense(expense);
-    
-    // Handle date conversion more carefully
+
+    // Handle date conversion carefully
     let formattedDate;
     try {
-      // If expense.date is already in dd/mm/yyyy format, convert to yyyy-mm-dd for input
-      if (expense.date && expense.date.includes('/')) {
-        const [day, month, year] = expense.date.split('/');
-        formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      // If expense.date is dd/mm/yyyy, convert to yyyy-mm-dd for the input
+      if (expense.date && expense.date.includes("/")) {
+        const [day, month, year] = expense.date.split("/");
+        formattedDate = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       } else {
-        // If it's already in a different format, try to parse it
         formattedDate = new Date(expense.date).toISOString().split("T")[0];
       }
     } catch (error) {
       console.error("Error parsing date:", error);
-      formattedDate = new Date().toISOString().split("T")[0]; // fallback to today
+      formattedDate = getTodayIST(); // fallback to today
     }
-    
+
     setEditFormData({
       date: formattedDate,
       name: expense.name || "",
@@ -219,7 +286,6 @@ const Expenses = () => {
             )
           );
 
-          // Here you would typically call an API to update the expense
           await updateExpense({
             expenseId: editingExpense.expenseId,
             expense: updatedExpense,
@@ -280,10 +346,13 @@ const Expenses = () => {
             setCurrentBalance((prev) => prev - amount);
           }
 
-          // Here you would typically call an API to delete the transaction
           await deleteExpense({
-            ...(expenseToDelete.expenseId && { expenseId: expenseToDelete.expenseId }),
-            ...(expenseToDelete.receivedId && { receivedId: expenseToDelete.receivedId }),
+            ...(expenseToDelete.expenseId && {
+              expenseId: expenseToDelete.expenseId,
+            }),
+            ...(expenseToDelete.receivedId && {
+              receivedId: expenseToDelete.receivedId,
+            }),
             date: expenseToDelete.date,
           });
 
@@ -313,7 +382,7 @@ const Expenses = () => {
             name: formData.name,
             description: formData.description,
             amount: parseFloat(formData.amount) || 0,
-            expenseId: Math.random().toString(36).substr(2, 9), // Generate a simple random ID
+            expenseId: Math.random().toString(36).substr(2, 9), // Simple random ID
           };
 
           setExpenses((prev) => [...(prev || []), newExpense]);
@@ -325,7 +394,7 @@ const Expenses = () => {
 
           // Reset form and close dialog
           setFormData({
-            date: new Date().toISOString().split("T")[0],
+            date: getTodayIST(),
             name: "",
             description: "",
             amount: "",
@@ -355,7 +424,7 @@ const Expenses = () => {
             name: receivedFormData.name,
             description: receivedFormData.description,
             amount: parseFloat(receivedFormData.amount) || 0,
-            receivedId: Math.random().toString(36).substr(2, 9), // Generate a simple random ID
+            receivedId: Math.random().toString(36).substr(2, 9), // Simple random ID
           };
 
           setReceivedAmounts((prev) => [...(prev || []), newReceived]);
@@ -367,7 +436,7 @@ const Expenses = () => {
 
           // Reset form and close dialog
           setReceivedFormData({
-            date: new Date().toISOString().split("T")[0],
+            date: getTodayIST(),
             name: "",
             description: "",
             amount: "",
@@ -433,8 +502,6 @@ const Expenses = () => {
         </div>
       </div>
 
-
-
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-[400px] mx-4">
@@ -455,7 +522,7 @@ const Expenses = () => {
                 </span>
               </div>
               <div className="text-xs text-gray-500">
-                {expenseToDelete.date} • {expenseToDelete.description || 'No description'}
+                {expenseToDelete.date} • {expenseToDelete.description || "No description"}
               </div>
             </div>
           )}
@@ -762,7 +829,7 @@ const Expenses = () => {
           <div className="p-6 sm:p-8">
             <CompactLoader message="Loading transactions..." />
           </div>
-        ) : (expenses?.length === 0 && receivedAmounts?.length === 0) ? (
+        ) : expenses?.length === 0 && receivedAmounts?.length === 0 ? (
           <div className="text-center py-8 sm:py-12">
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Plus className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
@@ -775,24 +842,85 @@ const Expenses = () => {
             <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-100">
               <h3 className="text-sm font-medium text-gray-900">Transactions</h3>
             </div>
-            
-            {/* Mobile Card View */}
-            <div className="block sm:hidden">
-              {currentTransactions.map((transaction) => (
+
+            {/* Date Filter */}
+            <div className="px-3 sm:px-6 py-3 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+                <div className="grid grid-cols-2 gap-3 lg:w-auto">
+                  <div>
+                    <Label htmlFor="filterFrom" className="text-xs font-medium text-gray-500">From</Label>
+                    <Input
+                      id="filterFrom"
+                      type="date"
+                      value={filterFrom}
+                      max={filterTo || undefined}
+                      onChange={(e) => setFilterFrom(e.target.value)}
+                      className="mt-1 h-8 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="filterTo" className="text-xs font-medium text-gray-500">To</Label>
+                    <Input
+                      id="filterTo"
+                      type="date"
+                      value={filterTo}
+                      min={filterFrom || undefined}
+                      onChange={(e) => setFilterTo(e.target.value)}
+                      className="mt-1 h-8 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset(0)}>
+                    Today
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset(-1)}>
+                    Yesterday
+                  </Button>
+                  {isFilterActive && (
+                    <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-gray-600" onClick={clearFilter}>
+                      <X className="h-3 w-3 mr-1" />
+                      Clear
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {isFilterActive && (
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                  <span>{filteredTransactions.length} transaction(s)</span>
+                  <span className="text-green-600">In: ₹{filteredTotals.cashIn.toFixed(2)}</span>
+                  <span className="text-red-600">Out: ₹{filteredTotals.cashOut.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+
+            {filteredTransactions.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500 text-sm">No transactions in this date range</p>
+              </div>
+            ) : (
+              <>
+                {/* Mobile Card View */}
+                <div className="block sm:hidden">
+                  {currentTransactions.map((transaction) => (
                     <div key={transaction.id} className="border-b border-gray-100 p-3 last:border-b-0">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            transaction.type === 'expense' 
-                              ? 'bg-red-100 text-red-800' 
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {transaction.type === 'expense' ? (
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              transaction.type === "expense"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-green-100 text-green-800"
+                            }`}
+                          >
+                            {transaction.type === "expense" ? (
                               <ArrowDown className="h-3 w-3 mr-1" />
                             ) : (
                               <ArrowUp className="h-3 w-3 mr-1" />
                             )}
-                            {transaction.type === 'expense' ? 'Out' : 'In'}
+                            {transaction.type === "expense" ? "Out" : "In"}
                           </span>
                           <span className="text-xs text-gray-500">{transaction.date}</span>
                         </div>
@@ -820,41 +948,46 @@ const Expenses = () => {
                         <div className="text-xs text-gray-600 mb-2 line-clamp-2">{transaction.description}</div>
                       )}
                       <div className="text-right">
-                        <span className={`font-semibold text-sm ${
-                          transaction.type === 'expense' ? 'text-red-600' : 'text-green-600'
-                        }`}>
-                          {transaction.type === 'expense' ? '-' : '+'}₹{typeof transaction.amount === "number"
+                        <span
+                          className={`font-semibold text-sm ${
+                            transaction.type === "expense" ? "text-red-600" : "text-green-600"
+                          }`}
+                        >
+                          {transaction.type === "expense" ? "-" : "+"}₹
+                          {typeof transaction.amount === "number"
                             ? transaction.amount.toFixed(2)
                             : parseFloat(transaction.amount || 0).toFixed(2)}
                         </span>
                       </div>
                     </div>
                   ))}
-            </div>
+                </div>
 
-            {/* Desktop Table View */}
-            <div className="hidden sm:block overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-500">Type</th>
-                    <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-500">Date</th>
-                    <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-500">Purpose/Source</th>
-                    <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500">Description</th>
-                    <th className="px-3 lg:px-6 py-3 text-right text-xs font-medium text-gray-500">Amount</th>
-                    <th className="px-3 lg:px-6 py-3 text-right text-xs font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {currentTransactions.map((transaction) => (
+                {/* Desktop Table View */}
+                <div className="hidden sm:block overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-500">Type</th>
+                        <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-500">Date</th>
+                        <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-500">Purpose/Source</th>
+                        <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500">Description</th>
+                        <th className="px-3 lg:px-6 py-3 text-right text-xs font-medium text-gray-500">Amount</th>
+                        <th className="px-3 lg:px-6 py-3 text-right text-xs font-medium text-gray-500">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {currentTransactions.map((transaction) => (
                         <tr key={transaction.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="px-3 lg:px-6 py-3">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              transaction.type === 'expense' 
-                                ? 'bg-red-100 text-red-800' 
-                                : 'bg-green-100 text-green-800'
-                            }`}>
-                              {transaction.type === 'expense' ? (
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                transaction.type === "expense"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-green-100 text-green-800"
+                              }`}
+                            >
+                              {transaction.type === "expense" ? (
                                 <>
                                   <ArrowDown className="h-3 w-3 mr-1" />
                                   <span className="hidden lg:inline">Cash Out</span>
@@ -873,16 +1006,21 @@ const Expenses = () => {
                             {transaction.date}
                           </td>
                           <td className="px-3 lg:px-6 py-3">
-                            <div className="font-medium text-sm text-gray-900 max-w-[120px] lg:max-w-none truncate">{transaction.name}</div>
+                            <div className="font-medium text-sm text-gray-900 max-w-[120px] lg:max-w-none truncate">
+                              {transaction.name}
+                            </div>
                           </td>
                           <td className="hidden lg:table-cell px-6 py-3 text-sm text-gray-600 max-w-xs truncate">
-                            {transaction.description || '—'}
+                            {transaction.description || "—"}
                           </td>
                           <td className="px-3 lg:px-6 py-3 text-right">
-                            <span className={`font-medium text-sm ${
-                              transaction.type === 'expense' ? 'text-red-600' : 'text-green-600'
-                            }`}>
-                              {transaction.type === 'expense' ? '-' : '+'}₹{typeof transaction.amount === "number"
+                            <span
+                              className={`font-medium text-sm ${
+                                transaction.type === "expense" ? "text-red-600" : "text-green-600"
+                              }`}
+                            >
+                              {transaction.type === "expense" ? "-" : "+"}₹
+                              {typeof transaction.amount === "number"
                                 ? transaction.amount.toFixed(2)
                                 : parseFloat(transaction.amount || 0).toFixed(2)}
                             </span>
@@ -909,16 +1047,19 @@ const Expenses = () => {
                           </td>
                         </tr>
                       ))}
-                </tbody>
-              </table>
-            </div>
-            
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="px-3 sm:px-6 py-4 border-t border-gray-100">
                 <div className="flex items-center justify-between">
                   <div className="text-xs sm:text-sm text-gray-500">
-                    Showing {startIndex + 1} to {Math.min(endIndex, allTransactions.length)} of {allTransactions.length} transactions
+                    Showing {startIndex + 1} to {Math.min(endIndex, filteredTransactions.length)} of{" "}
+                    {filteredTransactions.length} transactions
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -930,7 +1071,7 @@ const Expenses = () => {
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    
+
                     {/* Page numbers */}
                     <div className="flex items-center gap-1">
                       {(() => {
@@ -938,12 +1079,12 @@ const Expenses = () => {
                         const maxVisiblePages = 5;
                         let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
                         let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-                        
+
                         // Adjust start page if we're near the end
                         if (endPage - startPage + 1 < maxVisiblePages) {
                           startPage = Math.max(1, endPage - maxVisiblePages + 1);
                         }
-                        
+
                         // First page
                         if (startPage > 1) {
                           pages.push(
@@ -965,7 +1106,7 @@ const Expenses = () => {
                             );
                           }
                         }
-                        
+
                         // Middle pages
                         for (let i = startPage; i <= endPage; i++) {
                           pages.push(
@@ -980,7 +1121,7 @@ const Expenses = () => {
                             </Button>
                           );
                         }
-                        
+
                         // Last page
                         if (endPage < totalPages) {
                           if (endPage < totalPages - 1) {
@@ -1002,11 +1143,11 @@ const Expenses = () => {
                             </Button>
                           );
                         }
-                        
+
                         return pages;
                       })()}
                     </div>
-                    
+
                     <Button
                       variant="outline"
                       size="sm"

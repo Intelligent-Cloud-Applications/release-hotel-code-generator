@@ -465,6 +465,7 @@ const ReportGenerator = () => {
       description: "Restaurant orders and food service details",
       dataSource: "restaurantOrders",
       columns: [
+        { key: "billNo", label: "Bill No", type: "text" },
         { key: "orderId", label: "Order ID", type: "text" },
         { key: "tableName", label: "Table/Room", type: "text" },
         { key: "orderDate", label: "Order Date", type: "date" },
@@ -769,7 +770,9 @@ const ReportGenerator = () => {
         combinedPaymentStatus = "Paid";
       }
 
+      const billNumber = order.billNo || order.billNumber || order.orderId || "N/A";
       rows.push({
+        billNo: billNumber,
         orderId: order.orderId || "N/A",
         tableName: order.tableName || "N/A",
         orderDate: orderDateStr,

@@ -94,22 +94,19 @@ const BookingDetails = ({ billData }) => {
                 {billData.bookingDetails?.roomType}
               </td>
             </tr>
-            {(billData.bookingDetails.companyName && 
-              billData.bookingDetails.companyName !== "N/A" && 
-              billData.bookingDetails.companyGstNo && 
-              billData.bookingDetails.companyGstNo !== "N/A") && (
+            {((billData.bookingDetails?.companyName && billData.bookingDetails.companyName !== "N/A") || (billData.bookingDetails?.companyGstNo && billData.bookingDetails.companyGstNo !== "N/A")) && (
               <tr className="border-black">
                 <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
                   Company Name
                 </td>
-                <td className="border-r-1 border-black px-3 py-2">
-                  {billData.bookingDetails.companyName}
+                <td className="border-r-1 border-black px-3 py-2 uppercase font-medium">
+                  {billData.bookingDetails?.companyName && billData.bookingDetails.companyName !== "N/A" ? billData.bookingDetails.companyName.toUpperCase() : "---"}
                 </td>
                 <td className="border-r-1 border-black px-3 py-2 font-semibold bg-gray-100">
                   GST Number
                 </td>
                 <td className="px-3 py-2">
-                  {billData.bookingDetails.companyGstNo}
+                  {billData.bookingDetails?.companyGstNo && billData.bookingDetails.companyGstNo !== "N/A" ? billData.bookingDetails.companyGstNo : "---"}
                 </td>
               </tr>
             )}
