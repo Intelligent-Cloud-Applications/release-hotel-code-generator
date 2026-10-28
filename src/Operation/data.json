@@ -3,7 +3,7 @@
   "product": "dashboard-booking",
   "template": "template2",
   "s3BucketName": "hotelcitypride.tekkzy.com",
-  "cloudFrontId": "E2MTGS0B7WKXTR",
+  "cloudFrontId": "E1V327ZP7U8ZKN",
   "domain": "https://hotelcitypride.tekkzy.com",
   "..refdayCalculation": "24_hour or night_wise",
   "dayCalculation": "24_hour"
