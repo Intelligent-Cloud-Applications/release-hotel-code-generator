@@ -2,9 +2,9 @@
   "institutionId": "HOTE9687",
   "product": "dashboard-booking",
   "template": "template2",
-  "s3BucketName": "templatehm.awsaiapp.com",
+  "s3BucketName": "hotelcitypride.tekkzy.com",
   "cloudFrontId": "E2MTGS0B7WKXTR",
-  "domain": "https://templatehm.awsaiapp.com",
+  "domain": "https://hotelcitypride.tekkzy.com",
   "..refdayCalculation": "24_hour or night_wise",
   "dayCalculation": "24_hour"
 }
