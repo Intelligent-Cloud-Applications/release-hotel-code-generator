@@ -1,10 +1,10 @@
 {
-  "institutionId": "HOTEL001",
+  "institutionId": "DISH5877",
   "product": "dashboard-booking",
   "template": "template2",
-  "s3BucketName": "templatehm.awsaiapp.com",
-  "cloudFrontId": "E2MTGS0B7WKXTR",
-  "domain": "https://templatehm.awsaiapp.com",
+  "s3BucketName": "dishahotel.tekkzy.com",
+  "cloudFrontId": "E3TSW2BKF9KLNS",
+  "domain": "https://dishahotel.tekkzy.com" 
   "..refdayCalculation": "24_hour or night_wise",
   "dayCalculation": "night_wise"
 }
