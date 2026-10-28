@@ -558,6 +558,7 @@ const Bill = () => {
       received_by_staff_id:
         userData.cognitoId || checkoutFormData.received_by_staff_id,
       notes: checkoutFormData.notes,
+      checkout_date: new Date().toISOString(),
       room_charges: roomCharges,
       laundry_charges: totalLaundryCharges,
       food_charges: totalFoodCharges,
@@ -1509,9 +1510,7 @@ const Bill = () => {
             ratePlanTariffVariation:
               booking.breakdown.ratePlan.tariff_variation,
             checkIn: booking.breakdown?.stayDetails?.checkin_date || checkinTimestamp,
-            checkOut: effectiveCheckoutTs
-              ? new Date(effectiveCheckoutTs).toISOString()
-              : (booking.breakdown?.stayDetails?.checkout_date || checkoutTimestamp),
+            checkOut: new Date().toISOString(),
             numberOfNights: numberOfNights,
             companyName: resolvedCompanyName,
             companyGstNo: resolvedCompanyGst,
