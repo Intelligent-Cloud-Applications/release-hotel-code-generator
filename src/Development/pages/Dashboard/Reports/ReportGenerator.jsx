@@ -72,10 +72,12 @@ const ReportGenerator = () => {
     fetchStaffs,
     listTotalBill,
     fetchCompanies,
-    fetchReports,
+    fetchAllReports,
+    fetchReports: legacyFetchReports,
     fetchRestaurantOrders,
     loading,
   } = useAppContext();
+  const fetchReports = fetchAllReports || legacyFetchReports;
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
   console.log("listExpenses", expenses);
@@ -565,168 +567,497 @@ const ReportGenerator = () => {
     },
   };
 
-  // Helper to extract Complementary items robustly from bills
-  const extractComplementaryRowsFromBills = (billsList) => {
+  // Helper to process Complementary report data from bookings, bills, and restaurant orders
+  const processComplementaryData = () => {
     const rows = [];
-    (billsList || []).forEach((bill) => {
-      const roomNumberFallback =
-        bill?.bill?.bookingDetails?.roomNumber ??
-        bill?.bill?.bookingDetails?.room_no ??
-        bill?.room_number ??
-        "N/A";
+    const seen = new Set();
 
-      const billLevelDate =
-        bill?.bill?.billHeader?.billDate ??
-        bill?.bill?.bookingDetails?.checkOut ??
-        bill?.created_at ??
-        bill?.updated_at ??
-        null;
+    const addRow = ({ date, room_number, complementary_name, amount }) => {
+      const dStr = toYMD(date);
+      if (!dStr) return;
+      const cleanName = String(complementary_name || "Complementary").trim();
+      const cleanRoom = String(room_number || "N/A").trim();
+      const numAmount = Number(amount) || 0;
 
-      // 0) bookingDetails.complementary structure: { [roomNumber]: { [date]: [ {name, amount}, ... ] } }
-      const complementaryObj = bill?.bill?.bookingDetails?.complementary;
-      if (complementaryObj && typeof complementaryObj === "object") {
-        Object.entries(complementaryObj).forEach(([roomKey, byDate]) => {
-          if (!byDate || typeof byDate !== "object") return;
-          Object.entries(byDate).forEach(([dateKey, items]) => {
-            if (Array.isArray(items)) {
-              items.forEach((item) => {
+      const dedupeKey = `${dStr}_${cleanRoom}_${cleanName.toLowerCase()}_${numAmount}`;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      rows.push({
+        date: dStr,
+        room_number: cleanRoom,
+        complementary_name: cleanName,
+        amount: numAmount,
+      });
+    };
+
+    // Helper to traverse any nested complementary object structure
+    const parseComplementaryStructure = (compObj, fallbackRoom, fallbackDate) => {
+      if (!compObj || typeof compObj !== "object") return;
+
+      if (Array.isArray(compObj)) {
+        compObj.forEach((item) => {
+          if (!item) return;
+          if (typeof item === "string") {
+            addRow({
+              date: fallbackDate,
+              room_number: fallbackRoom,
+              complementary_name: item,
+              amount: 0,
+            });
+          } else {
+            addRow({
+              date: item.date || item.dateKey || fallbackDate,
+              room_number: item.room_number || item.roomNumber || fallbackRoom,
+              complementary_name:
+                item.name ||
+                item.title ||
+                item.description ||
+                item.complementary_name ||
+                "Complementary",
+              amount: item.amount ?? item.price ?? 0,
+            });
+          }
+        });
+        return;
+      }
+
+      Object.entries(compObj).forEach(([k1, val1]) => {
+        if (!val1) return;
+        if (Array.isArray(val1)) {
+          const isDateKey = Boolean(toDateObj(k1));
+          val1.forEach((item) => {
+            if (!item) return;
+            const itemDate = isDateKey ? k1 : item.date || fallbackDate;
+            const itemRoom = isDateKey
+              ? item.room_number || fallbackRoom
+              : k1 || fallbackRoom;
+            addRow({
+              date: itemDate,
+              room_number: itemRoom,
+              complementary_name:
+                item.name ||
+                item.title ||
+                item.description ||
+                item.complementary_name ||
+                "Complementary",
+              amount: item.amount ?? item.price ?? 0,
+            });
+          });
+        } else if (typeof val1 === "object") {
+          Object.entries(val1).forEach(([k2, val2]) => {
+            if (!val2) return;
+            if (Array.isArray(val2)) {
+              val2.forEach((item) => {
                 if (!item) return;
-                rows.push({
-                  date: dateKey || billLevelDate,
-                  room_number: roomKey || roomNumberFallback,
+                const isK2Date = Boolean(toDateObj(k2));
+                const itemDate = isK2Date
+                  ? k2
+                  : toDateObj(k1)
+                  ? k1
+                  : item.date || fallbackDate;
+                const itemRoom = isK2Date ? k1 : k2;
+                addRow({
+                  date: itemDate,
+                  room_number: itemRoom || fallbackRoom,
                   complementary_name:
-                    item?.name ??
-                    item?.title ??
-                    item?.description ??
+                    item.name ||
+                    item.title ||
+                    item.description ||
+                    item.complementary_name ||
                     "Complementary",
-                  amount: Number(item?.amount ?? item?.price ?? 0),
+                  amount: item.amount ?? item.price ?? 0,
                 });
+              });
+            } else if (typeof val2 === "object") {
+              addRow({
+                date: val2.date || k2 || fallbackDate,
+                room_number: val2.room_number || k1 || fallbackRoom,
+                complementary_name:
+                  val2.name ||
+                  val2.title ||
+                  val2.description ||
+                  "Complementary",
+                amount: val2.amount ?? val2.price ?? 0,
               });
             }
           });
-        });
+        }
+      });
+    };
+
+    // 1. Extract from bookings
+    (bookings || []).forEach((b) => {
+      const roomFallback =
+        b.room_number ||
+        (Array.isArray(b.room_id) ? b.room_id.join(", ") : b.room_id) ||
+        Object.keys(b.room_charges || {})[0] ||
+        "N/A";
+      const dateFallback =
+        b.checkin_date || b.created_at || b.booking_date || Date.now();
+
+      if (b.complementary) {
+        parseComplementaryStructure(b.complementary, roomFallback, dateFallback);
       }
+      if (b.services?.complementary) {
+        parseComplementaryStructure(
+          b.services.complementary,
+          roomFallback,
+          dateFallback
+        );
+      }
+      if (b.breakdown?.booking?.complementary) {
+        parseComplementaryStructure(
+          b.breakdown.booking.complementary,
+          roomFallback,
+          dateFallback
+        );
+      }
+      if (b.breakdown?.bookingDetails?.services?.complementary) {
+        parseComplementaryStructure(
+          b.breakdown.bookingDetails.services.complementary,
+          roomFallback,
+          dateFallback
+        );
+      }
+    });
 
-      // 1) Known arrays with complementary/complimentary items in other possible locations
-      const explicitLists = [
-        bill?.bill?.serviceDetails?.complimentaryItems,
-        bill?.bill?.serviceDetails?.complementaryItems,
-        bill?.bill?.complimentaryItems,
-        bill?.bill?.complementaryItems,
-        bill?.complimentaryItems,
-        bill?.complementaryItems,
-      ].filter(Array.isArray);
+    // 2. Extract from bills
+    (bills || []).forEach((bill) => {
+      const roomFallback =
+        bill?.bill?.bookingDetails?.roomNumber ??
+        bill?.bill?.bookingDetails?.room_no ??
+        bill?.room_number ??
+        bill?.original_bill_data?.room_number ??
+        "N/A";
+      const dateFallback =
+        bill?.bill?.billHeader?.billDate ??
+        bill?.bill?.bookingDetails?.checkOut ??
+        bill?.created_at ??
+        Date.now();
 
-      explicitLists.forEach((list) => {
-        list.forEach((item) => {
-          if (!item) return;
-          rows.push({
-            date: item?.date ?? billLevelDate,
-            room_number: roomNumberFallback,
-            complementary_name:
-              item?.name ?? item?.title ?? item?.description ?? "Complementary",
-            amount: Number(item?.amount ?? item?.price ?? 0),
-          });
-        });
+      const compCandidates = [
+        bill?.original_bill_data?.complementary,
+        bill?.original_bill_data?.services?.complementary,
+        bill?.bill?.original_bill_data?.complementary,
+        bill?.bill?.original_bill_data?.services?.complementary,
+        bill?.bill?.bookingDetails?.complementary,
+        bill?.bookingDetails?.complementary,
+        bill?.complementary,
+        bill?.bill?.complementary,
+      ];
+      compCandidates.forEach((cand) => {
+        if (cand) parseComplementaryStructure(cand, roomFallback, dateFallback);
       });
 
-      // 2) Line items collections with flags/category names indicating complementary/complimentary
-      const lineItemCollections = [
+      const lineItems = [
         bill?.bill?.items,
         bill?.bill?.lineItems,
         bill?.items,
         bill?.lineItems,
+        bill?.bill?.serviceDetails?.complimentaryItems,
+        bill?.bill?.complimentaryItems,
       ].filter(Array.isArray);
 
-      lineItemCollections.forEach((items) => {
+      lineItems.forEach((items) => {
         items.forEach((li) => {
+          if (!li) return;
           const isCompl =
-            li?.isComplimentary === true ||
-            li?.is_complimentary === true ||
-            String(li?.category || "")
+            li.isComplimentary === true ||
+            li.is_complimentary === true ||
+            String(li.category || "")
               .toLowerCase()
               .includes("compliment") ||
-            String(li?.name || "")
+            String(li.name || "")
               .toLowerCase()
               .includes("compliment") ||
-            String(li?.title || "")
+            String(li.title || "")
               .toLowerCase()
               .includes("compliment") ||
-            String(li?.description || "")
+            String(li.description || "")
               .toLowerCase()
               .includes("compliment");
-          if (!isCompl) return;
-          rows.push({
-            date: li?.date ?? billLevelDate,
-            room_number: roomNumberFallback,
-            complementary_name:
-              li?.name ?? li?.title ?? li?.description ?? "Complementary",
-            amount: Number(li?.amount ?? li?.price ?? 0),
-          });
+          if (isCompl) {
+            addRow({
+              date: li.date || dateFallback,
+              room_number: li.room_number || roomFallback,
+              complementary_name:
+                li.name ||
+                li.title ||
+                li.description ||
+                "Complementary",
+              amount: li.amount ?? li.price ?? 0,
+            });
+          }
         });
       });
+    });
 
-      // 3) Per-day services under bill.bill.services
-      const servicesByDate = bill?.bill?.services;
-      if (servicesByDate && typeof servicesByDate === "object") {
-        Object.entries(servicesByDate).forEach(([dKey, dayServices]) => {
-          if (!dayServices) return;
+    // 3. Extract from restaurantOrders
+    (restaurantOrders || []).forEach((order) => {
+      const payMethod = String(
+        order.paymentMethod || order.payment_mode || ""
+      ).toLowerCase();
+      const ordType = String(order.orderType || order.type || "").toLowerCase();
+      const isOrderCompl =
+        payMethod === "complementary" ||
+        ordType === "complementary" ||
+        order.isComplimentary;
+      const orderDate =
+        order.orderDate || order.created_at || order.createdAt || Date.now();
+      const orderRoom = order.roomNumber || order.tableNumber || "Restaurant";
 
-          // Arrays specifically named complimentary/complementary
-          const arrays = [
-            dayServices?.complimentary,
-            dayServices?.complementary,
-          ].filter(Array.isArray);
-
-          arrays.forEach((arr) => {
-            arr.forEach((svc) => {
-              rows.push({
-                date: svc?.date ?? dKey ?? billLevelDate,
-                room_number: roomNumberFallback,
-                complementary_name:
-                  svc?.name ??
-                  svc?.title ??
-                  svc?.description ??
-                  "Complementary",
-                amount: Number(svc?.amount ?? svc?.price ?? 0),
-              });
+      if (isOrderCompl) {
+        if (Array.isArray(order.items) && order.items.length > 0) {
+          order.items.forEach((item) => {
+            addRow({
+              date: orderDate,
+              room_number: orderRoom,
+              complementary_name:
+                item.itemName || item.name || "Restaurant Order",
+              amount: item.price || item.total || 0,
             });
           });
-
-          // Any object entries with complimentary flags or names
-          Object.values(dayServices).forEach((svc) => {
-            if (!svc || typeof svc !== "object") return;
-            const nameLike = `${svc?.name ?? ""} ${svc?.title ?? ""} ${
-              svc?.description ?? ""
-            }`.toLowerCase();
-            const isCompl =
-              svc?.isComplimentary === true ||
-              svc?.is_complimentary === true ||
-              String(svc?.category || "")
-                .toLowerCase()
-                .includes("compliment") ||
-              nameLike.includes("compliment");
-            if (isCompl) {
-              rows.push({
-                date: svc?.date ?? dKey ?? billLevelDate,
-                room_number: roomNumberFallback,
-                complementary_name:
-                  svc?.name ??
-                  svc?.title ??
-                  svc?.description ??
-                  "Complementary",
-                amount: Number(svc?.amount ?? svc?.price ?? 0),
-              });
-            }
+        } else {
+          addRow({
+            date: orderDate,
+            room_number: orderRoom,
+            complementary_name:
+              `Restaurant Order #${order.bill_no || order.orderId || ""}`.trim(),
+            amount: order.totalAmount || order.grandTotal || order.amount || 0,
           });
+        }
+      } else if (Array.isArray(order.items)) {
+        order.items.forEach((item) => {
+          if (item?.isComplimentary || item?.is_complimentary) {
+            addRow({
+              date: orderDate,
+              room_number: orderRoom,
+              complementary_name:
+                item.itemName || item.name || "Complementary Food",
+              amount: item.price || 0,
+            });
+          }
         });
       }
     });
 
-    // Normalize date to YMD string to help sorting/filters later and keep only rows with a valid date
-    return rows
-      .map((r) => ({ ...r, date: toYMD(r.date) || "" }))
-      .filter((r) => !!r.date);
+    return rows.sort(
+      (a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0)
+    );
+  };
+
+  const extractComplementaryRowsFromBills = (billsList) => {
+    return processComplementaryData();
+  };
+
+  // Helper to process Room Occupancy report data
+  const processOccupancyData = () => {
+    const totalRooms =
+      Array.isArray(rooms) && rooms.length > 0 ? rooms.length : 0;
+    const occupancyByDate = new Map();
+
+    // 1. Process from saved Day End reports if available
+    (reports || []).forEach((r) => {
+      if (!r || !r.date) return;
+      const dObj = toDateObj(r.date);
+      if (!dObj) return;
+      const dKey = toYMD(dObj);
+
+      const roomStatusCounts =
+        r.summary?.roomStatusCounts || r.roomStatusCounts || {};
+      const occupied = Number(
+        roomStatusCounts.occupied ?? r.roomData?.occupied?.length ?? 0
+      );
+      const dirty = Number(
+        roomStatusCounts.dirty ?? r.roomData?.dirty?.length ?? 0
+      );
+      const underMaintenance = Number(
+        roomStatusCounts.under_maintenance ??
+          roomStatusCounts.underMaintenance ??
+          r.roomData?.under_maintenance?.length ??
+          0
+      );
+      const vacant = Number(
+        roomStatusCounts.vacant ?? r.roomData?.vacant?.length ?? 0
+      );
+      const calcTotal = occupied + dirty + underMaintenance + vacant;
+      const effectiveTotal = calcTotal > 0 ? calcTotal : totalRooms;
+      const rate =
+        effectiveTotal > 0 ? (occupied / effectiveTotal) * 100 : 0;
+
+      occupancyByDate.set(dKey, {
+        date: dKey,
+        total_rooms: effectiveTotal,
+        occupied,
+        vacant:
+          vacant > 0
+            ? vacant
+            : Math.max(0, effectiveTotal - occupied - dirty - underMaintenance),
+        dirty,
+        under_maintenance: underMaintenance,
+        occupancy_rate: rate.toFixed(2) + "%",
+      });
+    });
+
+    // 2. Compute dynamic occupancy for candidate dates
+    const candidateDates = new Set();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dateRange?.from) {
+      const from = new Date(dateRange.from);
+      from.setHours(0, 0, 0, 0);
+      const to = dateRange.to ? new Date(dateRange.to) : new Date(from);
+      to.setHours(0, 0, 0, 0);
+      const curr = new Date(from);
+      while (curr <= to) {
+        candidateDates.add(toYMD(curr));
+        curr.setDate(curr.getDate() + 1);
+      }
+    } else {
+      // Default: last 14 days up to today
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        candidateDates.add(toYMD(d));
+      }
+    }
+
+    // Also collect dates from any bookings
+    (bookings || []).forEach((b) => {
+      const cin = toDateObj(b.checkin_date || b.checkIn);
+      const cout = toDateObj(b.checkout_date || b.checkOut);
+      if (cin) candidateDates.add(toYMD(cin));
+      if (cout) candidateDates.add(toYMD(cout));
+    });
+
+    const todayKey = toYMD(today);
+
+    candidateDates.forEach((dateStr) => {
+      if (occupancyByDate.has(dateStr)) return;
+
+      const targetDate = toDateObj(dateStr);
+      if (!targetDate) return;
+      targetDate.setHours(0, 0, 0, 0);
+      const isToday = dateStr === todayKey;
+
+      if (isToday && totalRooms > 0) {
+        const occupiedCount = (rooms || []).filter((rm) => {
+          const st = String(rm.status || "").toLowerCase();
+          return st === "occupied";
+        }).length;
+
+        const dirtyCount = (rooms || []).filter((rm) => {
+          const st = String(rm.status || "").toLowerCase();
+          return st.includes("dirty");
+        }).length;
+
+        const underMaintCount = (rooms || []).filter((rm) => {
+          const st = String(rm.status || "").toLowerCase();
+          return st.includes("maintenance");
+        }).length;
+
+        const todayMs = today.getTime();
+        const checkedInBookingsCount = (bookings || []).filter((b) => {
+          const st = String(b.status || "").toLowerCase();
+          if (
+            !(
+              st === "checked-in" ||
+              st === "checkedin" ||
+              st === "in-house" ||
+              st === "inhouse"
+            )
+          )
+            return false;
+          // Must overlap today
+          const cin = toDateObj(b.checkin_date || b.checkIn);
+          const cout = toDateObj(b.checkout_date || b.checkOut);
+          if (!cin) return true; // no date info — trust status
+          const cinD = new Date(cin);
+          cinD.setHours(0, 0, 0, 0);
+          const coutD = cout ? new Date(cout) : null;
+          if (coutD) coutD.setHours(0, 0, 0, 0);
+          return (
+            cinD.getTime() <= todayMs &&
+            (!coutD || coutD.getTime() >= todayMs)
+          );
+        }).length;
+
+        // Indian hotel standard: occupied = checked-in bookings (primary),
+        // fall back to room status count if bookings unavailable
+        const effectiveOccupied = checkedInBookingsCount > 0
+          ? checkedInBookingsCount
+          : occupiedCount;
+        const vacantCount = Math.max(
+          0,
+          totalRooms - effectiveOccupied - dirtyCount - underMaintCount
+        );
+        const rate =
+          totalRooms > 0 ? (effectiveOccupied / totalRooms) * 100 : 0;
+
+        occupancyByDate.set(dateStr, {
+          date: dateStr,
+          total_rooms: totalRooms,
+          occupied: effectiveOccupied,
+          vacant: vacantCount,
+          dirty: dirtyCount,
+          under_maintenance: underMaintCount,
+          occupancy_rate: rate.toFixed(2) + "%",
+        });
+      } else {
+        // Historical date: count bookings whose stay covers this date
+        let occupiedCount = 0;
+        (bookings || []).forEach((b) => {
+          const st = String(b.status || "").toLowerCase();
+          // Skip cancelled, no-show, rejected
+          if (
+            st === "cancelled" ||
+            st === "rejected" ||
+            st === "no-show" ||
+            st === "noshow"
+          )
+            return;
+
+          const cin = toDateObj(b.checkin_date || b.checkIn);
+          const cout = toDateObj(b.checkout_date || b.checkOut);
+          if (!cin) return;
+          const cinD = new Date(cin);
+          cinD.setHours(0, 0, 0, 0);
+          const coutD = cout ? new Date(cout) : new Date(cinD);
+          coutD.setHours(0, 0, 0, 0);
+
+          // A booking covers targetDate if cinD <= targetDate <= coutD
+          if (
+            targetDate.getTime() >= cinD.getTime() &&
+            targetDate.getTime() <= coutD.getTime()
+          ) {
+            occupiedCount++;
+          }
+        });
+
+        const effectiveTotal =
+          totalRooms > 0 ? totalRooms : Math.max(occupiedCount, 1);
+        const finalOccupied = Math.min(occupiedCount, effectiveTotal);
+        const vacantCount = Math.max(0, effectiveTotal - finalOccupied);
+        const rate =
+          effectiveTotal > 0 ? (finalOccupied / effectiveTotal) * 100 : 0;
+
+        occupancyByDate.set(dateStr, {
+          date: dateStr,
+          total_rooms: effectiveTotal,
+          occupied: finalOccupied,
+          vacant: vacantCount,
+          dirty: 0,
+          under_maintenance: 0,
+          occupancy_rate: rate.toFixed(2) + "%",
+        });
+      }
+    });
+
+    return Array.from(occupancyByDate.values()).sort(
+      (a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0)
+    );
   };
 
   // Helper to process restaurant order data
@@ -1212,9 +1543,26 @@ const ReportGenerator = () => {
             if (typeof fetchReports === "function") {
               await fetchReports();
             }
+            if (typeof fetchRooms === "function") {
+              await fetchRooms();
+            }
+            if (typeof fetchBookings === "function") {
+              await fetchBookings();
+            }
             break;
           case "complementary":
-            await listTotalBill();
+            if (typeof listTotalBill === "function") {
+              await listTotalBill();
+            }
+            if (typeof fetchBookings === "function") {
+              await fetchBookings();
+            }
+            if (typeof fetchRooms === "function") {
+              await fetchRooms();
+            }
+            if (typeof fetchRestaurantOrders === "function") {
+              await fetchRestaurantOrders();
+            }
             break;
           case "expenses":
             // Expenses data is already available in context
@@ -1268,11 +1616,175 @@ const ReportGenerator = () => {
           data = rooms || [];
           break;
         case "bookings":
-          data = bookings || [];
+          data = (bookings || []).map((bk) => {
+            // Resolve room number from multiple possible locations
+            const roomNum =
+              bk.room_number ||
+              (Array.isArray(bk.room_id) ? bk.room_id.join(", ") : null) ||
+              Object.keys(bk.room_charges || {})[0] ||
+              bk.roomNumber ||
+              "N/A";
+
+            // Resolve room type
+            const roomType =
+              bk.room_type ||
+              bk.roomType ||
+              bk.category ||
+              (rooms || []).find(
+                (r) =>
+                  String(r.room_number) === String(roomNum) ||
+                  String(r.id) === String(bk.room_id)
+              )?.room_type ||
+              "N/A";
+
+            // Resolve guest name
+            const guestName =
+              bk.guest_name ||
+              bk.full_name ||
+              bk.guestName ||
+              bk.name ||
+              bk.customer_name ||
+              bk.primaryGuestName ||
+              "N/A";
+
+            // Calculate total amount
+            const roomCharges = Object.values(
+              bk.room_charges || {}
+            ).reduce((s, v) => s + Number(v || 0), 0);
+            const serviceCharges = Object.values(
+              bk.services || {}
+            ).reduce((daySum, dayServices) => {
+              return (
+                daySum +
+                Object.values(dayServices || {}).reduce((s, svc) => {
+                  return (
+                    s +
+                    Number(svc?.manual_charges || 0) +
+                    Number(svc?.minibar_charges || 0) +
+                    Number(svc?.laundry_charges || 0) +
+                    Number(svc?.extra_bed_charges || 0) +
+                    Number(svc?.food_charges || 0)
+                  );
+                }, 0)
+              );
+            }, 0);
+            const totalAmount =
+              roomCharges + serviceCharges - Number(bk.discount || 0);
+
+            return {
+              grc_id: bk.booking_id || bk.grc_id || bk.id || "N/A",
+              guest_name: guestName,
+              room_number: roomNum,
+              room_type: roomType,
+              checkin_date: bk.checkin_date || bk.checkIn || null,
+              checkout_date: bk.checkout_date || bk.checkOut || null,
+              status: bk.status || "N/A",
+              advance_payment:
+                Number(bk.advance_payment || bk.partial_payment_amount || 0),
+              discount: Number(bk.discount || 0),
+              total_amount: totalAmount,
+              date: bk.checkin_date || bk.checkIn || bk.created_at || null,
+            };
+          });
           break;
         case "revenue":
         case "guests":
-          data = bills || [];
+          data = (bills || []).map((bill) => {
+            // Bills can be nested in bill.bill or directly on bill
+            const bd =
+              bill?.bill?.bookingDetails ||
+              bill?.bookingDetails ||
+              bill?.original_bill_data ||
+              {};
+            const bh = bill?.bill?.billHeader || {};
+
+            const guestName =
+              bd.guestName ||
+              bd.guest_name ||
+              bd.full_name ||
+              bill?.guest_name ||
+              bill?.guestName ||
+              "N/A";
+            const guestMobile =
+              bd.guestMobile ||
+              bd.mobile ||
+              bd.phone ||
+              bd.contact ||
+              bill?.guest_mobile ||
+              bill?.mobile ||
+              "N/A";
+            const roomNum =
+              bd.roomNumber ||
+              bd.room_no ||
+              bd.room_number ||
+              bill?.room_number ||
+              Object.keys(bill?.room_charges || {})[0] ||
+              "N/A";
+            const roomType =
+              bd.roomType ||
+              bd.room_type ||
+              bill?.room_type ||
+              (rooms || []).find(
+                (r) => String(r.room_number) === String(roomNum)
+              )?.room_type ||
+              "N/A";
+            const checkinDate =
+              bd.checkIn ||
+              bd.checkin_date ||
+              bill?.checkin_date ||
+              bill?.created_at ||
+              null;
+            const checkoutDate =
+              bd.checkOut ||
+              bd.checkout_date ||
+              bill?.checkout_date ||
+              bh.billDate ||
+              bill?.created_at ||
+              null;
+            const totalAmount =
+              Number(
+                bill?.bill?.grandTotal ||
+                  bill?.grandTotal ||
+                  bill?.total_amount ||
+                  bill?.bill?.totalAmount ||
+                  bd.totalAmount ||
+                  0
+              );
+            const paymentMode =
+              bd.paymentMode ||
+              bd.payment_mode ||
+              bill?.payment_mode ||
+              bill?.bill?.paymentMode ||
+              bh.paymentMode ||
+              "N/A";
+            const gstNumber =
+              bd.gstNumber ||
+              bd.gst_number ||
+              bd.gstin ||
+              bill?.gst_number ||
+              bill?.gstin ||
+              "";
+            const billNo =
+              bill?.bill_no ||
+              bill?.billNo ||
+              bh.billNo ||
+              bill?.id ||
+              "N/A";
+
+            return {
+              bill_no: billNo,
+              guest_name: guestName,
+              guest_mobile: guestMobile,
+              room_number: roomNum,
+              room_type: roomType,
+              checkin_date: checkinDate,
+              checkout_date: checkoutDate,
+              total_amount: totalAmount,
+              payment_mode: paymentMode,
+              gst_number: gstNumber,
+              date: checkoutDate || checkinDate || bill?.created_at || null,
+            };
+          });
           break;
         case "staff":
           data = staffs || [];
@@ -1282,12 +1794,13 @@ const ReportGenerator = () => {
           break;
         
         case "night":
-        case "occupancy":
           data = reports || [];
           break;
+        case "occupancy":
+          data = processOccupancyData();
+          break;
         case "complementary":
-          // Transform bills into complementary rows BEFORE applying generic date filters
-          data = extractComplementaryRowsFromBills(bills || []);
+          data = processComplementaryData();
           break;
         case "expenses":
           // Transform expenses data into unified cash flow format
@@ -1949,39 +2462,7 @@ const ReportGenerator = () => {
       data = rows;
     }
 
-    // Occupancy report
-    if (selectedReport === "occupancy") {
-      const filteredData = (data || []).filter((r) => {
-        return r.dayEndStatus == true;
-      });
-
-      data = filteredData.map((r) => {
-        const occupiedRoomsCount = r.summary.roomStatusCounts.occupied || 0;
-        const dirtyRoomsCount = r.summary.roomStatusCounts.dirty || 0;
-        const underMaintenanceRoomsCount =
-          r.summary.roomStatusCounts.under_maintenance || 0;
-        const vacantRoomsCount = r.summary.roomStatusCounts.vacant || 0;
-        const totalRoomsCount =
-          occupiedRoomsCount +
-          dirtyRoomsCount +
-          underMaintenanceRoomsCount +
-          vacantRoomsCount;
-
-        const occupancyRate =
-          totalRoomsCount > 0
-            ? (occupiedRoomsCount / totalRoomsCount) * 100
-            : 0;
-        return {
-          date: r.date,
-          total_rooms: totalRoomsCount,
-          occupied: occupiedRoomsCount,
-          vacant: vacantRoomsCount,
-          dirty: dirtyRoomsCount,
-          under_maintenance: underMaintenanceRoomsCount,
-          occupancy_rate: occupancyRate.toFixed(2) + "%",
-        };
-      });
-    }
+    // Occupancy report data is already prepared and formatted by processOccupancyData
 
     // Transform data for restaurant report
     if (selectedReport === "restaurant") {
