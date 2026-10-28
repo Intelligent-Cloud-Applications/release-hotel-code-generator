@@ -217,17 +217,17 @@ const GuestDetails = ({
                 Departure Date & Time
               </td>
               <td className="px-3 py-2">
-                {billData.bookingDetails?.checkOut
-                  ? `${new Date(
-                      billData.bookingDetails.checkOut
-                    ).toLocaleDateString("en-GB")} ${new Date(
-                      billData.bookingDetails.checkOut
-                    ).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: true,
-                    })}`
-                  : "---"}
+                {(() => {
+                  const checkOutVal =
+                    billData.bookingDetails?.checkOut || new Date().toISOString();
+                  const d = new Date(checkOutVal);
+                  const validDate = isNaN(d.getTime()) ? new Date() : d;
+                  return `${validDate.toLocaleDateString("en-GB")} ${validDate.toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  })}`;
+                })()}
               </td>
             </tr>
 
