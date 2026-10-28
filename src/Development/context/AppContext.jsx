@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { get, post, patch, put, del } from "aws-amplify/api";
 import { useAuthContext } from "./AuthContext.jsx";
-import { institutionId, product, template } from "../../Operation/data.json";
+import { institutionId, product, template, dayCalculation } from "../../Operation/data.json";
 
 const AppContext = createContext({});
 
@@ -1217,6 +1217,7 @@ export const AppContextProvider = ({ children }) => {
         path: "/billing/calculate-total?institutionId=" + institutionId,
         options: {
           body: {
+            dayCalculation: bookingDetails?.dayCalculation || dayCalculation || "night_wise",
             ...bookingDetails,
           },
         },
@@ -1759,6 +1760,7 @@ export const AppContextProvider = ({ children }) => {
         fetchTotalBill,
         listTotalBill,
         getArchivedBills,
+        dayCalculation: dayCalculation || "night_wise",
         calculateTotalBill,
         updateBill,
         checkoutGuest,

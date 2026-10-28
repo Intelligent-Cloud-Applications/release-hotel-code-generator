@@ -4,5 +4,7 @@
   "template": "template2",
   "s3BucketName": "templatehm.awsaiapp.com",
   "cloudFrontId": "E2MTGS0B7WKXTR",
-  "domain": "https://templatehm.awsaiapp.com"
+  "domain": "https://templatehm.awsaiapp.com",
+  "..refdayCalculation": "24_hour or night_wise",
+  "dayCalculation": "night_wise"
 }

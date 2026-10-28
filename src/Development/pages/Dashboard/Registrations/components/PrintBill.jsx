@@ -1,7 +1,7 @@
 import React from "react";
 import data from '../../../../../Operation/data.json';
 
-const PrintBill = ({ table, items, institutionData, screenWidth, orderId, date, discountMethod = "none", discountValue = 0 }) => {
+const PrintBill = ({ table, items, institutionData, screenWidth, orderId, billNo, date, discountMethod = "none", discountValue = 0 }) => {
   const printerpaperSize = "80";
 
   // Calculate totals based on provided items
@@ -128,7 +128,8 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, date, 
 
             <div class="bill-details">
               <div class="table-info">Table: ${table.id}</div>
-              ${orderId ? `<div class="order-info" style="font-size:10pt;font-weight:bold;margin-top:1mm;">Order ID: ${orderId}</div>` : ""}
+              ${billNo ? `<div class="order-info" style="font-size:11pt;font-weight:bold;margin-top:1mm;">Bill No: ${billNo}</div>` : ""}
+              ${orderId ? `<div class="order-info" style="font-size:9pt;color:#333;margin-top:1mm;">Order ID: ${orderId}</div>` : ""}
             </div>
 
             <table class="items-table">
@@ -379,6 +380,7 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, date, 
             <div class="sub-header">${institutionData?.Query_Address || ""}</div>
             <div class="info">Contact: ${institutionData?.contactDetails?.phone || institutionData?.Query_PhoneNumber || institutionData?.phone || institutionData?.mobile || ""}<br>Date: ${formatDateTime()}</div>
             ${institutionData?.gstin ? `<div class="info">GSTIN: ${institutionData.gstin}</div>` : ""}
+            ${billNo ? `<div class="info"><b>Bill No: ${billNo}</b></div>` : ""}
             ${orderId ? `<div class="info">Order ID: ${orderId}</div>` : ""}
             <div class="divider"></div>
             <div><b>Table:</b> ${table.id}</div>
