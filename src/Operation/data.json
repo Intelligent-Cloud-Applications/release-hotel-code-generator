@@ -5,4 +5,6 @@
   "s3BucketName": "dishahotel.tekkzy.com",
   "cloudFrontId": "E3TSW2BKF9KLNS",
   "domain": "https://dishahotel.tekkzy.com" 
+  "..refdayCalculation": "24_hour or night_wise",
+  "dayCalculation": "night_wise"
 }

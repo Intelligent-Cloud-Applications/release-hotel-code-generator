@@ -136,6 +136,7 @@ const RestaurantBill = ({ orderDetails, institutionData, billData }) => {
 
             <div class="bill-details">
               <div class="table-info">Room: ${billData?.bookingDetails?.roomNumber || "N/A"}</div>
+              <div class="order-info"><b>Bill No: ${orderDetails[0]?.billNo || orderDetails[0]?.billNumber || orderDetails[0]?.order_id || "N/A"}</b></div>
               <div class="order-info">Order ID: ${orderDetails[0]?.order_id || "N/A"}</div>
             </div>
 
@@ -386,6 +387,7 @@ const RestaurantBill = ({ orderDetails, institutionData, billData }) => {
             <div class="sub-header">${institutionData?.Query_Address || ""}</div>
             <div class="info">Contact: ${institutionData?.Query_PhoneNumber || ""}<br>Date: ${formatDateTime()}</div>
             ${institutionData?.gstin ? `<div class="info">GSTIN: ${institutionData.gstin}</div>` : ""}
+            <div class="info"><b>Bill No: ${orderDetails[0]?.billNo || orderDetails[0]?.billNumber || orderDetails[0]?.order_id || "N/A"}</b></div>
             <div class="info">Order ID: ${orderDetails[0]?.order_id || "N/A"}</div>
             <div class="divider"></div>
             <div><b>Room:</b> ${billData?.bookingDetails?.roomNumber || "N/A"}</div>

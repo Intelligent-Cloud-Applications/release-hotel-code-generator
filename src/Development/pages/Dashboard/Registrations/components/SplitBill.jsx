@@ -1550,6 +1550,7 @@ const SplitBill = ({
                                   institutionData={institutionData}
                                   screenWidth={window.innerWidth}
                                   orderId={restaurantBill.orderId}
+                                  billNo={restaurantBill.bill_no || restaurantBill.billNo}
                                   date={restaurantBill.date}
                                   discountMethod="none"
                                   discountValue={0}
@@ -1624,8 +1625,19 @@ const SplitBill = ({
                               {restaurantBill.tableName || billData?.bookingDetails?.roomNumber || "N/A"}
                             </div>
                             <div>
-                              <span className="font-semibold">Folio / Order:</span>{" "}
-                              {restaurantBill.orderId}
+                              {(restaurantBill.bill_no || restaurantBill.billNo) ? (
+                                <>
+                                  <span className="font-semibold">Bill No:</span>{" "}
+                                  <span className="font-bold text-gray-900">{restaurantBill.bill_no || restaurantBill.billNo}</span>
+                                  <span className="text-gray-400 mx-1">|</span>
+                                  <span className="text-gray-500">Order: {restaurantBill.orderId}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="font-semibold">Folio / Order:</span>{" "}
+                                  {restaurantBill.orderId}
+                                </>
+                              )}
                             </div>
                           </div>
 

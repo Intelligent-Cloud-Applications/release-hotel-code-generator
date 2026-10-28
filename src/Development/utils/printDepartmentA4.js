@@ -155,7 +155,7 @@ export function printDepartmentA4Invoice({
         </div>
         <div style="text-align:right;">
           <div style="font-size:10.5px; text-transform:uppercase; font-weight:600; color:#6b7280; letter-spacing:0.5px;">Folio Reference</div>
-          <div style="font-size:12px; font-weight:600; color:#111827; margin-top:2px;">Order/Folio: ${folioId}</div>
+          <div style="font-size:12px; font-weight:600; color:#111827; margin-top:2px;">${(bill.bill_no || bill.billNo) ? `Bill No: <b>${bill.bill_no || bill.billNo}</b> | ` : ""}Order/Folio: ${folioId}</div>
           <div style="font-size:11.5px; color:#4b5563; margin-top:2px;">Payment Method: <b>${bill.paymentMethod || "ROOM FOLIO"}</b></div>
         </div>
       </div>

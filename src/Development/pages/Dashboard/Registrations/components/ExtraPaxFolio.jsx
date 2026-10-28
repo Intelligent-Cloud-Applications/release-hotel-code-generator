@@ -239,9 +239,7 @@ const ExtraPaxFolio = ({
     billData?.bookingDetails?.checkOut ||
     billData?.bookingDetails?.checkout ||
     billData?.bookingDetails?.checkOutDate ||
-    booking?.breakdown?.stayDetails?.checkout_date ||
-    booking?.breakdown?.booking?.checkout_date ||
-    booking?.checkout_date;
+    new Date().toISOString();
 
   const formatDateTime = (val) => {
     if (!val) return "---";

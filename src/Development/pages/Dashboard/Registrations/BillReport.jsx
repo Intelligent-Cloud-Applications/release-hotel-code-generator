@@ -174,7 +174,7 @@ const BillReport = ({ billData: rawBillData }) => {
       ratePlanBaseTariff: rawBillData?.bookingDetails?.ratePlanBaseTariff || rawBookingData?.base_tariff || 0,
       ratePlanTariffVariation: rawBillData?.bookingDetails?.ratePlanTariffVariation || rawBookingData?.tariff_variation || 0,
       checkIn: rawBillData?.bookingDetails?.checkIn || rawBookingData?.checkin_date || "",
-      checkOut: rawBillData?.bookingDetails?.checkOut || rawBookingData?.checkout_date || "",
+      checkOut: rawBillData?.bookingDetails?.checkOut || new Date().toISOString(),
       numberOfNights: rawBillData?.bookingDetails?.numberOfNights || rawBookingData?.number_of_nights || 0,
       companyName: companyDetails.name || rawBillData?.bookingDetails?.companyName || "N/A",
       companyGstNo: companyDetails.gst_no || rawBillData?.bookingDetails?.gstNo || "N/A",
