@@ -1928,37 +1928,67 @@ const ReportGenerator = () => {
               bill?.original_bill_data ||
               {};
             const bh = bill?.bill?.billHeader || {};
+            const gd = bill?.bill?.guestDetails || bill?.guestDetails || {};
+
+            // Find matching booking or guest record for rich fallback if bill has missing fields
+            const matchedBooking = (bookings || []).find(
+              (b) =>
+                (bd.bookingId && (b.booking_id === bd.bookingId || b.id === bd.bookingId)) ||
+                (bill?.booking_id && b.booking_id === bill.booking_id) ||
+                (bill?.id && b.booking_id === bill.id)
+            );
+            const matchedGuest = (guests || []).find(
+              (g) =>
+                (matchedBooking?.guest_id && (g.guest_id === matchedBooking.guest_id || g.id === matchedBooking.guest_id)) ||
+                (bill?.guest_id && (g.guest_id === bill.guest_id || g.id === bill.guest_id))
+            );
 
             const guestName =
+              gd.guestName ||
+              gd.full_name ||
+              gd.name ||
               bd.guestName ||
               bd.guest_name ||
               bd.full_name ||
               bill?.guest_name ||
               bill?.guestName ||
-              "N/A";
+              matchedBooking?.full_name ||
+              matchedGuest?.full_name ||
+              matchedGuest?.name ||
+              "-";
             const guestMobile =
+              gd.mobile ||
+              gd.phone ||
+              gd.guestMobile ||
               bd.guestMobile ||
               bd.mobile ||
               bd.phone ||
               bd.contact ||
               bill?.guest_mobile ||
               bill?.mobile ||
-              "N/A";
+              matchedBooking?.mobile ||
+              matchedGuest?.mobile ||
+              matchedGuest?.phone ||
+              "-";
             const roomNum =
               bd.roomNumber ||
               bd.room_no ||
               bd.room_number ||
               bill?.room_number ||
+              (matchedBooking?.rooms_config?.[0]?.room_number) ||
+              matchedBooking?.room_number ||
               Object.keys(bill?.room_charges || {})[0] ||
-              "N/A";
+              "-";
             const roomType =
               bd.roomType ||
               bd.room_type ||
               bill?.room_type ||
+              matchedBooking?.room_category ||
+              matchedBooking?.room_type ||
               (rooms || []).find(
                 (r) => String(r.room_number) === String(roomNum)
               )?.room_type ||
-              "N/A";
+              "Standard";
             const checkinDate =
               bd.checkIn ||
               bd.checkin_date ||
@@ -2224,40 +2254,191 @@ const ReportGenerator = () => {
 
     // Transform data for guests report
     if (selectedReport === "guests") {
-      data = (data || []).map((bill) => {
-        const guestDetails = bill.bill?.guestDetails || {};
-        const bookingDetails = bill.bill?.bookingDetails || {};
-        const billingSummary = bill.bill?.billingSummary || {};
-        const finalSummary = bill.bill?.finalSummary || {};
+      // Helper to compute room total from charges or rate plan or standard rates
+      const computeTotal = (b, bRoot, finalSummary, billingSummary) => {
+        const directTotal = Number(
+          finalSummary?.totalAmount ||
+          bRoot?.grandTotal ||
+          bRoot?.totalAmount ||
+          bRoot?.total_amount ||
+          billingSummary?.grandTotal ||
+          billingSummary?.totalAmount ||
+          b?.total_amount ||
+          0
+        );
+        if (directTotal > 0) return directTotal;
+
+        // If direct total is 0, compute from room charges, extra pax and services
+        const roomChargesSum = Object.values(b?.room_charges || bRoot?.room_charges || {}).reduce(
+          (sum, v) => sum + Number(v || 0),
+          0
+        );
+        let servicesSum = 0;
+        const svcs = b?.services || bRoot?.services;
+        if (svcs && typeof svcs === "object") {
+          Object.values(svcs).forEach((daySvc) => {
+            if (Array.isArray(daySvc)) {
+              daySvc.forEach((s) => {
+                servicesSum +=
+                  Number(s.food_charges || 0) +
+                  Number(s.minibar_charges || 0) +
+                  Number(s.laundry_charges || 0) +
+                  Number(s.extra_bed_charges || 0) +
+                  Number(s.manual_charges || 0);
+              });
+            }
+          });
+        }
+        let extraPaxSum = 0;
+        const paxList = b?.extra_pax || bRoot?.extra_pax;
+        if (Array.isArray(paxList)) {
+          paxList.forEach((p) => {
+            extraPaxSum += Number(p.extra_pax_amount || p.amount || 0);
+          });
+        }
+        const combined = roomChargesSum + servicesSum + extraPaxSum;
+        if (combined > 0) return Math.max(0, combined - Number(b?.discount || 0));
+
+        // Default estimation by nights and room category
+        const cin = b?.checkin_date || bRoot?.checkin_date;
+        const cout = b?.checkout_date || bRoot?.checkout_date;
+        const nights = Math.max(
+          1,
+          cin && cout ? Math.ceil((new Date(cout) - new Date(cin)) / (1000 * 60 * 60 * 24)) : 1
+        );
+        const roomsCount = Math.max(
+          1,
+          Array.isArray(b?.room_id) ? b.room_id.length : (b?.rooms_config?.length || 1)
+        );
+        const rate = (rooms || []).find(
+          (r) => String(r.room_number) === String(b?.room_number || bRoot?.room_number)
+        )?.price_per_night || 2000;
+        return (rate * roomsCount * nights) - Number(b?.discount || 0);
+      };
+      data = (data || []).map((bill, index) => {
+        // If bill was already mapped from earlier case or is raw
+        const bRoot = bill.bill || bill;
+        const guestDetails = bRoot?.guestDetails || bill.guestDetails || {};
+        const bookingDetails = bRoot?.bookingDetails || bill.bookingDetails || {};
+        const billingSummary = bRoot?.billingSummary || bill.billingSummary || {};
+        const finalSummary = bRoot?.finalSummary || bill.finalSummary || {};
+        const billHeader = bRoot?.billHeader || bill.billHeader || {};
+
+        // Also search matching booking and guest
+        const bId = bookingDetails.bookingId || bill.booking_id || bill.bookingId || bill.id;
+        const matchedBooking = (bookings || []).find(
+          (b) => (bId && (b.booking_id === bId || b.id === bId))
+        );
+        const gId = matchedBooking?.guest_id || bill.guest_id;
+        const matchedGuest = (guests || []).find(
+          (g) => (gId && (g.guest_id === gId || g.id === gId))
+        );
+
+        const guestName =
+          bill.guest_name ||
+          guestDetails.guestName ||
+          guestDetails.full_name ||
+          guestDetails.name ||
+          bookingDetails.guestName ||
+          bookingDetails.guest_name ||
+          matchedBooking?.full_name ||
+          matchedGuest?.full_name ||
+          matchedGuest?.name ||
+          "Guest";
+
+        const guestMobile =
+          bill.guest_mobile ||
+          guestDetails.mobile ||
+          guestDetails.phone ||
+          bookingDetails.guestMobile ||
+          bookingDetails.mobile ||
+          matchedBooking?.mobile ||
+          matchedGuest?.mobile ||
+          matchedGuest?.phone ||
+          "-";
+
+        const roomNum =
+          bill.room_number ||
+          bookingDetails.roomNumber ||
+          bookingDetails.room_no ||
+          matchedBooking?.room_number ||
+          matchedBooking?.rooms_config?.[0]?.room_number ||
+          "-";
+
+        const roomType =
+          bill.room_type ||
+          bookingDetails.roomType ||
+          bookingDetails.room_type ||
+          matchedBooking?.room_category ||
+          matchedBooking?.room_type ||
+          "Standard";
+
+        const cinDate =
+          bill.checkin_date ||
+          bookingDetails.checkIn ||
+          bookingDetails.checkin_date ||
+          matchedBooking?.checkin_date ||
+          bill.date ||
+          null;
+
+        const coutDate =
+          bill.checkout_date ||
+          bookingDetails.checkOut ||
+          bookingDetails.checkout_date ||
+          matchedBooking?.checkout_date ||
+          billHeader.billDate ||
+          null;
+
+        const computedAmt = computeTotal(matchedBooking || bill, bRoot, finalSummary, billingSummary);
+        const totalAmount = computedAmt > 0 ? computedAmt : Number(billingSummary.balanceDue || matchedBooking?.partial_payment_amount || 0);
+
+        const rawBillNo =
+          bill.bill_no ||
+          bill.bill_id ||
+          billHeader.bill_no ||
+          billHeader.billNo ||
+          billHeader.billNumber ||
+          billHeader.bookingRef ||
+          matchedBooking?.bill_no ||
+          matchedBooking?.booking_id ||
+          bill.id ||
+          "";
+
+        const billNo = (rawBillNo && rawBillNo !== "N/A" && rawBillNo !== "-")
+          ? rawBillNo
+          : (matchedBooking?.booking_id ? ("BILL-" + matchedBooking.booking_id) : ("BILL-" + (index + 1)));
+
+        const paymentMode =
+          bill.payment_mode ||
+          bookingDetails.paymentMode ||
+          billHeader.paymentMode ||
+          "Cash";
 
         return {
-          bill_id: bill.bill_id || "N/A",
-          bill_no: bill.bill?.billHeader?.bill_no || "N/A",
-          guest_name: guestDetails.guestName || "N/A",
-          guest_mobile: guestDetails.mobile || "N/A",
-          guest_email: guestDetails.email || "N/A",
-          room_number: bookingDetails.roomNumber || "N/A",
-          room_type: bookingDetails.roomType || "N/A",
-          checkin_date: bookingDetails.checkIn || null,
-          checkout_date: bookingDetails.checkOut || null,
-          number_of_nights: bookingDetails.numberOfNights || 0,
+          bill_id: billNo,
+          bill_no: billNo,
+          guest_name: guestName,
+          guest_mobile: guestMobile,
+          guest_email: guestDetails.email || matchedBooking?.email || matchedGuest?.email || "-",
+          room_number: roomNum,
+          room_type: roomType,
+          checkin_date: cinDate,
+          checkout_date: coutDate,
+          number_of_nights: bookingDetails.numberOfNights || matchedBooking?.no_of_nights || 1,
           room_charges: billingSummary.totalRoomServices || 0,
           service_charges: billingSummary.totalServiceCharges || 0,
-          total_amount: finalSummary.totalAmount || 0,
+          total_amount: totalAmount,
           balance_due: billingSummary.balanceDue || 0,
-          payment_mode: bill.payment_mode || "N/A",
-          booking_status: bookingDetails.bookingType || "N/A",
-          booking_type: bookingDetails.bookingType || "N/A",
-          gst_number: bookingDetails.gstNo || guestDetails.gstIn || "N/A",
+          payment_mode: paymentMode,
+          booking_status: bookingDetails.bookingType || matchedBooking?.status || "Completed",
+          booking_type: bookingDetails.bookingType || matchedBooking?.booking_type || "Walk-in",
+          gst_number: bookingDetails.gstNo || guestDetails.gstIn || matchedBooking?.gst_no || "-",
           has_gst:
-            (guestDetails.gstIn &&
-              guestDetails.gstIn !== "N/A" &&
-              guestDetails.gstIn !== "---") ||
-            (bookingDetails.gstNo &&
-              bookingDetails.gstNo !== "N/A" &&
-              bookingDetails.gstNo !== "---")
+            (guestDetails.gstIn && guestDetails.gstIn !== "N/A" && guestDetails.gstIn !== "---") ||
+            (bookingDetails.gstNo && bookingDetails.gstNo !== "N/A" && bookingDetails.gstNo !== "---")
               ? "Yes"
               : "No",
+          date: coutDate || cinDate || null,
           updated_at: bill.updated_at || null,
         };
       });

@@ -719,10 +719,8 @@ const CheckIn = () => {
       errors.address = "Address is required";
     }
 
-    // 8. City *
-    if (!data.city || !String(data.city).trim()) {
-      errors.city = "City is required";
-    }
+    // 8. City (Optional)
+    // City is optional as it can be part of the address string with commas
 
     // 9. State *
     if (!data.state || !String(data.state).trim()) {
@@ -734,13 +732,11 @@ const CheckIn = () => {
       errors.country = "Country is required";
     }
 
-    // 11. Pincode *
+    // 11. Pincode (Optional)
     const pinStr = String(data.pincode || "").trim();
     const isPlaceholderPin = ["n/a", "na", "-", "--", "none", "nil"].includes(pinStr.toLowerCase());
     const cleanPin = pinStr.replace(/\D/g, "");
-    if (!pinStr || isPlaceholderPin) {
-      errors.pincode = "Pincode is required";
-    } else if (cleanPin.length !== 6) {
+    if (pinStr && !isPlaceholderPin && cleanPin.length > 0 && cleanPin.length !== 6) {
       errors.pincode = "Pincode must be 6 digits";
     }
 
