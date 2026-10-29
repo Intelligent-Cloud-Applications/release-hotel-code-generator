@@ -72,6 +72,9 @@ const CheckInForm = ({
   const [isAutoCreatingCompany, setIsAutoCreatingCompany] = useState(false);
 
   // Create Company Dialog state
+  const [isStateDialogOpen, setIsStateDialogOpen] = useState(false);
+  const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false);
+  const [customAddressDraft, setCustomAddressDraft] = useState("");
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [newCompany, setNewCompany] = useState({
     name: "",
@@ -2075,7 +2078,95 @@ const CheckInForm = ({
             )}
           </div>
         </div>
-      </div>
+      </div>      {/* ── Modal 1: State Selection Modal ───────────────────────── */}
+      <Dialog open={isStateDialogOpen} onOpenChange={setIsStateDialogOpen}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Select Indian State / Region</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 overflow-y-auto p-2 max-h-96">
+            {[
+              "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+              "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+              "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+              "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+              "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+              "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Jammu and Kashmir"
+            ].map((st) => (
+              <button
+                key={st}
+                type="button"
+                className={`text-left text-xs px-2.5 py-2 rounded border transition-colors ${
+                  checkInData.state === st
+                    ? "bg-blue-600 text-white border-blue-600 font-semibold"
+                    : "bg-gray-50 hover:bg-blue-50 border-gray-200 text-gray-800"
+                }`}
+                onClick={() => {
+                  handleInputChange("state", st);
+                  setIsStateDialogOpen(false);
+                }}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end pt-2 border-t">
+            <Button size="sm" variant="outline" onClick={() => setIsStateDialogOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modal 2: Custom Address & Copy Modal ─────────────────── */}
+      <Dialog open={isAddressDialogOpen} onOpenChange={setIsAddressDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Custom Address & Copy</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-gray-500">
+              Paste or draft full address here. You can copy it to clipboard or apply it directly to the check-in form.
+            </p>
+            <textarea
+              rows={4}
+              value={customAddressDraft}
+              onChange={(e) => setCustomAddressDraft(e.target.value)}
+              placeholder="House/Plot No, Street, Landmark, Area..."
+              className="w-full text-xs p-2.5 border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(customAddressDraft);
+                toast.success("Address copied to clipboard!");
+              }}
+            >
+              Copy Address
+            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setIsAddressDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  handleInputChange("address", customAddressDraft);
+                  setIsAddressDialogOpen(false);
+                  toast.success("Address applied to check-in form");
+                }}
+              >
+                Apply Address
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Create Company Dialog */}
       <Dialog open={isCreateCompanyOpen} onOpenChange={setIsCreateCompanyOpen}>

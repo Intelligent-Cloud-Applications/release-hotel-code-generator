@@ -111,6 +111,22 @@ export const AuthContextProvider = ({ children }) => {
       });
   }, []);
 
+  // Auto-logout: When window/system closes, auto log out all roles except Admin
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (userData && !userData.userTypes?.includes("admin") && userData.userType !== "admin") {
+        try {
+          signOut();
+          localStorage.removeItem("userType");
+        } catch (e) {
+          // ignore on unload
+        }
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [userData]);
+
   return (
     <AuthContext.Provider
       value={{
