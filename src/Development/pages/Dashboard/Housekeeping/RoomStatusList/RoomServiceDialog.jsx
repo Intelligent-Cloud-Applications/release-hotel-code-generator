@@ -210,21 +210,26 @@ const RoomServicesAndComplementaryDialog = ({ roomNumber, booking = {} }) => {
       <DialogTrigger asChild disabled={booking.status !== 'Checked-in'}>
         <Button 
           variant="filled" 
-          className={`w-full relative ${
-            booking.status === 'Checked-in' 
-              ? 'bg-black text-white hover:bg-gray-800' 
-              : 'bg-white/50 backdrop-blur-sm text-gray-400 border border-gray-200'
+          className={`w-full h-8 text-xs relative font-bold transition-all shadow-xs ${
+            booking?.status === 'Checked-in' 
+              ? '!bg-white !text-gray-900 hover:!bg-gray-100 cursor-pointer border border-white' 
+              : '!bg-black/30 !text-white/70 border border-white/20 cursor-not-allowed'
           }`}
+          style={
+            booking?.status === 'Checked-in'
+              ? { backgroundColor: '#ffffff', color: '#111827' }
+              : { backgroundColor: 'rgba(0, 0, 0, 0.28)', color: 'rgba(255, 255, 255, 0.75)' }
+          }
         >
-          {booking.status === 'Checked-in' ? (
+          {booking?.status === 'Checked-in' ? (
             <>
-              <ClipboardList className="mr-2 h-4 w-4" />
-              Add Services
+              <ClipboardList className="mr-1.5 h-3.5 w-3.5 text-indigo-700 font-bold" />
+              <span className="font-bold text-gray-900">Add Services</span>
             </>
           ) : (
             <>
-              <Lock className="mr-2 h-4 w-4" />
-              Add Services
+              <Lock className="mr-1.5 h-3.5 w-3.5 text-white/60" />
+              <span className="font-semibold text-white/75">Add Services</span>
             </>
           )}
         </Button>
