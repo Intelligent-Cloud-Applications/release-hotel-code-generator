@@ -96,7 +96,9 @@ const NewBooking = () => {
   };
 
   const [guestData, setGuestData] = useState({
+    name_prefix: "Mr",
     full_name: "",
+    booked_by: "",
     mobile: "",
     email: "",
     // All other guest details will be collected during check-in
@@ -129,6 +131,8 @@ const NewBooking = () => {
     discount: 0,
     booking_source: "Direct",
     remarks: "",
+    pickup_details: "",
+    dropoff_details: "",
     special_requests: "",
     status: "Reserved",
     rate_plan_id: "",
@@ -314,7 +318,9 @@ const NewBooking = () => {
   const handleRefresh = () => {
     // For NewBooking, refresh means resetting the form
     setGuestData({
-      full_name: "",
+      name_prefix: "Mr",
+    full_name: "",
+    booked_by: "",
       mobile: "",
       email: "",
       address: "",
@@ -821,6 +827,10 @@ const NewBooking = () => {
           no_of_adults: finalPersons,
           rooms_config: roomsConfig,
           room_id: assignedRoomIds,
+          name_prefix: guestData.name_prefix || "Mr",
+          booked_by: (guestData.booked_by || "").trim(),
+          pickup_details: (bookingData.pickup_details || "").trim(),
+          dropoff_details: (bookingData.dropoff_details || "").trim(),
           remarks: finalRemarks,
           special_requests: finalSpecialRequests,
           status: "Reserved",
@@ -1160,6 +1170,65 @@ const NewBooking = () => {
                       {validationErrors.no_of_persons}
                     </p>
                   )}
+                </div>
+
+                <div>
+                  <Label
+                    htmlFor="remarks"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Booking Remarks
+                  </Label>
+                  <div className="mt-1">
+                    <Input
+                      id="remarks"
+                      placeholder="Special instructions, dietary, or room preferences"
+                      value={bookingData.remarks || ""}
+                      onChange={(e) =>
+                        handleBookingDataChange("remarks", e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label
+                      htmlFor="pickup_details"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Pick Up Details <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                    </Label>
+                    <div className="mt-1">
+                      <Input
+                        id="pickup_details"
+                        placeholder="Airport/Station, Flight/Train No, Time"
+                        value={bookingData.pickup_details || ""}
+                        onChange={(e) =>
+                          handleBookingDataChange("pickup_details", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label
+                      htmlFor="dropoff_details"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Drop Off Details <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                    </Label>
+                    <div className="mt-1">
+                      <Input
+                        id="dropoff_details"
+                        placeholder="Drop destination, Departure time"
+                        value={bookingData.dropoff_details || ""}
+                        onChange={(e) =>
+                          handleBookingDataChange("dropoff_details", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Per-Room Categories & Room Number Configuration */}

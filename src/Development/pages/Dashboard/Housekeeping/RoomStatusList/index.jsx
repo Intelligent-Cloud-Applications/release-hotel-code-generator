@@ -26,6 +26,8 @@ const roomStatus = [
   "Reserved",
   "Out of Order",
   "Under Maintenance",
+  "Maintenance",
+  "Direct",
 ];
 
 const statusStyles = {
@@ -49,6 +51,13 @@ const statusStyles = {
     bg: "bg-gray-50",
     text: "text-gray-700",
     border: "border-gray-200",
+  },
+  // Support aliases from notes: "Direct" -> "Dirty", "Maintenance" -> "Under Maintenance"
+  "Direct": { bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
+  "Maintenance": {
+    bg: "bg-yellow-50",
+    text: "text-yellow-700",
+    border: "border-yellow-200",
   },
   "Under Maintenance": {
     bg: "bg-yellow-50",
