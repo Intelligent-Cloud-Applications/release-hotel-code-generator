@@ -835,11 +835,18 @@ const formatBookingRoomNumbers = (booking, rooms = []) => {
       originalCheckoutDate.getTime() + gracePeriodMs
     );
 
-    // If current time is within grace period, use original checkout date
-    // If current time is beyond grace period, use current time
+    // If guest is checking out before scheduled checkout date (early checkout),
+    // departure date is right now (current time) so we don't bill for future days!
+    if (now < originalCheckoutDate) {
+      return new Date().toISOString();
+    }
+
+    // If current time is past scheduled checkout but within 2-hour grace period,
+    // use original scheduled checkout date to prevent charging an extra day
     if (now <= gracePeriodEnd) {
       return new Date(booking.checkout_date).toISOString();
     } else {
+      // Overdue beyond grace period, bill up to current time
       return new Date().toISOString();
     }
   };

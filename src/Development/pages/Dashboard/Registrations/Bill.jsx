@@ -1248,7 +1248,10 @@ const Bill = () => {
         parseTimestamp(booking?.breakdown?.stayDetails?.checkout_date);
 
       if (isStillCheckedIn) {
-        effectiveCheckoutTs = Math.max(effectiveCheckoutTs || 0, Date.now());
+        // If guest is still checked in or checking out now, cap at now if checkoutDate in param was future
+        if (!effectiveCheckoutTs || effectiveCheckoutTs > Date.now()) {
+          effectiveCheckoutTs = Date.now();
+        }
       } else if (!effectiveCheckoutTs) {
         effectiveCheckoutTs =
           parseTimestamp(rawBookingData?.checkout_date) || Date.now();
@@ -1330,13 +1333,19 @@ const Bill = () => {
       }
 
       // Ensure all dates present in services are in allStayDates,
-      // ignoring erroneous dates strictly before the check-in date
+      // ignoring dates before checkin AND ignoring future dates when guest is checking in/out today or early
       Object.keys(allServicesObj).forEach((rKey) => {
         if (allServicesObj[rKey] && typeof allServicesObj[rKey] === "object") {
           Object.keys(allServicesObj[rKey]).forEach((d) => {
             if (d && !allStayDates.includes(d)) {
               if (checkinDateStr && d < checkinDateStr) {
                 // Ignore dates before arrival (e.g. UTC shift artifacts like 14/10 when arrived on 15/10)
+                return;
+              }
+              // If booking is still checked in or checking out now, don't pull future empty service dates into stay
+              const dParts = d.split("-").map(Number);
+              const dObj = new Date(dParts[0], dParts[1] - 1, dParts[2]);
+              if (isStillCheckedIn && dObj > effectiveEnd) {
                 return;
               }
               allStayDates.push(d);
