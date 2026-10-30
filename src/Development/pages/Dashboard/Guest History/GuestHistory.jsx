@@ -79,9 +79,21 @@ const GuestHistory = () => {
   };
 
   const guestHistoryData = bills.map((bill) => {
-    const guestDetails = bill?.bill?.guestDetails || {};
-    const bookingDetails = bill?.bill?.bookingDetails || {};
+    const guestDetails = bill?.bill?.guestDetails || bill?.guestDetails || {};
+    const bookingDetails = bill?.bill?.bookingDetails || bill?.bookingDetails || {};
     const billData = bill?.bill || {};
+
+    const matchedBooking = (bookings || []).find(
+      (b) =>
+        (bookingDetails?.bookingId && (b.booking_id === bookingDetails.bookingId || b.id === bookingDetails.bookingId)) ||
+        (bill?.booking_id && b.booking_id === bill.booking_id) ||
+        (bill?.id && b.booking_id === bill.id)
+    );
+    const matchedGuest = (guests || []).find(
+      (g) =>
+        (matchedBooking?.guest_id && (g.guest_id === matchedBooking.guest_id || g.id === matchedBooking.guest_id)) ||
+        (bill?.guest_id && (g.guest_id === bill.guest_id || g.id === bill.guest_id))
+    );
 
     const resolvedRoomNumber = (() => {
       const rn = bookingDetails?.roomNumber || bookingDetails?.room_number;
@@ -113,8 +125,20 @@ const GuestHistory = () => {
       return "N/A";
     })();
 
+    const finalGuestName =
+      guestDetails?.guestName ||
+      guestDetails?.name ||
+      guestDetails?.full_name ||
+      bookingDetails?.guestName ||
+      bookingDetails?.guest_name ||
+      bill?.guest_name ||
+      matchedBooking?.full_name ||
+      matchedGuest?.full_name ||
+      matchedGuest?.name ||
+      "Guest";
+
     return {
-      guestName: guestDetails?.guestName || guestDetails?.name || guestDetails?.full_name || "N/A",
+      guestName: finalGuestName,
       bill_id: bill?.bill_id,
       bookingId: bookingDetails?.bookingId,
       checkinDate: bookingDetails?.checkIn || bookingDetails?.checkinDate || bookingDetails?.checkin_date,

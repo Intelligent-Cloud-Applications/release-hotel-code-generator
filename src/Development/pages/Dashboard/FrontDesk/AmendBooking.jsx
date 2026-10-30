@@ -192,13 +192,17 @@ const AmendBooking = () => {
     }
     setNewGstNo('');
   };
-  // Check if check-in date is more than 24 hours old
+  // Check if check-in is same calendar day (Edits allowed on the same day only)
   const isCheckinOld = (checkinDate) => {
     if (!checkinDate) return false;
-    const checkinTimestamp = typeof checkinDate === 'number' ? checkinDate : new Date(checkinDate).getTime();
-    const now = Date.now();
-    const twentyFourHoursInMs = 24 * 60 * 60 * 1000;
-    return (now - checkinTimestamp) > twentyFourHoursInMs;
+    const cin = new Date(typeof checkinDate === 'number' ? checkinDate : new Date(checkinDate).getTime());
+    const now = new Date();
+    // Compare year, month, date to enforce same-day editing only
+    const isSameDay =
+      cin.getFullYear() === now.getFullYear() &&
+      cin.getMonth() === now.getMonth() &&
+      cin.getDate() === now.getDate();
+    return !isSameDay;
   };
   // Get guest details for a booking
   const getGuestDetails = (booking) => {
@@ -2208,6 +2212,22 @@ const AmendBooking = () => {
                       className="text-xs min-h-[60px]"
                       disabled={isOldCheckin}
                     />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Label className="text-xs font-medium text-gray-700">Discount Amount (₹)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={formData.discount ?? 0}
+                      onChange={(e) => handleInputChange('discount', e.target.value)}
+                      placeholder="Enter discount amount"
+                      className="h-8 text-xs mt-1"
+                      disabled={isOldCheckin}
+                    />
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {isOldCheckin ? "Amendments locked (same day only)" : "Discount applied to check-in (same-day editable)"}
+                    </p>
                   </div>
                 </div>
                 {Array.isArray(formData?.extra_pax) && formData.extra_pax.length > 0 && (

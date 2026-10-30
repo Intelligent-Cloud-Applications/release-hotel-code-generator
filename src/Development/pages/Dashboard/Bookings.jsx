@@ -292,7 +292,7 @@ const Bookings = () => {
                     <>
                       <div>
                         <span className="font-medium text-sm text-gray-600">Name:</span>
-                        <p className="text-sm">{guestDetails.full_name}</p>
+                        <p className="text-sm">{(guestDetails.name_prefix ? guestDetails.name_prefix + " " : "") + guestDetails.full_name}</p>
                       </div>
                       <div>
                         <span className="font-medium text-sm text-gray-600">Mobile:</span>
@@ -358,10 +358,38 @@ const Bookings = () => {
                   <span className="font-medium text-sm text-gray-600">Special Requests:</span>
                   <p className="text-sm mt-1 p-3 bg-gray-50 rounded">{selectedBooking.special_requests || "None"}</p>
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <span className="font-medium text-sm text-gray-600">Booked By:</span>
+                    <p className="text-sm">{selectedBooking.booked_by || "Direct / Self"}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-sm text-gray-600">Pick Up Details:</span>
+                    <p className="text-sm">{selectedBooking.pickup_details || "None"}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-sm text-gray-600">Drop Off Details:</span>
+                    <p className="text-sm">{selectedBooking.dropoff_details || "None"}</p>
+                  </div>
+                </div>
                 <div>
                   <span className="font-medium text-sm text-gray-600">Remarks:</span>
                   <p className="text-sm mt-1 p-3 bg-gray-50 rounded">{selectedBooking.remarks || "None"}</p>
                 </div>
+                {Array.isArray(selectedBooking.id_proofs) && selectedBooking.id_proofs.length > 0 && (
+                  <div>
+                    <span className="font-medium text-sm text-gray-600">Accompanying ID Proofs ({selectedBooking.id_proofs.length}):</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                      {selectedBooking.id_proofs.map((proof, i) => (
+                        <div key={i} className="text-xs bg-gray-50 p-2 rounded border border-gray-200">
+                          <p className="font-semibold text-gray-800">{proof.guest_name || "Guest"}</p>
+                          <p className="text-gray-600">{proof.id_type}: {proof.id_number || "N/A"}</p>
+                          {proof.file_name && <p className="text-[10px] text-blue-600 truncate">{proof.file_name}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <span className="font-medium text-sm text-gray-600">Assigned Staff ID:</span>
                   <p className="text-sm">{selectedBooking.assigned_staff_id || "Not assigned"}</p>

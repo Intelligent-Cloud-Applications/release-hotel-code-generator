@@ -493,7 +493,10 @@ const CancelBooking = () => {
         country: booking.country,
         guest_category: booking.guest_category,
         gst_no: booking.gst_no,
-        company_name: booking.company_name
+        company_name: booking.company_name,
+        booked_by: booking.booked_by,
+        pickup_details: booking.pickup_details,
+        dropoff_details: booking.dropoff_details
       };
     }
     
@@ -1247,7 +1250,7 @@ const CancelBooking = () => {
                     <div className="font-medium text-gray-900 truncate">
                       {guest.full_name || guest.name || guest.guest_name || "Guest Name Not Available"}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 mt-0.5">
                       <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">
                         {booking.booking_id}
                       </span>
@@ -1255,6 +1258,21 @@ const CancelBooking = () => {
                         <Phone className="h-3 w-3" />
                         {guest.mobile || guest.phone || "N/A"}
                       </span>
+                      {(booking.booked_by || guest.booked_by) && (
+                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                          Booked by: {booking.booked_by || guest.booked_by}
+                        </span>
+                      )}
+                      {(booking.pickup_details || guest.pickup_details) && (
+                        <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[10px]">
+                          Pickup: {booking.pickup_details || guest.pickup_details}
+                        </span>
+                      )}
+                      {(booking.dropoff_details || guest.dropoff_details) && (
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded text-[10px]">
+                          Drop: {booking.dropoff_details || guest.dropoff_details}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1385,6 +1403,24 @@ const CancelBooking = () => {
                                 </p>
                               ) : null;
                             })()}
+                            {(booking.booked_by || guest.booked_by) && (
+                              <p>
+                                <span className="font-medium">Booked By:</span>{" "}
+                                {booking.booked_by || guest.booked_by}
+                              </p>
+                            )}
+                            {(booking.pickup_details || guest.pickup_details) && (
+                              <p>
+                                <span className="font-medium">Pickup:</span>{" "}
+                                {booking.pickup_details || guest.pickup_details}
+                              </p>
+                            )}
+                            {(booking.dropoff_details || guest.dropoff_details) && (
+                              <p>
+                                <span className="font-medium">Drop-off:</span>{" "}
+                                {booking.dropoff_details || guest.dropoff_details}
+                              </p>
+                            )}
                           </div>
                         </div>
 
