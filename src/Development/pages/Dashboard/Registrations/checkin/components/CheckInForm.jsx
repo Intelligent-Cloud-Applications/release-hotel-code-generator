@@ -72,6 +72,9 @@ const CheckInForm = ({
   const [isAutoCreatingCompany, setIsAutoCreatingCompany] = useState(false);
 
   // Create Company Dialog state
+  const [isStateDialogOpen, setIsStateDialogOpen] = useState(false);
+  const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false);
+  const [customAddressDraft, setCustomAddressDraft] = useState("");
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [newCompany, setNewCompany] = useState({
     name: "",
@@ -837,7 +840,22 @@ const CheckInForm = ({
                 <User className="h-3 w-3 text-gray-500" />
                 Full Name <span className="text-red-500">*</span>
               </Label>
-              <div className="relative">
+              <div className="flex gap-1.5">
+                <Select
+                  value={checkInData.name_prefix || "Mr"}
+                  onValueChange={(val) => handleInputChange("name_prefix", val)}
+                >
+                  <SelectTrigger className="w-20 h-8 text-xs">
+                    <SelectValue placeholder="Prefix" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Mr">Mr.</SelectItem>
+                    <SelectItem value="Mrs">Mrs.</SelectItem>
+                    <SelectItem value="Ms">Ms.</SelectItem>
+                    <SelectItem value="Dr">Dr.</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="relative flex-1">
                   <Input
                     name="guest_fullname_nop"
                     placeholder="Enter full name"
@@ -855,9 +873,10 @@ const CheckInForm = ({
                     required
                     autoComplete="new-password"
                   />
-                {billGuests.length > 0 && (
-                  <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                )}
+                  {billGuests.length > 0 && (
+                    <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                  )}
+                </div>
               </div>
               {/* Guest Auto-Suggestion Dropdown */}
               {showGuestSuggestions && filteredGuestSuggestions.length > 0 && (
@@ -994,10 +1013,25 @@ const CheckInForm = ({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                <Upload className="h-3 w-3 text-gray-500" />
-                ID Proof Image
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                  <Upload className="h-3 w-3 text-gray-500" />
+                  Primary ID Image
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = Array.isArray(checkInData.id_proof_images) ? checkInData.id_proof_images : [];
+                    handleInputChange("id_proof_images", [
+                      ...current,
+                      { id_type: "Aadhaar Card", id_number: "", guest_name: "", file_name: "", url: "" }
+                    ]);
+                  }}
+                  className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold"
+                >
+                  + Add Accompanying ID
+                </button>
+              </div>
               <Input
                 type="file"
                 accept="image/*"
@@ -1026,12 +1060,36 @@ const CheckInForm = ({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-medium text-gray-700">
-                Address <span className="text-red-500">*</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-gray-700">
+                  Address <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsStateDialogOpen(true)}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline font-medium flex items-center gap-0.5"
+                    title="Select State"
+                  >
+                    Select State
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomAddressDraft(checkInData.address || "");
+                      setIsAddressDialogOpen(true);
+                    }}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline font-medium flex items-center gap-0.5"
+                    title="Custom Address & Copy"
+                  >
+                    Custom / Copy
+                  </button>
+                </div>
+              </div>
               <Input
                 name="guest_address_nop"
-                placeholder="Enter full address"
+                placeholder="Enter full address (e.g. Street, City, PIN)"
                 value={checkInData.address || ""}
                 onChange={(e) => handleInputChange("address", e.target.value)}
                 className={`h-8 text-sm ${
@@ -1046,11 +1104,11 @@ const CheckInForm = ({
 
             <div className="space-y-1">
               <Label className="text-xs font-medium text-gray-700">
-                City <span className="text-red-500">*</span>
+                City <span className="text-xs text-gray-400 font-normal">(Optional)</span>
               </Label>
               <Input
                 name="guest_city_nop"
-                placeholder="Enter city"
+                placeholder="Enter city (optional)"
                 value={checkInData.city || ""}
                 onChange={(e) => handleInputChange("city", e.target.value)}
                 className={`h-8 text-sm ${
@@ -1103,11 +1161,11 @@ const CheckInForm = ({
 
             <div className="space-y-1">
               <Label className="text-xs font-medium text-gray-700">
-                Pincode <span className="text-red-500">*</span>
+                Pincode <span className="text-xs text-gray-400 font-normal">(Optional)</span>
               </Label>
               <Input
                 name="guest_pincode_nop"
-                placeholder="Enter pincode"
+                placeholder="Enter pincode (optional)"
                 value={checkInData.pincode || ""}
                 onChange={(e) => handleInputChange("pincode", e.target.value)}
                 className={`h-8 text-sm ${validationErrors.pincode
@@ -1930,17 +1988,127 @@ const CheckInForm = ({
                 </div>
                 <div className="md:col-span-1">
                   <Label className="text-transparent select-none">.</Label>
-                  <Button
-                    type="button"
-                    onClick={addPax}
-                    className="w-full h-10 md:h-11 bg-gray-900 hover:bg-gray-800 cursor-pointer text-white shadow font-medium"
-                  >
-                    <PlusCircle className="h-5 w-5 mr-2" />
-                    Add Extra PAX
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        const current = Array.isArray(checkInData.id_proof_images) ? checkInData.id_proof_images : [];
+                        handleInputChange("id_proof_images", [
+                          ...current,
+                          { id_type: "Aadhaar Card", id_number: "", guest_name: "", file_name: "", url: "" }
+                        ]);
+                      }}
+                      variant="outline"
+                      className="flex-1 h-10 md:h-11 text-xs text-blue-700 border-blue-300 hover:bg-blue-50 font-medium"
+                    >
+                      + Add Guest ID
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={addPax}
+                      className="flex-1 h-10 md:h-11 bg-gray-900 hover:bg-gray-800 cursor-pointer text-white shadow font-medium text-xs"
+                    >
+                      <PlusCircle className="h-4 w-4 mr-1" />
+                      Add Extra PAX
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Multiple Accompanying ID Proofs */}
+            {Array.isArray(checkInData?.id_proof_images) && checkInData.id_proof_images.length > 0 && (
+              <div className="md:col-span-2 lg:col-span-3 mt-2 space-y-2 bg-blue-50/60 p-3 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-blue-900">
+                    Multiple Guest ID Proofs ({checkInData.id_proof_images.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = Array.isArray(checkInData.id_proof_images) ? checkInData.id_proof_images : [];
+                      handleInputChange("id_proof_images", [
+                        ...current,
+                        { id_type: "Aadhaar Card", id_number: "", guest_name: "", file_name: "", url: "" }
+                      ]);
+                    }}
+                    className="text-xs text-blue-700 hover:underline font-medium"
+                  >
+                    + Add Another ID
+                  </button>
+                </div>
+                {checkInData.id_proof_images.map((proof, idx) => (
+                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center bg-white p-2 rounded border border-blue-100">
+                    <Input
+                      placeholder="Guest Name"
+                      value={proof.guest_name || ""}
+                      onChange={(e) => {
+                        const updated = [...checkInData.id_proof_images];
+                        updated[idx].guest_name = e.target.value;
+                        handleInputChange("id_proof_images", updated);
+                      }}
+                      className="h-8 text-xs"
+                    />
+                    <Select
+                      value={proof.id_type || "Aadhaar Card"}
+                      onValueChange={(val) => {
+                        const updated = [...checkInData.id_proof_images];
+                        updated[idx].id_type = val;
+                        handleInputChange("id_proof_images", updated);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="ID Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Aadhaar Card">Aadhaar Card</SelectItem>
+                        <SelectItem value="Passport">Passport</SelectItem>
+                        <SelectItem value="Driving License">Driving License</SelectItem>
+                        <SelectItem value="Voter ID">Voter ID</SelectItem>
+                        <SelectItem value="PAN Card">PAN Card</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="ID Number"
+                      value={proof.id_number || ""}
+                      onChange={(e) => {
+                        const updated = [...checkInData.id_proof_images];
+                        updated[idx].id_number = e.target.value;
+                        handleInputChange("id_proof_images", updated);
+                      }}
+                      className="h-8 text-xs"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const updated = [...checkInData.id_proof_images];
+                            updated[idx].file_name = file.name;
+                            updated[idx].url = URL.createObjectURL(file);
+                            handleInputChange("id_proof_images", updated);
+                          }
+                        }}
+                        className="h-8 text-[10px] p-0.5 flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = checkInData.id_proof_images.filter((_, i) => i !== idx);
+                          handleInputChange("id_proof_images", updated);
+                        }}
+                        className="text-red-500 hover:text-red-700 text-xs px-1 font-bold"
+                        title="Remove"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* PAX details list */}
             {Array.isArray(checkInData?.extra_pax) && checkInData.extra_pax.length > 0 && (
@@ -2075,7 +2243,114 @@ const CheckInForm = ({
             )}
           </div>
         </div>
-      </div>
+      </div>      {/* ── Modal 1: State Selection Modal ───────────────────────── */}
+      <Dialog open={isStateDialogOpen} onOpenChange={setIsStateDialogOpen}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Select Indian State / Region</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 overflow-y-auto p-2 max-h-96">
+            {[
+              "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+              "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+              "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+              "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+              "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+              "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Jammu and Kashmir"
+            ].map((st) => (
+              <button
+                key={st}
+                type="button"
+                className={`text-left text-xs px-2.5 py-2 rounded border transition-colors ${
+                  checkInData.state === st
+                    ? "bg-blue-600 text-white border-blue-600 font-semibold"
+                    : "bg-gray-50 hover:bg-blue-50 border-gray-200 text-gray-800"
+                }`}
+                onClick={() => {
+                  handleInputChange("state", st);
+                  setIsStateDialogOpen(false);
+                }}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end pt-2 border-t">
+            <Button size="sm" variant="outline" onClick={() => setIsStateDialogOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modal 2: Custom Address & Copy Modal ─────────────────── */}
+      <Dialog open={isAddressDialogOpen} onOpenChange={setIsAddressDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Custom Address & Copy</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-gray-500">
+              Paste or draft full address here. You can copy it to clipboard or apply it directly to the check-in form.
+            </p>
+            <textarea
+              rows={4}
+              value={customAddressDraft}
+              onChange={(e) => setCustomAddressDraft(e.target.value)}
+              placeholder="House/Plot No, Street, Landmark, Area..."
+              className="w-full text-xs p-2.5 border border-gray-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(customAddressDraft);
+                toast.success("Address copied to clipboard!");
+              }}
+            >
+              Copy Address
+            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setIsAddressDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  handleInputChange("address", customAddressDraft);
+                  // Auto-extract city and 6-digit pincode if separated by commas
+                  if (customAddressDraft && customAddressDraft.includes(",")) {
+                    const parts = customAddressDraft.split(",").map((s) => s.trim()).filter(Boolean);
+                    // Check if last part or any part has a 6-digit pin
+                    for (let i = parts.length - 1; i >= 0; i--) {
+                      const matchPin = parts[i].match(/\b(\d{6})\b/);
+                      if (matchPin && !checkInData.pincode) {
+                        handleInputChange("pincode", matchPin[1]);
+                        break;
+                      }
+                    }
+                    // If at least 2 comma parts and city is empty, candidate city is the second to last part
+                    if (parts.length >= 2 && !checkInData.city) {
+                      const candidateCity = parts[parts.length - 1].match(/\d{6}/) ? parts[parts.length - 2] : parts[parts.length - 1];
+                      if (candidateCity && candidateCity.length < 35) {
+                        handleInputChange("city", candidateCity);
+                      }
+                    }
+                  }
+                  setIsAddressDialogOpen(false);
+                  toast.success("Address applied to check-in form");
+                }}
+              >
+                Apply Address
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Create Company Dialog */}
       <Dialog open={isCreateCompanyOpen} onOpenChange={setIsCreateCompanyOpen}>

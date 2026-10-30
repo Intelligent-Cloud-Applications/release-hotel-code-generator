@@ -96,7 +96,9 @@ const NewBooking = () => {
   };
 
   const [guestData, setGuestData] = useState({
+    name_prefix: "Mr",
     full_name: "",
+    booked_by: "",
     mobile: "",
     email: "",
     // All other guest details will be collected during check-in
@@ -108,6 +110,7 @@ const NewBooking = () => {
     id_proof_type: "",
     id_proof_number: "",
     id_proof_image_url: "https://via.placeholder.com/150",
+    id_proofs: [],
     gender: "",
     nationality: "Indian",
     guest_category: "New",
@@ -129,6 +132,8 @@ const NewBooking = () => {
     discount: 0,
     booking_source: "Direct",
     remarks: "",
+    pickup_details: "",
+    dropoff_details: "",
     special_requests: "",
     status: "Reserved",
     rate_plan_id: "",
@@ -314,7 +319,9 @@ const NewBooking = () => {
   const handleRefresh = () => {
     // For NewBooking, refresh means resetting the form
     setGuestData({
-      full_name: "",
+      name_prefix: "Mr",
+    full_name: "",
+    booked_by: "",
       mobile: "",
       email: "",
       address: "",
@@ -325,6 +332,7 @@ const NewBooking = () => {
       id_proof_type: "",
       id_proof_number: "",
       id_proof_image_url: "https://via.placeholder.com/150",
+      id_proofs: [],
       gender: "",
       nationality: "Indian",
       guest_category: "New",
@@ -821,6 +829,11 @@ const NewBooking = () => {
           no_of_adults: finalPersons,
           rooms_config: roomsConfig,
           room_id: assignedRoomIds,
+          name_prefix: guestData.name_prefix || "Mr",
+          booked_by: (guestData.booked_by || "").trim(),
+          id_proofs: guestData.id_proofs || [],
+          pickup_details: (bookingData.pickup_details || "").trim(),
+          dropoff_details: (bookingData.dropoff_details || "").trim(),
           remarks: finalRemarks,
           special_requests: finalSpecialRequests,
           status: "Reserved",
@@ -893,28 +906,65 @@ const NewBooking = () => {
                   >
                     Full Name <span className="text-red-500">*</span>
                   </Label>
-                  <div className="relative mt-1">
-                    <Input
-                      id="full_name"
-                      placeholder="Enter full name"
-                      value={guestData.full_name}
-                      onChange={(e) =>
-                        handleGuestDataChange("full_name", e.target.value)
-                      }
-                      className={`pl-10 ${
-                        validationErrors.full_name
-                          ? "border-red-500 focus:border-red-500"
-                          : ""
-                      }`}
-                      required
-                    />
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <div className="flex gap-2 mt-1">
+                    <Select
+                      value={guestData.name_prefix || "Mr"}
+                      onValueChange={(val) => handleGuestDataChange("name_prefix", val)}
+                    >
+                      <SelectTrigger className="w-24">
+                        <SelectValue placeholder="Prefix" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Mr">Mr.</SelectItem>
+                        <SelectItem value="Mrs">Mrs.</SelectItem>
+                        <SelectItem value="Ms">Ms.</SelectItem>
+                        <SelectItem value="Dr">Dr.</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="relative flex-1">
+                      <Input
+                        id="full_name"
+                        placeholder="Enter full name"
+                        value={guestData.full_name}
+                        onChange={(e) =>
+                          handleGuestDataChange("full_name", e.target.value)
+                        }
+                        className={`pl-10 ${
+                          validationErrors.full_name
+                            ? "border-red-500 focus:border-red-500"
+                            : ""
+                        }`}
+                        required
+                      />
+                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    </div>
                   </div>
                   {validationErrors.full_name && (
                     <p className="mt-1 text-sm text-red-600">
                       {validationErrors.full_name}
                     </p>
                   )}
+                </div>
+
+                <div>
+                  <Label
+                    htmlFor="booked_by"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Booked By / Booker Name <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                  </Label>
+                  <div className="relative mt-1">
+                    <Input
+                      id="booked_by"
+                      placeholder="Who made or booked this reservation"
+                      value={guestData.booked_by || ""}
+                      onChange={(e) =>
+                        handleGuestDataChange("booked_by", e.target.value)
+                      }
+                      className="pl-10"
+                    />
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  </div>
                 </div>
 
                 <div>
@@ -977,6 +1027,111 @@ const NewBooking = () => {
                       {validationErrors.email}
                     </p>
                   )}
+                </div>
+
+                <div className="md:col-span-2 mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-800">
+                        Multiple Guest ID Proofs <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                      </Label>
+                      <p className="text-xs text-gray-500">
+                        Upload ID proofs for primary and accompanying guests in the room(s)
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const current = guestData.id_proofs || [];
+                        handleGuestDataChange("id_proofs", [
+                          ...current,
+                          { id_type: "Aadhaar Card", id_number: "", guest_name: "", file_name: "", url: "" }
+                        ]);
+                      }}
+                      className="text-xs h-7"
+                    >
+                      + Add Guest ID
+                    </Button>
+                  </div>
+
+                  {(guestData.id_proofs || []).map((proof, idx) => (
+                    <div key={idx} className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center bg-white p-2.5 rounded border border-gray-200">
+                      <div>
+                        <Input
+                          placeholder="Guest Name"
+                          value={proof.guest_name || ""}
+                          onChange={(e) => {
+                            const updated = [...(guestData.id_proofs || [])];
+                            updated[idx].guest_name = e.target.value;
+                            handleGuestDataChange("id_proofs", updated);
+                          }}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Select
+                          value={proof.id_type || "Aadhaar Card"}
+                          onValueChange={(val) => {
+                            const updated = [...(guestData.id_proofs || [])];
+                            updated[idx].id_type = val;
+                            handleGuestDataChange("id_proofs", updated);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="ID Type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Aadhaar Card">Aadhaar Card</SelectItem>
+                            <SelectItem value="Passport">Passport</SelectItem>
+                            <SelectItem value="Driving License">Driving License</SelectItem>
+                            <SelectItem value="Voter ID">Voter ID</SelectItem>
+                            <SelectItem value="PAN Card">PAN Card</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Input
+                          placeholder="ID Number"
+                          value={proof.id_number || ""}
+                          onChange={(e) => {
+                            const updated = [...(guestData.id_proofs || [])];
+                            updated[idx].id_number = e.target.value;
+                            handleGuestDataChange("id_proofs", updated);
+                          }}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const updated = [...(guestData.id_proofs || [])];
+                              updated[idx].file_name = file.name;
+                              updated[idx].url = URL.createObjectURL(file);
+                              handleGuestDataChange("id_proofs", updated);
+                            }
+                          }}
+                          className="h-8 text-[11px] p-1 flex-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = (guestData.id_proofs || []).filter((_, i) => i !== idx);
+                            handleGuestDataChange("id_proofs", updated);
+                          }}
+                          className="text-red-500 hover:text-red-700 p-1 text-xs font-bold"
+                          title="Remove ID proof"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 <div>
@@ -1160,6 +1315,65 @@ const NewBooking = () => {
                       {validationErrors.no_of_persons}
                     </p>
                   )}
+                </div>
+
+                <div>
+                  <Label
+                    htmlFor="remarks"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Booking Remarks
+                  </Label>
+                  <div className="mt-1">
+                    <Input
+                      id="remarks"
+                      placeholder="Special instructions, dietary, or room preferences"
+                      value={bookingData.remarks || ""}
+                      onChange={(e) =>
+                        handleBookingDataChange("remarks", e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label
+                      htmlFor="pickup_details"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Pick Up Details <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                    </Label>
+                    <div className="mt-1">
+                      <Input
+                        id="pickup_details"
+                        placeholder="Airport/Station, Flight/Train No, Time"
+                        value={bookingData.pickup_details || ""}
+                        onChange={(e) =>
+                          handleBookingDataChange("pickup_details", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label
+                      htmlFor="dropoff_details"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Drop Off Details <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                    </Label>
+                    <div className="mt-1">
+                      <Input
+                        id="dropoff_details"
+                        placeholder="Drop destination, Departure time"
+                        value={bookingData.dropoff_details || ""}
+                        onChange={(e) =>
+                          handleBookingDataChange("dropoff_details", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Per-Room Categories & Room Number Configuration */}

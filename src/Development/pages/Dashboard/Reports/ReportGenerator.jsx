@@ -41,6 +41,7 @@ import {
   ArrowUpFromLine,
   ShoppingCart,
   Layers,
+  Shield,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -72,10 +73,12 @@ const ReportGenerator = () => {
     fetchStaffs,
     listTotalBill,
     fetchCompanies,
-    fetchReports,
+    fetchAllReports,
+    fetchReports: legacyFetchReports,
     fetchRestaurantOrders,
     loading,
   } = useAppContext();
+  const fetchReports = fetchAllReports || legacyFetchReports;
   const { userData } = useAuthContext();
   const { institutionData } = useInstitutionContext();
   console.log("listExpenses", expenses);
@@ -409,21 +412,28 @@ const ReportGenerator = () => {
       ],
     },
     night: {
-      title: "Night Audit Summary",
+      title: "Night Audit Report",
       icon: Calendar,
       description:
-        "Daily summary: new bookings, check-ins, check-outs, and key financials",
+        "Comprehensive hotel and restaurant night audit summary with ARR, Occupancy %, and channel revenue breakdown",
       dataSource: "reports",
       columns: [
         { key: "date", label: "Date", type: "date" },
-        { key: "new_bookings", label: "Bookings", type: "number" },
-        { key: "check_ins", label: "Check-ins", type: "number" },
-        { key: "check_outs", label: "Check-outs", type: "number" },
-        { key: "occupied_rooms", label: "Occupied Rooms", type: "number" },
-        // { key: 'room_revenue', label: 'Room Revenue', type: 'currency' },
-        { key: "total_revenue", label: "Total Revenue", type: "currency" },
-        { key: "opening_balance", label: "Opening Balance", type: "currency" },
-        { key: "closing_balance", label: "Closing Balance", type: "currency" },
+        { key: "total_rooms_available", label: "Total Rooms Available", type: "number" },
+        { key: "room_nights_sold", label: "Room Nights Sold", type: "number" },
+        { key: "room_revenue", label: "Total Room Revenue", type: "currency" },
+        { key: "arr", label: "ARR (Room Rev / Sold)", type: "currency" },
+        { key: "occupancy_percent", label: "Occupancy %", type: "text" },
+        { key: "rest_revenue", label: "Restaurant Rev", type: "currency" },
+        { key: "room_service_rev", label: "Room Service Rev", type: "currency" },
+        { key: "zomato_revenue", label: "Zomato Rev", type: "currency" },
+        { key: "swiggy_revenue", label: "Swiggy Rev", type: "currency" },
+        { key: "banquet_revenue", label: "Banquet Rev", type: "currency" },
+        { key: "board_room_revenue", label: "Board Room Rev", type: "currency" },
+        { key: "mtd_room_revenue", label: "MTD Room Rev", type: "currency" },
+        { key: "mtd_fb_revenue", label: "MTD F&B Rev", type: "currency" },
+        { key: "mtd_total_revenue", label: "MTD Total Rev", type: "currency" },
+        { key: "total_revenue", label: "Total Day Revenue", type: "currency" },
       ],
     },
     occupancy: {
@@ -481,17 +491,18 @@ const ReportGenerator = () => {
     settlement: {
       title: "Settlement Report",
       icon: Receipt,
-      description: "Guests who checked out today with basic settlement details",
+      description: "Guests who checked out with settlement details, bill number, payment mode & remarks",
       dataSource: "bookings",
       columns: [
-        { key: "bill_no", label: "Bill No", type: "text" },
+        { key: "bill_no", label: "Bill Number", type: "text" },
         { key: "guest_name", label: "Guest Name", type: "text" },
-        { key: "room_number", label: "Room", type: "text" },
-        { key: "checkout_date", label: "Check-out", type: "date" },
+        { key: "room_number", label: "Room No", type: "text" },
+        { key: "checkout_date", label: "Check-out Date", type: "date" },
         { key: "status", label: "Status", type: "text" },
         { key: "advance_payment", label: "Advance Payment", type: "currency" },
-        { key: "discount", label: "Discount", type: "currency" },
         { key: "total_amount", label: "Total Amount", type: "currency" },
+        { key: "payment_mode", label: "Payment Mode", type: "text" },
+        { key: "remarks", label: "Remarks", type: "text" },
       ],
     },
     laundry: {
@@ -563,173 +574,713 @@ const ReportGenerator = () => {
         { key: "total_amount", label: "Total Amount", type: "currency" },
       ],
     },
+    police: {
+      title: "Police Report (C-Form)",
+      icon: Shield,
+      description: "Mandatory guest arrival register for police verification — includes ID proof, nationality & address",
+      dataSource: "bookings",
+      columns: [
+        { key: "sno", label: "S.No.", type: "number" },
+        { key: "arrival_date", label: "Date of Arrival", type: "date" },
+        { key: "guest_name", label: "Guest Name", type: "text" },
+        { key: "mobile", label: "Mobile", type: "text" },
+        { key: "nationality", label: "Nationality", type: "text" },
+        { key: "address", label: "Permanent Address", type: "text" },
+        { key: "room_number", label: "Room No.", type: "text" },
+        { key: "departure_date", label: "Date of Departure", type: "date" },
+        { key: "id_proof_type", label: "ID Type", type: "text" },
+        { key: "id_proof_number", label: "ID Number", type: "text" },
+        { key: "purpose", label: "Purpose of Visit", type: "text" },
+      ],
+    },
   };
 
-  // Helper to extract Complementary items robustly from bills
-  const extractComplementaryRowsFromBills = (billsList) => {
+  // Helper to process Complementary report data from bookings, bills, and restaurant orders
+  const processComplementaryData = () => {
     const rows = [];
-    (billsList || []).forEach((bill) => {
-      const roomNumberFallback =
-        bill?.bill?.bookingDetails?.roomNumber ??
-        bill?.bill?.bookingDetails?.room_no ??
-        bill?.room_number ??
-        "N/A";
+    const seen = new Set();
 
-      const billLevelDate =
-        bill?.bill?.billHeader?.billDate ??
-        bill?.bill?.bookingDetails?.checkOut ??
-        bill?.created_at ??
-        bill?.updated_at ??
-        null;
+    const addRow = ({ date, room_number, complementary_name, amount }) => {
+      const dStr = toYMD(date);
+      if (!dStr) return;
+      const cleanName = String(complementary_name || "Complementary").trim();
+      const cleanRoom = String(room_number || "N/A").trim();
+      const numAmount = Number(amount) || 0;
 
-      // 0) bookingDetails.complementary structure: { [roomNumber]: { [date]: [ {name, amount}, ... ] } }
-      const complementaryObj = bill?.bill?.bookingDetails?.complementary;
-      if (complementaryObj && typeof complementaryObj === "object") {
-        Object.entries(complementaryObj).forEach(([roomKey, byDate]) => {
-          if (!byDate || typeof byDate !== "object") return;
-          Object.entries(byDate).forEach(([dateKey, items]) => {
-            if (Array.isArray(items)) {
-              items.forEach((item) => {
+      const dedupeKey = `${dStr}_${cleanRoom}_${cleanName.toLowerCase()}_${numAmount}`;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      rows.push({
+        date: dStr,
+        room_number: cleanRoom,
+        complementary_name: cleanName,
+        amount: numAmount,
+      });
+    };
+
+    // Helper to traverse any nested complementary object structure
+    const parseComplementaryStructure = (compObj, fallbackRoom, fallbackDate) => {
+      if (!compObj || typeof compObj !== "object") return;
+
+      if (Array.isArray(compObj)) {
+        compObj.forEach((item) => {
+          if (!item) return;
+          if (typeof item === "string") {
+            addRow({
+              date: fallbackDate,
+              room_number: fallbackRoom,
+              complementary_name: item,
+              amount: 0,
+            });
+          } else {
+            addRow({
+              date: item.date || item.dateKey || fallbackDate,
+              room_number: item.room_number || item.roomNumber || fallbackRoom,
+              complementary_name:
+                item.name ||
+                item.title ||
+                item.description ||
+                item.complementary_name ||
+                "Complementary",
+              amount: item.amount ?? item.price ?? 0,
+            });
+          }
+        });
+        return;
+      }
+
+      Object.entries(compObj).forEach(([k1, val1]) => {
+        if (!val1) return;
+        if (Array.isArray(val1)) {
+          const isDateKey = Boolean(toDateObj(k1));
+          val1.forEach((item) => {
+            if (!item) return;
+            const itemDate = isDateKey ? k1 : item.date || fallbackDate;
+            const itemRoom = isDateKey
+              ? item.room_number || fallbackRoom
+              : k1 || fallbackRoom;
+            addRow({
+              date: itemDate,
+              room_number: itemRoom,
+              complementary_name:
+                item.name ||
+                item.title ||
+                item.description ||
+                item.complementary_name ||
+                "Complementary",
+              amount: item.amount ?? item.price ?? 0,
+            });
+          });
+        } else if (typeof val1 === "object") {
+          Object.entries(val1).forEach(([k2, val2]) => {
+            if (!val2) return;
+            if (Array.isArray(val2)) {
+              val2.forEach((item) => {
                 if (!item) return;
-                rows.push({
-                  date: dateKey || billLevelDate,
-                  room_number: roomKey || roomNumberFallback,
+                const isK2Date = Boolean(toDateObj(k2));
+                const itemDate = isK2Date
+                  ? k2
+                  : toDateObj(k1)
+                  ? k1
+                  : item.date || fallbackDate;
+                const itemRoom = isK2Date ? k1 : k2;
+                addRow({
+                  date: itemDate,
+                  room_number: itemRoom || fallbackRoom,
                   complementary_name:
-                    item?.name ??
-                    item?.title ??
-                    item?.description ??
+                    item.name ||
+                    item.title ||
+                    item.description ||
+                    item.complementary_name ||
                     "Complementary",
-                  amount: Number(item?.amount ?? item?.price ?? 0),
+                  amount: item.amount ?? item.price ?? 0,
                 });
+              });
+            } else if (typeof val2 === "object") {
+              addRow({
+                date: val2.date || k2 || fallbackDate,
+                room_number: val2.room_number || k1 || fallbackRoom,
+                complementary_name:
+                  val2.name ||
+                  val2.title ||
+                  val2.description ||
+                  "Complementary",
+                amount: val2.amount ?? val2.price ?? 0,
               });
             }
           });
-        });
+        }
+      });
+    };
+
+    // 1. Extract from bookings
+    (bookings || []).forEach((b) => {
+      const roomFallback =
+        b.room_number ||
+        (Array.isArray(b.room_id) ? b.room_id.join(", ") : b.room_id) ||
+        Object.keys(b.room_charges || {})[0] ||
+        "N/A";
+      const dateFallback =
+        b.checkin_date || b.created_at || b.booking_date || Date.now();
+
+      if (b.complementary) {
+        parseComplementaryStructure(b.complementary, roomFallback, dateFallback);
       }
+      if (b.services?.complementary) {
+        parseComplementaryStructure(
+          b.services.complementary,
+          roomFallback,
+          dateFallback
+        );
+      }
+      if (b.breakdown?.booking?.complementary) {
+        parseComplementaryStructure(
+          b.breakdown.booking.complementary,
+          roomFallback,
+          dateFallback
+        );
+      }
+      if (b.breakdown?.bookingDetails?.services?.complementary) {
+        parseComplementaryStructure(
+          b.breakdown.bookingDetails.services.complementary,
+          roomFallback,
+          dateFallback
+        );
+      }
+    });
 
-      // 1) Known arrays with complementary/complimentary items in other possible locations
-      const explicitLists = [
-        bill?.bill?.serviceDetails?.complimentaryItems,
-        bill?.bill?.serviceDetails?.complementaryItems,
-        bill?.bill?.complimentaryItems,
-        bill?.bill?.complementaryItems,
-        bill?.complimentaryItems,
-        bill?.complementaryItems,
-      ].filter(Array.isArray);
+    // 2. Extract from bills
+    (bills || []).forEach((bill) => {
+      const roomFallback =
+        bill?.bill?.bookingDetails?.roomNumber ??
+        bill?.bill?.bookingDetails?.room_no ??
+        bill?.room_number ??
+        bill?.original_bill_data?.room_number ??
+        "N/A";
+      const dateFallback =
+        bill?.bill?.billHeader?.billDate ??
+        bill?.bill?.bookingDetails?.checkOut ??
+        bill?.created_at ??
+        Date.now();
 
-      explicitLists.forEach((list) => {
-        list.forEach((item) => {
-          if (!item) return;
-          rows.push({
-            date: item?.date ?? billLevelDate,
-            room_number: roomNumberFallback,
-            complementary_name:
-              item?.name ?? item?.title ?? item?.description ?? "Complementary",
-            amount: Number(item?.amount ?? item?.price ?? 0),
-          });
-        });
+      const compCandidates = [
+        bill?.original_bill_data?.complementary,
+        bill?.original_bill_data?.services?.complementary,
+        bill?.bill?.original_bill_data?.complementary,
+        bill?.bill?.original_bill_data?.services?.complementary,
+        bill?.bill?.bookingDetails?.complementary,
+        bill?.bookingDetails?.complementary,
+        bill?.complementary,
+        bill?.bill?.complementary,
+      ];
+      compCandidates.forEach((cand) => {
+        if (cand) parseComplementaryStructure(cand, roomFallback, dateFallback);
       });
 
-      // 2) Line items collections with flags/category names indicating complementary/complimentary
-      const lineItemCollections = [
+      const lineItems = [
         bill?.bill?.items,
         bill?.bill?.lineItems,
         bill?.items,
         bill?.lineItems,
+        bill?.bill?.serviceDetails?.complimentaryItems,
+        bill?.bill?.complimentaryItems,
       ].filter(Array.isArray);
 
-      lineItemCollections.forEach((items) => {
+      lineItems.forEach((items) => {
         items.forEach((li) => {
+          if (!li) return;
           const isCompl =
-            li?.isComplimentary === true ||
-            li?.is_complimentary === true ||
-            String(li?.category || "")
+            li.isComplimentary === true ||
+            li.is_complimentary === true ||
+            String(li.category || "")
               .toLowerCase()
               .includes("compliment") ||
-            String(li?.name || "")
+            String(li.name || "")
               .toLowerCase()
               .includes("compliment") ||
-            String(li?.title || "")
+            String(li.title || "")
               .toLowerCase()
               .includes("compliment") ||
-            String(li?.description || "")
+            String(li.description || "")
               .toLowerCase()
               .includes("compliment");
-          if (!isCompl) return;
-          rows.push({
-            date: li?.date ?? billLevelDate,
-            room_number: roomNumberFallback,
-            complementary_name:
-              li?.name ?? li?.title ?? li?.description ?? "Complementary",
-            amount: Number(li?.amount ?? li?.price ?? 0),
-          });
+          if (isCompl) {
+            addRow({
+              date: li.date || dateFallback,
+              room_number: li.room_number || roomFallback,
+              complementary_name:
+                li.name ||
+                li.title ||
+                li.description ||
+                "Complementary",
+              amount: li.amount ?? li.price ?? 0,
+            });
+          }
         });
       });
+    });
 
-      // 3) Per-day services under bill.bill.services
-      const servicesByDate = bill?.bill?.services;
-      if (servicesByDate && typeof servicesByDate === "object") {
-        Object.entries(servicesByDate).forEach(([dKey, dayServices]) => {
-          if (!dayServices) return;
+    // 3. Extract from restaurantOrders
+    (restaurantOrders || []).forEach((order) => {
+      const payMethod = String(
+        order.paymentMethod || order.payment_mode || ""
+      ).toLowerCase();
+      const ordType = String(order.orderType || order.type || "").toLowerCase();
+      const isOrderCompl =
+        payMethod === "complementary" ||
+        ordType === "complementary" ||
+        order.isComplimentary;
+      const orderDate =
+        order.orderDate || order.created_at || order.createdAt || Date.now();
+      const orderRoom = order.roomNumber || order.tableNumber || "Restaurant";
 
-          // Arrays specifically named complimentary/complementary
-          const arrays = [
-            dayServices?.complimentary,
-            dayServices?.complementary,
-          ].filter(Array.isArray);
-
-          arrays.forEach((arr) => {
-            arr.forEach((svc) => {
-              rows.push({
-                date: svc?.date ?? dKey ?? billLevelDate,
-                room_number: roomNumberFallback,
-                complementary_name:
-                  svc?.name ??
-                  svc?.title ??
-                  svc?.description ??
-                  "Complementary",
-                amount: Number(svc?.amount ?? svc?.price ?? 0),
-              });
+      if (isOrderCompl) {
+        if (Array.isArray(order.items) && order.items.length > 0) {
+          order.items.forEach((item) => {
+            addRow({
+              date: orderDate,
+              room_number: orderRoom,
+              complementary_name:
+                item.itemName || item.name || "Restaurant Order",
+              amount: item.price || item.total || 0,
             });
           });
+        } else {
+          addRow({
+            date: orderDate,
+            room_number: orderRoom,
+            complementary_name:
+              `Restaurant Order #${order.bill_no || order.orderId || ""}`.trim(),
+            amount: order.totalAmount || order.grandTotal || order.amount || 0,
+          });
+        }
+      } else if (Array.isArray(order.items)) {
+        order.items.forEach((item) => {
+          if (item?.isComplimentary || item?.is_complimentary) {
+            addRow({
+              date: orderDate,
+              room_number: orderRoom,
+              complementary_name:
+                item.itemName || item.name || "Complementary Food",
+              amount: item.price || 0,
+            });
+          }
+        });
+      }
+    });
 
-          // Any object entries with complimentary flags or names
-          Object.values(dayServices).forEach((svc) => {
-            if (!svc || typeof svc !== "object") return;
-            const nameLike = `${svc?.name ?? ""} ${svc?.title ?? ""} ${
-              svc?.description ?? ""
-            }`.toLowerCase();
-            const isCompl =
-              svc?.isComplimentary === true ||
-              svc?.is_complimentary === true ||
-              String(svc?.category || "")
-                .toLowerCase()
-                .includes("compliment") ||
-              nameLike.includes("compliment");
-            if (isCompl) {
-              rows.push({
-                date: svc?.date ?? dKey ?? billLevelDate,
-                room_number: roomNumberFallback,
-                complementary_name:
-                  svc?.name ??
-                  svc?.title ??
-                  svc?.description ??
-                  "Complementary",
-                amount: Number(svc?.amount ?? svc?.price ?? 0),
-              });
-            }
+    return rows.sort(
+      (a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0)
+    );
+  };
+
+  const extractComplementaryRowsFromBills = (billsList) => {
+    return processComplementaryData();
+  };
+
+  // ─── Police Report (C-Form) processor ────────────────────────────────────────
+  // Robust data extraction: searches directly on booking, checks nested guest details,
+  // matches guest_id across guests, and checks total bills to resolve guest names,
+  // phone numbers, permanent addresses, ID proofs, and room numbers.
+  const processPoliceReportData = () => {
+    const rows = [];
+    let sno = 1;
+
+    // Helper map of room ID -> Room Number
+    const roomNumberMap = new Map();
+    (rooms || []).forEach((r) => {
+      const num = r.room_number || r.roomNumber;
+      if (r.id) roomNumberMap.set(String(r.id), String(num));
+      if (r.room_id) roomNumberMap.set(String(r.room_id), String(num));
+      if (r._id) roomNumberMap.set(String(r._id), String(num));
+    });
+
+    const resolveRoomNumber = (bk) => {
+      if (bk.room_number && bk.room_number !== "N/A" && !/^[0-9a-f-]{20,}$/i.test(String(bk.room_number))) {
+        return String(bk.room_number);
+      }
+      if (bk.roomNumber && !/^[0-9a-f-]{20,}$/i.test(String(bk.roomNumber))) {
+        return String(bk.roomNumber);
+      }
+      const chargesKeys = Object.keys(bk.room_charges || {});
+      for (const k of chargesKeys) {
+        if (roomNumberMap.has(k)) return roomNumberMap.get(k);
+        if (!/^[0-9a-f-]{20,}$/i.test(k)) return k;
+      }
+      const rawRoomIds = bk.room_id || bk.room_ids || bk.roomIds;
+      if (Array.isArray(rawRoomIds)) {
+        const resolved = rawRoomIds.map((id) => roomNumberMap.get(String(id)) || String(id));
+        return resolved.join(", ");
+      } else if (rawRoomIds) {
+        return roomNumberMap.get(String(rawRoomIds)) || String(rawRoomIds);
+      }
+      return bk.room_number || "N/A";
+    };
+
+    (bookings || []).forEach((bk) => {
+      const st = String(bk.status || "").toLowerCase();
+      if (st === "cancelled" || st === "rejected") return;
+
+      // Match guest entity from guests array by guest_id or id
+      const matchedGuest = (guests || []).find(
+        (g) =>
+          (g.guest_id && (g.guest_id === bk.guest_id || g.guest_id === bk.id)) ||
+          (g.id && (g.id === bk.guest_id || g.id === bk.id)) ||
+          (g._id && (g._id === bk.guest_id || g._id === bk.id)) ||
+          (g.mobile && bk.mobile && String(g.mobile).replace(/\D/g, "") === String(bk.mobile).replace(/\D/g, ""))
+      );
+
+      // Match from bills collection if available
+      const matchedBill = (bills || []).find(
+        (b) =>
+          (b.booking_id && b.booking_id === bk.booking_id) ||
+          (b.id && b.id === bk.booking_id) ||
+          (b.guest_id && b.guest_id === bk.guest_id)
+      );
+      const billGuestDetails = matchedBill?.guestDetails || matchedBill?.guest_details || {};
+
+      // ── Guest name ──────────────────────────────────────────────────────────
+      const guestName =
+        bk.full_name ||
+        bk.guest_name ||
+        bk.guestName ||
+        bk.name ||
+        bk.customer_name ||
+        bk.primaryGuestName ||
+        bk.guestDetails?.guestName ||
+        bk.guestDetails?.full_name ||
+        bk.guest?.name ||
+        matchedGuest?.full_name ||
+        matchedGuest?.name ||
+        matchedGuest?.guest_name ||
+        billGuestDetails?.guestName ||
+        billGuestDetails?.full_name ||
+        (Array.isArray(bk.guests) ? bk.guests[0]?.name : null) ||
+        "Guest";
+
+      // ── Mobile ──────────────────────────────────────────────────────────────
+      const rawMobile =
+        bk.mobile ||
+        bk.phone ||
+        bk.contact ||
+        bk.guest_mobile ||
+        bk.guestMobile ||
+        bk.guestDetails?.mobile ||
+        bk.guestDetails?.phone ||
+        matchedGuest?.mobile ||
+        matchedGuest?.phone ||
+        billGuestDetails?.mobile ||
+        billGuestDetails?.phone ||
+        "";
+      const cleanMobile = String(rawMobile || "").replace(/\D/g, "").slice(-10) || "—";
+
+      // ── Nationality ─────────────────────────────────────────────────────────
+      const nationality =
+        bk.nationality ||
+        bk.country ||
+        matchedGuest?.nationality ||
+        matchedGuest?.country ||
+        billGuestDetails?.nationality ||
+        "Indian";
+
+      // ── Address ─────────────────────────────────────────────────────────────
+      const fullAddr =
+        bk.address ||
+        bk.permanent_address ||
+        bk.guest_address ||
+        bk.home_address ||
+        matchedGuest?.address ||
+        matchedGuest?.permanent_address ||
+        billGuestDetails?.address ||
+        billGuestDetails?.full_address ||
+        "";
+
+      const city = bk.city || matchedGuest?.city || billGuestDetails?.city || "";
+      const state = bk.state || matchedGuest?.state || billGuestDetails?.state || "";
+      const pin = bk.pincode || bk.pinCode || matchedGuest?.pincode || billGuestDetails?.pinCode || "";
+
+      const addressParts = [fullAddr, city, state, pin].filter(Boolean);
+      const displayAddress = addressParts.length > 0 ? addressParts.join(", ") : "—";
+
+      // ── Room number ─────────────────────────────────────────────────────────
+      const roomNum = resolveRoomNumber(bk);
+
+      // ── ID proof ────────────────────────────────────────────────────────────
+      const idType =
+        bk.id_proof_type ||
+        bk.idProofType ||
+        bk.id_type ||
+        matchedGuest?.id_proof_type ||
+        matchedGuest?.idProofType ||
+        billGuestDetails?.idProofType ||
+        billGuestDetails?.id_proof_type ||
+        "";
+
+      const idNumber =
+        bk.id_proof_number ||
+        bk.idProofNumber ||
+        bk.id_number ||
+        matchedGuest?.id_proof_number ||
+        matchedGuest?.idProofNumber ||
+        billGuestDetails?.idProofNumber ||
+        billGuestDetails?.id_proof_number ||
+        "";
+
+      // ── Purpose ─────────────────────────────────────────────────────────────
+      const purpose =
+        bk.purpose ||
+        bk.purpose_of_visit ||
+        bk.purposeOfVisit ||
+        bk.remarks ||
+        "Tourism";
+
+      // ── Dates ───────────────────────────────────────────────────────────────
+      const arrivalDate =
+        bk.checkin_date || bk.checkIn || bk.arrival_date || bk.created_at || null;
+      const departureDate =
+        bk.checkout_date || bk.checkOut || bk.departure_date || null;
+
+      rows.push({
+        sno: sno++,
+        arrival_date: arrivalDate,
+        guest_name: guestName,
+        mobile: cleanMobile,
+        nationality,
+        address: displayAddress,
+        room_number: roomNum,
+        departure_date: departureDate,
+        id_proof_type: idType || "—",
+        id_proof_number: idNumber || "—",
+        purpose,
+        date: arrivalDate,
+      });
+
+      // ── Extra pax (additional guests on same booking) ───────────────────────
+      const extraPax = bk.extra_pax || bk.extraPax || bk.additional_guests || [];
+      if (Array.isArray(extraPax)) {
+        extraPax.forEach((pax) => {
+          if (!pax) return;
+          const paxName = pax.name || pax.guest_name || pax.full_name || pax.guestName;
+          if (!paxName) return;
+          const paxAddr = pax.address ? [pax.address, pax.city, pax.state].filter(Boolean).join(", ") : displayAddress;
+          rows.push({
+            sno: sno++,
+            arrival_date: arrivalDate,
+            guest_name: paxName,
+            mobile: (pax.mobile || pax.phone || cleanMobile).replace(/\D/g, "").slice(-10) || "—",
+            nationality: pax.nationality || nationality,
+            address: paxAddr,
+            room_number: roomNum,
+            departure_date: departureDate,
+            id_proof_type: pax.id_proof_type || pax.idProofType || idType || "—",
+            id_proof_number: pax.id_proof_number || pax.idProofNumber || idNumber || "—",
+            purpose,
+            date: arrivalDate,
           });
         });
       }
     });
 
-    // Normalize date to YMD string to help sorting/filters later and keep only rows with a valid date
-    return rows
-      .map((r) => ({ ...r, date: toYMD(r.date) || "" }))
-      .filter((r) => !!r.date);
+    return rows.sort(
+      (a, b) => (new Date(b.arrival_date || 0) || 0) - (new Date(a.arrival_date || 0) || 0)
+    );
   };
 
-  // Helper to process restaurant order data
+  const processOccupancyData = () => {
+    const totalRooms =
+      Array.isArray(rooms) && rooms.length > 0 ? rooms.length : 18;
+    const occupancyByDate = new Map();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
+    const todayKey = toYMD(today);
+
+    // 1. Process from saved Day End reports ONLY for past days (strictly before today)
+    (reports || []).forEach((r) => {
+      if (!r || !r.date) return;
+      const dObj = toDateObj(r.date);
+      if (!dObj) return;
+      dObj.setHours(0, 0, 0, 0);
+      // Skip if report date is today or in the future
+      if (dObj.getTime() >= todayMs) return;
+
+      const dKey = toYMD(dObj);
+      const roomStatusCounts =
+        r.summary?.roomStatusCounts || r.roomStatusCounts || {};
+      const occupied = Number(
+        roomStatusCounts["occupied"] ?? r.roomData?.occupied?.length ?? 0
+      );
+      const dirty = Number(
+        roomStatusCounts["dirty"] ?? r.roomData?.dirty?.length ?? 0
+      );
+      const underMaintenance = Number(
+        roomStatusCounts["undermaintenance"] ??
+        roomStatusCounts["maintenance"] ??
+        r.roomData?.under_maintenance?.length ??
+        0
+      );
+      const vacant = Number(
+        roomStatusCounts["vacant"] ?? r.roomData?.vacant?.length ?? 0
+      );
+      const calcTotal = occupied + dirty + underMaintenance + vacant;
+      const effectiveTotal = calcTotal > 0 ? calcTotal : totalRooms;
+      const rate =
+        effectiveTotal > 0 ? (occupied / effectiveTotal) * 100 : 0;
+
+      occupancyByDate.set(dKey, {
+        date: dKey,
+        total_rooms: effectiveTotal,
+        occupied,
+        vacant:
+          vacant > 0
+            ? vacant
+            : Math.max(0, effectiveTotal - occupied - dirty - underMaintenance),
+        dirty,
+        under_maintenance: underMaintenance,
+        occupancy_rate: rate.toFixed(2) + "%",
+      });
+    });
+
+    // 2. Compute dynamic occupancy for candidate dates (including today, past 30 days, future booking dates)
+    const candidateDates = new Set();
+    candidateDates.add(todayKey);
+
+    if (dateRange?.from) {
+      const from = new Date(dateRange.from);
+      from.setHours(0, 0, 0, 0);
+      const to = dateRange.to ? new Date(dateRange.to) : new Date(from);
+      to.setHours(0, 0, 0, 0);
+      const curr = new Date(from);
+      while (curr <= to) {
+        candidateDates.add(toYMD(curr));
+        curr.setDate(curr.getDate() + 1);
+      }
+    } else {
+      // Default: past 14 days and next 7 days for visibility into tomorrow/upcoming
+      for (let i = -7; i <= 14; i++) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        candidateDates.add(toYMD(d));
+      }
+    }
+
+    // Also collect dates from any bookings (check-in to check-out)
+    (bookings || []).forEach((b) => {
+      const cin = toDateObj(b.checkin_date || b.checkIn);
+      const cout = toDateObj(b.checkout_date || b.checkOut);
+      if (cin) candidateDates.add(toYMD(cin));
+      if (cout) candidateDates.add(toYMD(cout));
+    });
+
+    candidateDates.forEach((dateStr) => {
+      // Only skip if already calculated from verified past Day End report
+      if (occupancyByDate.has(dateStr)) return;
+
+      const targetDate = toDateObj(dateStr);
+      if (!targetDate) return;
+      targetDate.setHours(0, 0, 0, 0);
+      const targetTime = targetDate.getTime();
+      const isToday = dateStr === todayKey;
+
+      if (isToday) {
+        // TODAY: Calculate real-time occupancy from active rooms and checked-in/in-house bookings
+        const occupiedRoomsCount = (rooms || []).filter((rm) => {
+          const st = String(rm.status || "").toLowerCase();
+          return st === "occupied";
+        }).length;
+
+        const dirtyCount = (rooms || []).filter((rm) => {
+          const st = String(rm.status || "").toLowerCase();
+          return st.includes("dirty");
+        }).length;
+
+        const underMaintCount = (rooms || []).filter((rm) => {
+          const st = String(rm.status || "").toLowerCase();
+          return st.includes("maintenance");
+        }).length;
+
+        // Count active checked-in bookings that have not yet checked out
+        const activeBookingsCount = (bookings || []).filter((b) => {
+          const st = String(b.status || "").toLowerCase();
+          if (st === "cancelled" || st === "rejected" || st === "checked-out" || st === "checkedout") {
+            return false;
+          }
+          const cin = toDateObj(b.checkin_date || b.checkIn);
+          const cout = toDateObj(b.checkout_date || b.checkOut);
+          const cinMs = cin ? new Date(cin).setHours(0,0,0,0) : null;
+          const coutMs = cout ? new Date(cout).setHours(23,59,59,999) : null;
+
+          // If checked in or in-house, consider occupied
+          if (st === "checked-in" || st === "checkedin" || st === "in-house" || st === "inhouse" || st === "occupied") {
+            return true;
+          }
+          // Reserved/confirmed booking covering today
+          if (cinMs && coutMs && targetTime >= cinMs && targetTime <= coutMs) {
+            return true;
+          }
+          return false;
+        }).length;
+
+        const finalOccupied = Math.max(occupiedRoomsCount, activeBookingsCount);
+        const effectiveTotal = Math.max(totalRooms, finalOccupied);
+        const vacantCount = Math.max(0, effectiveTotal - finalOccupied - dirtyCount - underMaintCount);
+        const rate = effectiveTotal > 0 ? (finalOccupied / effectiveTotal) * 100 : 0;
+
+        occupancyByDate.set(dateStr, {
+          date: dateStr,
+          total_rooms: effectiveTotal,
+          occupied: finalOccupied,
+          vacant: vacantCount,
+          dirty: dirtyCount,
+          under_maintenance: underMaintCount,
+          occupancy_rate: rate.toFixed(2) + "%",
+        });
+      } else {
+        // Any other date (historical or future): count bookings active on targetDate
+        let occupiedCount = 0;
+        (bookings || []).forEach((b) => {
+          const st = String(b.status || "").toLowerCase();
+          if (st === "cancelled" || st === "rejected" || st === "no-show" || st === "noshow") return;
+
+          const cin = toDateObj(b.checkin_date || b.checkIn);
+          const cout = toDateObj(b.checkout_date || b.checkOut);
+          if (!cin) return;
+          const cinD = new Date(cin);
+          cinD.setHours(0, 0, 0, 0);
+          const coutD = cout ? new Date(cout) : new Date(cinD);
+          coutD.setHours(23, 59, 59, 999);
+
+          if (targetTime >= cinD.getTime() && targetTime <= coutD.getTime()) {
+            const numRooms = Number(b.no_of_rooms || b.number_of_rooms || (Array.isArray(b.room_id) ? b.room_id.length : 1)) || 1;
+            occupiedCount += numRooms;
+          }
+        });
+
+        const effectiveTotal = totalRooms > 0 ? totalRooms : Math.max(occupiedCount, 1);
+        const finalOccupied = Math.min(occupiedCount, effectiveTotal);
+        const vacantCount = Math.max(0, effectiveTotal - finalOccupied);
+        const rate = effectiveTotal > 0 ? (finalOccupied / effectiveTotal) * 100 : 0;
+
+        occupancyByDate.set(dateStr, {
+          date: dateStr,
+          total_rooms: effectiveTotal,
+          occupied: finalOccupied,
+          vacant: vacantCount,
+          dirty: 0,
+          under_maintenance: 0,
+          occupancy_rate: rate.toFixed(2) + "%",
+        });
+      }
+    });
+
+    return Array.from(occupancyByDate.values()).sort(
+      (a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0)
+    );
+  };
+
+    // Helper to process restaurant order data
   const processRestaurantData = (ordersList) => {
     const rows = [];
 
@@ -1212,9 +1763,29 @@ const ReportGenerator = () => {
             if (typeof fetchReports === "function") {
               await fetchReports();
             }
+            if (typeof fetchRooms === "function") {
+              await fetchRooms();
+            }
+            if (typeof fetchBookings === "function") {
+              await fetchBookings();
+            }
+            if (typeof fetchRestaurantOrders === "function") {
+              await fetchRestaurantOrders();
+            }
             break;
           case "complementary":
-            await listTotalBill();
+            if (typeof listTotalBill === "function") {
+              await listTotalBill();
+            }
+            if (typeof fetchBookings === "function") {
+              await fetchBookings();
+            }
+            if (typeof fetchRooms === "function") {
+              await fetchRooms();
+            }
+            if (typeof fetchRestaurantOrders === "function") {
+              await fetchRestaurantOrders();
+            }
             break;
           case "expenses":
             // Expenses data is already available in context
@@ -1225,6 +1796,14 @@ const ReportGenerator = () => {
           case "settlement":
             await fetchBookings();
             await fetchGuests();
+            break;
+          case "police":
+            if (typeof fetchBookings === "function") {
+              await fetchBookings();
+            }
+            if (typeof fetchGuests === "function") {
+              await fetchGuests();
+            }
             break;
           default:
             break;
@@ -1268,11 +1847,205 @@ const ReportGenerator = () => {
           data = rooms || [];
           break;
         case "bookings":
-          data = bookings || [];
+          data = (bookings || []).map((bk) => {
+            // Resolve room number from multiple possible locations
+            const roomNum =
+              bk.room_number ||
+              (Array.isArray(bk.room_id) ? bk.room_id.join(", ") : null) ||
+              Object.keys(bk.room_charges || {})[0] ||
+              bk.roomNumber ||
+              "N/A";
+
+            // Resolve room type
+            const roomType =
+              bk.room_type ||
+              bk.roomType ||
+              bk.category ||
+              (rooms || []).find(
+                (r) =>
+                  String(r.room_number) === String(roomNum) ||
+                  String(r.id) === String(bk.room_id)
+              )?.room_type ||
+              "N/A";
+
+            // Resolve guest name
+            const guestName =
+              bk.guest_name ||
+              bk.full_name ||
+              bk.guestName ||
+              bk.name ||
+              bk.customer_name ||
+              bk.primaryGuestName ||
+              "N/A";
+
+            // Calculate total amount
+            const roomCharges = Object.values(
+              bk.room_charges || {}
+            ).reduce((s, v) => s + Number(v || 0), 0);
+            const serviceCharges = Object.values(
+              bk.services || {}
+            ).reduce((daySum, dayServices) => {
+              return (
+                daySum +
+                Object.values(dayServices || {}).reduce((s, svc) => {
+                  return (
+                    s +
+                    Number(svc?.manual_charges || 0) +
+                    Number(svc?.minibar_charges || 0) +
+                    Number(svc?.laundry_charges || 0) +
+                    Number(svc?.extra_bed_charges || 0) +
+                    Number(svc?.food_charges || 0)
+                  );
+                }, 0)
+              );
+            }, 0);
+            const totalAmount =
+              roomCharges + serviceCharges - Number(bk.discount || 0);
+
+            return {
+              grc_id: bk.booking_id || bk.grc_id || bk.id || "N/A",
+              guest_name: guestName,
+              room_number: roomNum,
+              room_type: roomType,
+              checkin_date: bk.checkin_date || bk.checkIn || null,
+              checkout_date: bk.checkout_date || bk.checkOut || null,
+              status: bk.status || "N/A",
+              advance_payment:
+                Number(bk.advance_payment || bk.partial_payment_amount || 0),
+              discount: Number(bk.discount || 0),
+              total_amount: totalAmount,
+              date: bk.checkin_date || bk.checkIn || bk.created_at || null,
+            };
+          });
           break;
         case "revenue":
         case "guests":
-          data = bills || [];
+          data = (bills || []).map((bill) => {
+            // Bills can be nested in bill.bill or directly on bill
+            const bd =
+              bill?.bill?.bookingDetails ||
+              bill?.bookingDetails ||
+              bill?.original_bill_data ||
+              {};
+            const bh = bill?.bill?.billHeader || {};
+            const gd = bill?.bill?.guestDetails || bill?.guestDetails || {};
+
+            // Find matching booking or guest record for rich fallback if bill has missing fields
+            const matchedBooking = (bookings || []).find(
+              (b) =>
+                (bd.bookingId && (b.booking_id === bd.bookingId || b.id === bd.bookingId)) ||
+                (bill?.booking_id && b.booking_id === bill.booking_id) ||
+                (bill?.id && b.booking_id === bill.id)
+            );
+            const matchedGuest = (guests || []).find(
+              (g) =>
+                (matchedBooking?.guest_id && (g.guest_id === matchedBooking.guest_id || g.id === matchedBooking.guest_id)) ||
+                (bill?.guest_id && (g.guest_id === bill.guest_id || g.id === bill.guest_id))
+            );
+
+            const guestName =
+              gd.guestName ||
+              gd.full_name ||
+              gd.name ||
+              bd.guestName ||
+              bd.guest_name ||
+              bd.full_name ||
+              bill?.guest_name ||
+              bill?.guestName ||
+              matchedBooking?.full_name ||
+              matchedGuest?.full_name ||
+              matchedGuest?.name ||
+              "-";
+            const guestMobile =
+              gd.mobile ||
+              gd.phone ||
+              gd.guestMobile ||
+              bd.guestMobile ||
+              bd.mobile ||
+              bd.phone ||
+              bd.contact ||
+              bill?.guest_mobile ||
+              bill?.mobile ||
+              matchedBooking?.mobile ||
+              matchedGuest?.mobile ||
+              matchedGuest?.phone ||
+              "-";
+            const roomNum =
+              bd.roomNumber ||
+              bd.room_no ||
+              bd.room_number ||
+              bill?.room_number ||
+              (matchedBooking?.rooms_config?.[0]?.room_number) ||
+              matchedBooking?.room_number ||
+              Object.keys(bill?.room_charges || {})[0] ||
+              "-";
+            const roomType =
+              bd.roomType ||
+              bd.room_type ||
+              bill?.room_type ||
+              matchedBooking?.room_category ||
+              matchedBooking?.room_type ||
+              (rooms || []).find(
+                (r) => String(r.room_number) === String(roomNum)
+              )?.room_type ||
+              "Standard";
+            const checkinDate =
+              bd.checkIn ||
+              bd.checkin_date ||
+              bill?.checkin_date ||
+              bill?.created_at ||
+              null;
+            const checkoutDate =
+              bd.checkOut ||
+              bd.checkout_date ||
+              bill?.checkout_date ||
+              bh.billDate ||
+              bill?.created_at ||
+              null;
+            const totalAmount =
+              Number(
+                bill?.bill?.grandTotal ||
+                  bill?.grandTotal ||
+                  bill?.total_amount ||
+                  bill?.bill?.totalAmount ||
+                  bd.totalAmount ||
+                  0
+              );
+            const paymentMode =
+              bd.paymentMode ||
+              bd.payment_mode ||
+              bill?.payment_mode ||
+              bill?.bill?.paymentMode ||
+              bh.paymentMode ||
+              "N/A";
+            const gstNumber =
+              bd.gstNumber ||
+              bd.gst_number ||
+              bd.gstin ||
+              bill?.gst_number ||
+              bill?.gstin ||
+              "";
+            const billNo =
+              bill?.bill_no ||
+              bill?.billNo ||
+              bh.billNo ||
+              bill?.id ||
+              "N/A";
+
+            return {
+              bill_no: billNo,
+              guest_name: guestName,
+              guest_mobile: guestMobile,
+              room_number: roomNum,
+              room_type: roomType,
+              checkin_date: checkinDate,
+              checkout_date: checkoutDate,
+              total_amount: totalAmount,
+              payment_mode: paymentMode,
+              gst_number: gstNumber,
+              date: checkoutDate || checkinDate || bill?.created_at || null,
+            };
+          });
           break;
         case "staff":
           data = staffs || [];
@@ -1282,12 +2055,13 @@ const ReportGenerator = () => {
           break;
         
         case "night":
-        case "occupancy":
           data = reports || [];
           break;
+        case "occupancy":
+          data = processOccupancyData();
+          break;
         case "complementary":
-          // Transform bills into complementary rows BEFORE applying generic date filters
-          data = extractComplementaryRowsFromBills(bills || []);
+          data = processComplementaryData();
           break;
         case "expenses":
           // Transform expenses data into unified cash flow format
@@ -1299,36 +2073,29 @@ const ReportGenerator = () => {
           break;
         case "settlement": {
           const hasDateFilter = Boolean(dateRange?.from);
+          // Show all checked-out / settled bookings by default when no date is picked
           const checkedOutBookings = (bookings || []).filter((b) => {
             const status = String(b.status || "").toLowerCase();
             const isCheckedOut = (
               status === "checked-out" ||
               status === "checkedout" ||
-              status === "checked_out"
+              status === "checked_out" ||
+              status === "settled" ||
+              Boolean(b.checkout_date && status !== "cancelled" && status !== "reserved")
             );
             if (!isCheckedOut) return false;
 
-            if (!hasDateFilter) {
-              // Default to today if no date filter specified
-              const today = new Date();
-              const start = new Date(
-                today.getFullYear(),
-                today.getMonth(),
-                today.getDate(),
-                0, 0, 0, 0
-              ).getTime();
-              const end = new Date(
-                today.getFullYear(),
-                today.getMonth(),
-                today.getDate(),
-                23, 59, 59, 999
-              ).getTime();
+            if (hasDateFilter) {
+              const fromDate = new Date(dateRange.from).setHours(0, 0, 0, 0);
+              const toObj = dateRange.to || dateRange.from;
+              const toDate = new Date(toObj).setHours(23, 59, 59, 999);
               const co =
                 typeof b.checkout_date === "string"
                   ? new Date(b.checkout_date).getTime()
                   : Number(b.checkout_date);
-              return Number.isFinite(co) && co >= start && co <= end;
+              return Number.isFinite(co) && co >= fromDate && co <= toDate;
             }
+            // By default with NO date selected, show all records!
             return true;
           });
           data = checkedOutBookings.map((booking) => {
@@ -1379,17 +2146,32 @@ const ReportGenerator = () => {
               booking.bill_no_sequence ||
               "";
 
+            const paymentMode =
+              booking.payment_mode ||
+              booking.paymentMode ||
+              booking.settlement_payment_mode ||
+              booking.advance_payment_mode ||
+              "N/A";
+
+            const remarks =
+              booking.notes ||
+              booking.remarks ||
+              booking.settlement_notes ||
+              booking.settlement_remarks ||
+              "";
+
             return {
               bill_no: billNo || "N/A",
               guest_name: guestName || "N/A",
-              room_number: Object.keys(booking.room_charges || {})[0] || "N/A",
+              room_number: Object.keys(booking.room_charges || {})[0] || booking.room_number || "N/A",
               checkout_date: booking.checkout_date || null,
               date: booking.checkout_date || null,
               status: booking.status || "Checked-out",
               advance_payment:
                 booking.advance_payment || booking.partial_payment_amount || 0,
-              discount: booking.discount || 0,
               total_amount: totalAmount,
+              payment_mode: paymentMode,
+              remarks: remarks || "-",
             };
           });
           break;
@@ -1403,6 +2185,9 @@ const ReportGenerator = () => {
         case "stock_purchases":
           data = processStockPurchasesData();
           break;
+        case "police":
+          data = processPoliceReportData();
+          break;
         default:
           data = [];
       }
@@ -1413,7 +2198,8 @@ const ReportGenerator = () => {
       dateRange?.from &&
       selectedReport !== "rooms" &&
       selectedReport !== "companies" &&
-      selectedReport !== "stock_inventory"
+      selectedReport !== "stock_inventory" &&
+      selectedReport !== "settlement"
     ) {
       const fromDate = new Date(
         dateRange.from.getFullYear(),
@@ -1468,40 +2254,191 @@ const ReportGenerator = () => {
 
     // Transform data for guests report
     if (selectedReport === "guests") {
-      data = (data || []).map((bill) => {
-        const guestDetails = bill.bill?.guestDetails || {};
-        const bookingDetails = bill.bill?.bookingDetails || {};
-        const billingSummary = bill.bill?.billingSummary || {};
-        const finalSummary = bill.bill?.finalSummary || {};
+      // Helper to compute room total from charges or rate plan or standard rates
+      const computeTotal = (b, bRoot, finalSummary, billingSummary) => {
+        const directTotal = Number(
+          finalSummary?.totalAmount ||
+          bRoot?.grandTotal ||
+          bRoot?.totalAmount ||
+          bRoot?.total_amount ||
+          billingSummary?.grandTotal ||
+          billingSummary?.totalAmount ||
+          b?.total_amount ||
+          0
+        );
+        if (directTotal > 0) return directTotal;
+
+        // If direct total is 0, compute from room charges, extra pax and services
+        const roomChargesSum = Object.values(b?.room_charges || bRoot?.room_charges || {}).reduce(
+          (sum, v) => sum + Number(v || 0),
+          0
+        );
+        let servicesSum = 0;
+        const svcs = b?.services || bRoot?.services;
+        if (svcs && typeof svcs === "object") {
+          Object.values(svcs).forEach((daySvc) => {
+            if (Array.isArray(daySvc)) {
+              daySvc.forEach((s) => {
+                servicesSum +=
+                  Number(s.food_charges || 0) +
+                  Number(s.minibar_charges || 0) +
+                  Number(s.laundry_charges || 0) +
+                  Number(s.extra_bed_charges || 0) +
+                  Number(s.manual_charges || 0);
+              });
+            }
+          });
+        }
+        let extraPaxSum = 0;
+        const paxList = b?.extra_pax || bRoot?.extra_pax;
+        if (Array.isArray(paxList)) {
+          paxList.forEach((p) => {
+            extraPaxSum += Number(p.extra_pax_amount || p.amount || 0);
+          });
+        }
+        const combined = roomChargesSum + servicesSum + extraPaxSum;
+        if (combined > 0) return Math.max(0, combined - Number(b?.discount || 0));
+
+        // Default estimation by nights and room category
+        const cin = b?.checkin_date || bRoot?.checkin_date;
+        const cout = b?.checkout_date || bRoot?.checkout_date;
+        const nights = Math.max(
+          1,
+          cin && cout ? Math.ceil((new Date(cout) - new Date(cin)) / (1000 * 60 * 60 * 24)) : 1
+        );
+        const roomsCount = Math.max(
+          1,
+          Array.isArray(b?.room_id) ? b.room_id.length : (b?.rooms_config?.length || 1)
+        );
+        const rate = (rooms || []).find(
+          (r) => String(r.room_number) === String(b?.room_number || bRoot?.room_number)
+        )?.price_per_night || 2000;
+        return (rate * roomsCount * nights) - Number(b?.discount || 0);
+      };
+      data = (data || []).map((bill, index) => {
+        // If bill was already mapped from earlier case or is raw
+        const bRoot = bill.bill || bill;
+        const guestDetails = bRoot?.guestDetails || bill.guestDetails || {};
+        const bookingDetails = bRoot?.bookingDetails || bill.bookingDetails || {};
+        const billingSummary = bRoot?.billingSummary || bill.billingSummary || {};
+        const finalSummary = bRoot?.finalSummary || bill.finalSummary || {};
+        const billHeader = bRoot?.billHeader || bill.billHeader || {};
+
+        // Also search matching booking and guest
+        const bId = bookingDetails.bookingId || bill.booking_id || bill.bookingId || bill.id;
+        const matchedBooking = (bookings || []).find(
+          (b) => (bId && (b.booking_id === bId || b.id === bId))
+        );
+        const gId = matchedBooking?.guest_id || bill.guest_id;
+        const matchedGuest = (guests || []).find(
+          (g) => (gId && (g.guest_id === gId || g.id === gId))
+        );
+
+        const guestName =
+          bill.guest_name ||
+          guestDetails.guestName ||
+          guestDetails.full_name ||
+          guestDetails.name ||
+          bookingDetails.guestName ||
+          bookingDetails.guest_name ||
+          matchedBooking?.full_name ||
+          matchedGuest?.full_name ||
+          matchedGuest?.name ||
+          "Guest";
+
+        const guestMobile =
+          bill.guest_mobile ||
+          guestDetails.mobile ||
+          guestDetails.phone ||
+          bookingDetails.guestMobile ||
+          bookingDetails.mobile ||
+          matchedBooking?.mobile ||
+          matchedGuest?.mobile ||
+          matchedGuest?.phone ||
+          "-";
+
+        const roomNum =
+          bill.room_number ||
+          bookingDetails.roomNumber ||
+          bookingDetails.room_no ||
+          matchedBooking?.room_number ||
+          matchedBooking?.rooms_config?.[0]?.room_number ||
+          "-";
+
+        const roomType =
+          bill.room_type ||
+          bookingDetails.roomType ||
+          bookingDetails.room_type ||
+          matchedBooking?.room_category ||
+          matchedBooking?.room_type ||
+          "Standard";
+
+        const cinDate =
+          bill.checkin_date ||
+          bookingDetails.checkIn ||
+          bookingDetails.checkin_date ||
+          matchedBooking?.checkin_date ||
+          bill.date ||
+          null;
+
+        const coutDate =
+          bill.checkout_date ||
+          bookingDetails.checkOut ||
+          bookingDetails.checkout_date ||
+          matchedBooking?.checkout_date ||
+          billHeader.billDate ||
+          null;
+
+        const computedAmt = computeTotal(matchedBooking || bill, bRoot, finalSummary, billingSummary);
+        const totalAmount = computedAmt > 0 ? computedAmt : Number(billingSummary.balanceDue || matchedBooking?.partial_payment_amount || 0);
+
+        const rawBillNo =
+          bill.bill_no ||
+          bill.bill_id ||
+          billHeader.bill_no ||
+          billHeader.billNo ||
+          billHeader.billNumber ||
+          billHeader.bookingRef ||
+          matchedBooking?.bill_no ||
+          matchedBooking?.booking_id ||
+          bill.id ||
+          "";
+
+        const billNo = (rawBillNo && rawBillNo !== "N/A" && rawBillNo !== "-")
+          ? rawBillNo
+          : (matchedBooking?.booking_id ? ("BILL-" + matchedBooking.booking_id) : ("BILL-" + (index + 1)));
+
+        const paymentMode =
+          bill.payment_mode ||
+          bookingDetails.paymentMode ||
+          billHeader.paymentMode ||
+          "Cash";
 
         return {
-          bill_id: bill.bill_id || "N/A",
-          bill_no: bill.bill?.billHeader?.bill_no || "N/A",
-          guest_name: guestDetails.guestName || "N/A",
-          guest_mobile: guestDetails.mobile || "N/A",
-          guest_email: guestDetails.email || "N/A",
-          room_number: bookingDetails.roomNumber || "N/A",
-          room_type: bookingDetails.roomType || "N/A",
-          checkin_date: bookingDetails.checkIn || null,
-          checkout_date: bookingDetails.checkOut || null,
-          number_of_nights: bookingDetails.numberOfNights || 0,
+          bill_id: billNo,
+          bill_no: billNo,
+          guest_name: guestName,
+          guest_mobile: guestMobile,
+          guest_email: guestDetails.email || matchedBooking?.email || matchedGuest?.email || "-",
+          room_number: roomNum,
+          room_type: roomType,
+          checkin_date: cinDate,
+          checkout_date: coutDate,
+          number_of_nights: bookingDetails.numberOfNights || matchedBooking?.no_of_nights || 1,
           room_charges: billingSummary.totalRoomServices || 0,
           service_charges: billingSummary.totalServiceCharges || 0,
-          total_amount: finalSummary.totalAmount || 0,
+          total_amount: totalAmount,
           balance_due: billingSummary.balanceDue || 0,
-          payment_mode: bill.payment_mode || "N/A",
-          booking_status: bookingDetails.bookingType || "N/A",
-          booking_type: bookingDetails.bookingType || "N/A",
-          gst_number: bookingDetails.gstNo || guestDetails.gstIn || "N/A",
+          payment_mode: paymentMode,
+          booking_status: bookingDetails.bookingType || matchedBooking?.status || "Completed",
+          booking_type: bookingDetails.bookingType || matchedBooking?.booking_type || "Walk-in",
+          gst_number: bookingDetails.gstNo || guestDetails.gstIn || matchedBooking?.gst_no || "-",
           has_gst:
-            (guestDetails.gstIn &&
-              guestDetails.gstIn !== "N/A" &&
-              guestDetails.gstIn !== "---") ||
-            (bookingDetails.gstNo &&
-              bookingDetails.gstNo !== "N/A" &&
-              bookingDetails.gstNo !== "---")
+            (guestDetails.gstIn && guestDetails.gstIn !== "N/A" && guestDetails.gstIn !== "---") ||
+            (bookingDetails.gstNo && bookingDetails.gstNo !== "N/A" && bookingDetails.gstNo !== "---")
               ? "Yes"
               : "No",
+          date: coutDate || cinDate || null,
           updated_at: bill.updated_at || null,
         };
       });
@@ -1597,123 +2534,9 @@ const ReportGenerator = () => {
       }
     }
 
-    // Transform data for check-in report
-    if (selectedReport === "bookings") {
-      console.log("All bookings data:", data);
-      console.log(
-        "Booking statuses:",
-        (data || []).map((b) => ({ id: b, status: b.status }))
-      );
-      console.log(
-        "Filtered bookings (Checked-in):",
-        (data || []).filter((booking) => {
-          const status = booking.status?.toLowerCase();
-          return (
-            status === "checked-in" ||
-            status === "checkedin" ||
-            status === "checked_in"
-          );
-        })
-      );
-
-      data = (data || []).filter((booking) => {
-        const status = booking.status?.toLowerCase();
-        return (
-          status === "checked-in" ||
-          status === "checkedin" ||
-          status === "checked_in"
-        );
-      });
-
-      // Temporarily show all bookings for debugging
-      data = (data || [])
-        // .filter(booking => {
-        //   const status = booking.status?.toLowerCase();
-        //   return status === 'checked-in' || status === 'checkedin' || status === 'checked_in';
-        // })
-        .map((booking) => {
-          const roomCharges = Object.values(booking.room_charges || {}).reduce(
-            (sum, charge) => sum + charge,
-            0
-          );
-          const serviceCharges = Object.values(booking.services || {}).reduce(
-            (sum, dayServices) => {
-              return (
-                sum +
-                Object.values(dayServices).reduce((daySum, service) => {
-                  return (
-                    daySum +
-                    (service.manual_charges || 0) +
-                    (service.minibar_charges || 0) +
-                    (service.laundry_charges || 0) +
-                    (service.extra_bed_charges || 0) +
-                    (service.food_charges || 0)
-                  );
-                }, 0)
-              );
-            },
-            0
-          );
-          const totalAmount =
-            roomCharges + serviceCharges - (booking.discount || 0);
-
-          // Extract guest name - first try direct fields, then lookup by guest_id
-          let guestName =
-            booking.full_name ||
-            booking.guestName ||
-            booking.name ||
-            booking.customer_name ||
-            booking.primaryGuestName ||
-            booking.guestDetails?.guestName ||
-            booking.guest?.name ||
-            (Array.isArray(booking.guests) ? booking.guests[0]?.name : "");
-
-          // Debug logging
-          console.log("Booking data:", {
-            booking_id: booking.booking_id,
-            grc_id: booking.grc_no,
-            guest_id: booking.guest_id,
-            full_name: booking.full_name,
-            direct_guest_name: guestName,
-            guests_array_length: guests?.length || 0,
-          });
-
-          // If no direct name found, look up by guest_id
-          if (!guestName && booking.guest_id) {
-            const guest = guests?.find(
-              (guest) =>
-                guest.guest_id === booking.guest_id ||
-                guest.id === booking.guest_id ||
-                guest._id === booking.guest_id
-            );
-            console.log("Guest lookup result:", {
-              guest_id: booking.guest_id,
-              found_guest: guest,
-              guest_name_from_lookup:
-                guest?.full_name || guest?.name || guest?.guest_name,
-            });
-            guestName =
-              guest?.full_name || guest?.name || guest?.guest_name || "";
-          }
-
-          const result = {
-            booking_id: booking.booking_id || booking.originalId || "N/A",
-            grc_id: booking.grc_no || "N/A",
-            guest_name: guestName || "N/A",
-            room_number: Object.keys(booking.room_charges || {})[0] || "N/A",
-            room_type: booking.room_type || "N/A",
-            checkin_date: booking.checkin_date || null,
-            checkout_date: booking.checkout_date || null,
-            status: booking.status || "N/A",
-            advance_payment:
-              booking.advance_payment || booking.partial_payment_amount || 0,
-            discount: booking.discount || 0,
-            total_amount: totalAmount,
-          };
-
-          console.log("Final result for booking:", result);
-          return result;
-        });
+    // Re-sequence S.No. for police report after date filtering
+    if (selectedReport === "police") {
+      data.forEach((r, i) => { r.sno = i + 1; });
     }
 
     // Transform data for companies report (transaction view)
@@ -1890,41 +2713,130 @@ const ReportGenerator = () => {
     // Night report (per-date summary row)
     if (selectedReport === "night") {
       const rowsMap = new Map();
+      const totalInventoryRooms = (rooms || []).length || 20;
 
-      const dayEndData = data.filter((r) => {
-        return r.dayEndStatus;
+      const dayEndData = data.filter((r) => r && r.dayEndStatus);
+
+      // Group restaurant orders by date string (YYYY-MM-DD)
+      const restOrdersByDate = new Map();
+      (restaurantOrders || []).forEach((ord) => {
+        const orderDateStr = ord.orderDate
+          ? new Date(ord.orderDate).toISOString().split("T")[0]
+          : ord.createdAt
+          ? new Date(Number(ord.createdAt)).toISOString().split("T")[0]
+          : null;
+        if (!orderDateStr) return;
+        if (!restOrdersByDate.has(orderDateStr)) {
+          restOrdersByDate.set(orderDateStr, []);
+        }
+        restOrdersByDate.get(orderDateStr).push(ord);
       });
 
-      console.log(dayEndData);
-
+      // Build daily night audit metrics
       (dayEndData || []).forEach((r) => {
         const dKey = r.date;
-
         if (!dKey) return;
 
-        const newBookingsCount = r.summary.totalReservedBookings || 0;
-        const checkInsCount = r.summary.totalCheckins || 0;
-        const checkOutsCount = r.summary.totalCheckouts || 0;
-        const occupiedRoomsCount = r.summary.roomStatusCounts.occupied || 0;
-        const openingBalance = r.openingBalance;
-        const closingBalance = r.closingBalance;
-        
+        const occupiedRoomsCount = r.summary?.roomStatusCounts?.occupied || r.occupied_rooms || 0;
+        const totalRoomsAvailable = totalInventoryRooms;
+        const roomNightsSold = occupiedRoomsCount;
 
-        const totalRevenue = Number(r.financialSummary?.totalCollection ?? 0);
+        // Room revenue for the day from day-end summary or collections
+        const roomRev = Number(
+          r.financialSummary?.roomRevenue ??
+          r.room_revenue ??
+          r.summary?.roomRevenue ??
+          r.financialSummary?.totalCollection ??
+          0
+        );
+
+        // ARR = Room Revenue / Total Room Nights Sold
+        const arr = roomNightsSold > 0 ? Math.round((roomRev / roomNightsSold) * 100) / 100 : 0;
+
+        // Occupancy %
+        const occPercent = totalRoomsAvailable > 0
+          ? `${((roomNightsSold / totalRoomsAvailable) * 100).toFixed(1)}%`
+          : "0.0%";
+
+        // Restaurant channel breakdown from restaurantOrders for this date
+        const dayRestOrders = restOrdersByDate.get(dKey) || [];
+        let restDineInRev = 0;
+        let roomServiceRev = 0;
+        let zomatoRev = 0;
+        let swiggyRev = 0;
+        let banquetRev = 0;
+        let boardRoomRev = 0;
+
+        dayRestOrders.forEach((o) => {
+          const amt = Number(o.totalAmount || o.finalTotal || o.total || 0);
+          const tbl = String(o.tableName || "").toLowerCase();
+          const src = String(o.orderSource || "").toLowerCase();
+
+          if (tbl.includes("room") || tbl.includes("hotel") || src.includes("room")) {
+            roomServiceRev += amt;
+          } else if (tbl.startsWith("zomato") || src.includes("zomato")) {
+            zomatoRev += amt;
+          } else if (tbl.startsWith("swiggy") || src.includes("swiggy")) {
+            swiggyRev += amt;
+          } else if (tbl.includes("banquet") || src.includes("banquet")) {
+            banquetRev += amt;
+          } else if (tbl.includes("board") || src.includes("board")) {
+            boardRoomRev += amt;
+          } else {
+            restDineInRev += amt;
+          }
+        });
+
+        const dayTotalFB = restDineInRev + roomServiceRev + zomatoRev + swiggyRev + banquetRev + boardRoomRev;
+        const totalDayRev = roomRev + dayTotalFB;
 
         rowsMap.set(dKey, {
           date: dKey,
-          new_bookings: newBookingsCount || 0,
-          check_ins: checkInsCount || 0,
-          check_outs: checkOutsCount || 0,
-          occupied_rooms: occupiedRoomsCount || 0,
-          total_revenue: totalRevenue,
-          opening_balance: openingBalance || 0,
-          closing_balance: closingBalance || 0,
+          total_rooms_available: totalRoomsAvailable,
+          room_nights_sold: roomNightsSold,
+          room_revenue: roomRev,
+          arr: arr,
+          occupancy_percent: occPercent,
+          rest_revenue: restDineInRev,
+          room_service_rev: roomServiceRev,
+          zomato_revenue: zomatoRev,
+          swiggy_revenue: swiggyRev,
+          banquet_revenue: banquetRev,
+          board_room_revenue: boardRoomRev,
+          total_revenue: totalDayRev,
+          mtd_room_revenue: 0, // Calculated below after date sorting
+          mtd_fb_revenue: 0,
+          mtd_total_revenue: 0,
         });
       });
 
       let rows = Array.from(rowsMap.values());
+      rows.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      // Compute MTD (Month Till Date) cumulative sums grouped by year-month
+      let curMonth = "";
+      let mtdRoom = 0;
+      let mtdFB = 0;
+      let mtdTotal = 0;
+
+      rows.forEach((row) => {
+        const rowMonth = String(row.date).slice(0, 7); // YYYY-MM
+        if (rowMonth !== curMonth) {
+          curMonth = rowMonth;
+          mtdRoom = 0;
+          mtdFB = 0;
+          mtdTotal = 0;
+        }
+        const dayFB = (row.rest_revenue || 0) + (row.room_service_rev || 0) + (row.zomato_revenue || 0) +
+                      (row.swiggy_revenue || 0) + (row.banquet_revenue || 0) + (row.board_room_revenue || 0);
+        mtdRoom += (row.room_revenue || 0);
+        mtdFB += dayFB;
+        mtdTotal += (row.total_revenue || 0);
+
+        row.mtd_room_revenue = mtdRoom;
+        row.mtd_fb_revenue = mtdFB;
+        row.mtd_total_revenue = mtdTotal;
+      });
 
       if (dateRange.from && dateRange.to) {
         const fromDate = new Date(
@@ -1945,43 +2857,10 @@ const ReportGenerator = () => {
         });
       }
 
-      rows.sort((a, b) => new Date(a.date) - new Date(b.date));
       data = rows;
     }
 
-    // Occupancy report
-    if (selectedReport === "occupancy") {
-      const filteredData = (data || []).filter((r) => {
-        return r.dayEndStatus == true;
-      });
-
-      data = filteredData.map((r) => {
-        const occupiedRoomsCount = r.summary.roomStatusCounts.occupied || 0;
-        const dirtyRoomsCount = r.summary.roomStatusCounts.dirty || 0;
-        const underMaintenanceRoomsCount =
-          r.summary.roomStatusCounts.under_maintenance || 0;
-        const vacantRoomsCount = r.summary.roomStatusCounts.vacant || 0;
-        const totalRoomsCount =
-          occupiedRoomsCount +
-          dirtyRoomsCount +
-          underMaintenanceRoomsCount +
-          vacantRoomsCount;
-
-        const occupancyRate =
-          totalRoomsCount > 0
-            ? (occupiedRoomsCount / totalRoomsCount) * 100
-            : 0;
-        return {
-          date: r.date,
-          total_rooms: totalRoomsCount,
-          occupied: occupiedRoomsCount,
-          vacant: vacantRoomsCount,
-          dirty: dirtyRoomsCount,
-          under_maintenance: underMaintenanceRoomsCount,
-          occupancy_rate: occupancyRate.toFixed(2) + "%",
-        };
-      });
-    }
+    // Occupancy report data is already prepared and formatted by processOccupancyData
 
     // Transform data for restaurant report
     if (selectedReport === "restaurant") {
