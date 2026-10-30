@@ -649,18 +649,37 @@ jobs:
       - name: Create temp config reader
         run: |
           echo '{"type": "module"}' > temp-package.json
-          echo "import fs from 'fs';
-          
+          cat > configReader.mjs <<'EOF'
+          import fs from 'fs';
+
+          const requiredKeys = ['institutionId', 's3BucketName', 'cloudFrontId'];
+
+          const parseData = (raw) => {
+            try {
+              return JSON.parse(raw);
+            } catch {
+              const extracted = {};
+              for (const key of requiredKeys) {
+                const match = raw.match(new RegExp(`"${key}"\\s*:\\s*"([^"]+)"`));
+                if (!match) {
+                  throw new Error(`Unable to read "${key}" from src/Operation/data.json`);
+                }
+                extracted[key] = match[1];
+              }
+              return extracted;
+            }
+          };
+
           try {
-            const data = JSON.parse(fs.readFileSync('./src/Operation/data.json', 'utf8'));
-            
+            const rawData = fs.readFileSync('./src/Operation/data.json', 'utf8');
+            const data = parseData(rawData);
+
             const { institutionId, s3BucketName, cloudFrontId } = data;
-            
+
             const branch = process.env.GITHUB_REF.split('/').pop();
-            const stage = branch.startsWith('beta-') ? 'DEV' : 'PROD';
-            
+
             const deployment = {
-              [\`beta-\${institutionId}\`]: {
+              [`beta-${institutionId}`]: {
                 s3Bucket: s3BucketName,
                 cloudfrontId: cloudFrontId,
                 stage: 'DEV'
@@ -671,7 +690,7 @@ jobs:
                 stage: 'PROD'
               }
             };
-            
+
             const config = deployment[branch];
             const output = config ? {
               s3Bucket: config.s3Bucket,
@@ -685,13 +704,12 @@ jobs:
               reactAppStage: ''
             };
 
-            // Write output to a file instead of console.log
             fs.writeFileSync('config.json', JSON.stringify(output));
-            
           } catch (error) {
             console.error('Error in configuration:', error.message);
             process.exit(1);
-          }" > configReader.mjs
+          }
+          EOF
 
       - name: Get deployment configuration
         id: config
