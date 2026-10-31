@@ -1,11 +1,8 @@
-import AccountingSidebar from "./AccountingSidebar";
+import React from "react";
+import { Navigate } from "react-router";
 
 const Accounting = () => {
-  return (
-    <div className="flex  h-full">
-      a
-    </div>
-  );
+  return <Navigate to="/dashboard/accounting/cash-entry" replace />;
 };
 
 export default Accounting;

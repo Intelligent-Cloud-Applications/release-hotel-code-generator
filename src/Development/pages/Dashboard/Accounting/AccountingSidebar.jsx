@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   DollarSign,
+  Banknote,
   FileText,
   CreditCard,
   Receipt,
@@ -44,6 +45,7 @@ const AccountingSidebar = () => {
       title: "Transactions",
       icon: DollarSign,
       items: [
+        { id: "cash-entry", label: "Cash Entry & Audit", icon: Banknote },
         { id: "revenue-posting", label: "Revenue Posting", icon: TrendingUp },
         { id: "bill-posting", label: "Bill Posting", icon: FileText },
         // {
