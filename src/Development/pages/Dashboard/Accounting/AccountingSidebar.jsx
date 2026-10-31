@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   DollarSign,
+  Banknote,
   FileText,
   CreditCard,
   Receipt,
@@ -44,6 +45,7 @@ const AccountingSidebar = () => {
       title: "Transactions",
       icon: DollarSign,
       items: [
+        { id: "cash-entry", label: "Cash Entry & Audit", icon: Banknote },
         { id: "revenue-posting", label: "Revenue Posting", icon: TrendingUp },
         { id: "bill-posting", label: "Bill Posting", icon: FileText },
         // {
@@ -65,6 +67,7 @@ const AccountingSidebar = () => {
         //   icon: FileCheck,
         // },
         { id: "daily-revenue", label: "Daily Revenue Report", icon: Receipt },
+        { id: "reports", label: "GST & Tax Reports", icon: Receipt, route: "/dashboard/reports" },
         // { id: "audit-trail", label: "Audit Trail", icon: Clock },
       ],
     },
@@ -135,7 +138,7 @@ const AccountingSidebar = () => {
                   >
                     <item.icon className="w-4 h-4" />
                     <Link
-                      to={`/dashboard/accounting/${item.id}`}
+                      to={item.route || `/dashboard/accounting/${item.id}`}
                       className="flex-1 text-left"
                     >
                       {item.label}

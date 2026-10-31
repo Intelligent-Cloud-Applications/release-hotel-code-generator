@@ -2,13 +2,6 @@ import React, { useState, useMemo } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
 import { Button } from "../../../components/ui/button.js";
 import { Input } from "../../../components/ui/input.js";
-import { Label } from "../../../components/ui/label.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../../../components/ui/card.js";
 import {
   Select,
   SelectContent,
@@ -16,8 +9,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select.js";
-import { Badge } from "../../../components/ui/badge.js";
-import { Separator } from "../../../components/ui/separator.js";
 import {
   Calendar,
   CreditCard,
@@ -31,8 +22,11 @@ import {
   Filter,
   Download,
   RefreshCw,
-  IndianRupee,
+  Search,
+  Percent,
+  FileSpreadsheet,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 const RevenuePosting = () => {
   const { bills, bookings, guests } = useAppContext();
@@ -48,16 +42,12 @@ const RevenuePosting = () => {
   });
   const [collectionTypeFilter, setCollectionTypeFilter] = useState("all");
   const [serviceTypeFilter, setServiceTypeFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   // Format date
   const formatDate = (dateValue) => {
     if (!dateValue) return "N/A";
-    let date;
-    if (typeof dateValue === "string") {
-      date = new Date(dateValue);
-    } else {
-      date = new Date(dateValue);
-    }
+    const date = new Date(dateValue);
     if (isNaN(date.getTime())) return "Invalid Date";
     return date.toLocaleDateString("en-IN", {
       year: "numeric",
@@ -76,12 +66,10 @@ const RevenuePosting = () => {
   };
 
   // Categorize payment method into collection type
-  // Cash = Offline, BTC = Bill to Company, Everything else = Online
   const getCollectionType = (paymentMode) => {
     if (!paymentMode) return "offline";
     const mode = paymentMode.toLowerCase().trim();
 
-    // BTC - Bill to Company
     if (
       mode.includes("btc") ||
       mode.includes("bill to company") ||
@@ -90,12 +78,10 @@ const RevenuePosting = () => {
       return "btc";
     }
 
-    // Cash is offline
     if (mode === "cash") {
       return "offline";
     }
 
-    // Everything else (UPI, Card, Net Banking, etc.) is online
     return "online";
   };
 
@@ -108,10 +94,7 @@ const RevenuePosting = () => {
     let extraBedCharges = 0;
     let manualCharges = 0;
 
-    // Get services from bookingDetails.services (room-wise, date-wise)
     const services = bookingDetails?.services || {};
-    console.log("▶️", services);
-    
 
     Object.keys(services).forEach((roomNumber) => {
       const roomServices = services[roomNumber] || {};
@@ -126,24 +109,6 @@ const RevenuePosting = () => {
       });
     });
 
-    // Also check detailedServices for food orders
-    // const detailedServices = bookingDetails?.detailedServices || {};
-    // Object.keys(detailedServices).forEach((roomNumber) => {
-    //   const roomDetailedServices = detailedServices[roomNumber] || {};
-    //   Object.keys(roomDetailedServices).forEach((date) => {
-    //     const dailyOrders = roomDetailedServices[date] || [];
-    //     if (Array.isArray(dailyOrders)) {
-    //       dailyOrders.forEach((order) => {
-    //         foodCharges += order.food_charges || 0;
-    //         laundryCharges += order.laundry_charges || 0;
-    //         minibarCharges += order.minibar_charges || 0;
-    //         extraBedCharges += order.extra_bed_charges || 0;
-    //         manualCharges += order.manual_charges || 0;
-    //       });
-    //     }
-    //   });
-    // });
-
     return {
       roomCharges,
       foodCharges,
@@ -151,6 +116,53 @@ const RevenuePosting = () => {
       minibarCharges,
       extraBedCharges,
       manualCharges,
+    };
+  };
+
+  // Helper to extract and format payment mode / multi-payment breakdown
+  const parsePaymentModeAndSplits = (record, defaultMode = "Cash") => {
+    // Check possible locations for multi-payments
+    const splits =
+      record?.multi_payments ||
+      record?.bill?.multi_payments ||
+      record?.bookingDetails?.multi_payments ||
+      record?.breakdown?.booking?.multi_payments ||
+      record?.payment_history ||
+      [];
+
+    const rawMode =
+      record?.payment_mode ||
+      record?.advance_payment_mode ||
+      record?.bill?.payment_mode ||
+      defaultMode ||
+      "N/A";
+
+    const validSplits = Array.isArray(splits)
+      ? splits.filter((s) => s && (s.mode || s.paymentMode) && parseFloat(s.amount || 0) > 0)
+      : [];
+
+    if (validSplits.length > 0) {
+      const splitText = validSplits
+        .map((s) => `${s.mode || s.paymentMode}: ₹${parseFloat(s.amount).toLocaleString("en-IN")}`)
+        .join(", ");
+      return {
+        paymentMode: `Multi (${splitText})`,
+        isMultiPayment: true,
+        splits: validSplits,
+        displayMode: "Multi-Payment",
+        collectionType: validSplits.some((s) => (s.mode || s.paymentMode).toLowerCase() === "cash") &&
+          validSplits.some((s) => (s.mode || s.paymentMode).toLowerCase() !== "cash")
+          ? "multi"
+          : getCollectionType(validSplits[0]?.mode || validSplits[0]?.paymentMode),
+      };
+    }
+
+    return {
+      paymentMode: rawMode,
+      isMultiPayment: false,
+      splits: [],
+      displayMode: rawMode,
+      collectionType: getCollectionType(rawMode),
     };
   };
 
@@ -165,12 +177,8 @@ const RevenuePosting = () => {
       const guestDetails = billData?.guestDetails || {};
       const finalSummary = billData?.finalSummary || {};
 
-      // Calculate service-wise amounts from the services data
       const servicesCalculated = calculateServicesFromData(bookingDetails);
-      console.log(servicesCalculated);
-      
 
-      // Hotel/Room charges - prefer billingSummary, fallback to calculated
       const hotelAmount =
         (billingSummary?.totalRoomServices ||
           billingSummary?.roomChargesTotal ||
@@ -178,19 +186,13 @@ const RevenuePosting = () => {
           servicesCalculated.roomCharges ||
           0) - (billingSummary?.partialPayment || 0);
 
-      // Food/Restaurant charges
       const restaurantAmount = servicesCalculated.foodCharges || 0;
-
-      // Bar charges (minibar)
       const barAmount = servicesCalculated.minibarCharges || 0;
-
-      // Other services (laundry, extra bed, manual charges)
       const otherServicesAmount =
         servicesCalculated.laundryCharges +
         servicesCalculated.extraBedCharges +
         servicesCalculated.manualCharges;
 
-      // Total amount - use finalSummary.totalAmount or billingSummary.balanceDue
       const totalAmount =
         (finalSummary?.totalAmount ||
           billingSummary?.balanceDue ||
@@ -198,12 +200,20 @@ const RevenuePosting = () => {
           billingSummary?.totalAmount ||
           0) - (billingSummary?.partialPayment || 0);
 
+      const paymentInfo = parsePaymentModeAndSplits(
+        { ...bill, ...billData, bookingDetails },
+        bill?.payment_mode || "N/A"
+      );
+
       return {
         bookingId: bookingDetails?.bookingId || bill?.bill_id,
         guestName: guestDetails?.guestName,
         checkoutDate: bookingDetails?.checkOut,
-        paymentMode: bill?.payment_mode || "N/A",
-        collectionType: getCollectionType(bill?.payment_mode),
+        paymentMode: paymentInfo.paymentMode,
+        isMultiPayment: paymentInfo.isMultiPayment,
+        splits: paymentInfo.splits,
+        displayMode: paymentInfo.displayMode,
+        collectionType: paymentInfo.collectionType,
         totalAmount,
         hotelAmount,
         restaurantAmount,
@@ -221,7 +231,6 @@ const RevenuePosting = () => {
   // Filter data based on date range and filters
   const filteredRevenueData = useMemo(() => {
     return revenueData.filter((item) => {
-      // Date filter
       if (startDate && item.checkoutDate) {
         const checkoutDateObj = new Date(item.checkoutDate);
         const startDateObj = new Date(startDate);
@@ -236,7 +245,6 @@ const RevenuePosting = () => {
         if (checkoutDateObj > endDateObj) return false;
       }
 
-      // Collection type filter
       if (
         collectionTypeFilter !== "all" &&
         item.collectionType !== collectionTypeFilter
@@ -268,7 +276,6 @@ const RevenuePosting = () => {
     let btcAdvance = 0;
 
     bookings.forEach((booking) => {
-      // Check if booking has partial payment (advance)
       const partialPayment =
         booking?.partial_payment_amount ||
         booking?.advance_payment ||
@@ -276,7 +283,6 @@ const RevenuePosting = () => {
         0;
 
       if (partialPayment > 0) {
-        // Check if booking date falls within the selected range
         const bookingDate =
           booking?.booking_date ||
           booking?.created_at ||
@@ -292,13 +298,15 @@ const RevenuePosting = () => {
           endDateObj.setHours(23, 59, 59, 999);
 
           if (bookingDateObj >= startDateObj && bookingDateObj <= endDateObj) {
-            const advancePaymentMode =
-              booking?.advance_payment_mode || booking?.payment_mode || "Cash";
-            const collectionType = getCollectionType(advancePaymentMode);
+            const paymentInfo = parsePaymentModeAndSplits(
+              booking,
+              booking?.advance_payment_mode || booking?.payment_mode || "Cash"
+            );
+            const advancePaymentMode = paymentInfo.paymentMode;
+            const collectionType = paymentInfo.collectionType;
 
             totalAdvance += partialPayment;
 
-            // Track by collection type
             if (collectionType === "online") {
               onlineAdvance += partialPayment;
             } else if (collectionType === "btc") {
@@ -307,9 +315,8 @@ const RevenuePosting = () => {
               offlineAdvance += partialPayment;
             }
 
-            // Extract guest name from various possible paths
             const guestName =
-              guests.find((guest) => guest.guest_id === booking?.guest_id)
+              guests?.find((guest) => guest.guest_id === booking?.guest_id)
                 ?.full_name || "N/A";
 
             advancePayments.push({
@@ -318,9 +325,12 @@ const RevenuePosting = () => {
               amount: partialPayment,
               date: bookingDate,
               paymentMode: advancePaymentMode,
+              isMultiPayment: paymentInfo.isMultiPayment,
+              splits: paymentInfo.splits,
+              displayMode: paymentInfo.displayMode,
               collectionType: collectionType,
               transactionType: "Advance",
-              hotelAmount: 0,
+              hotelAmount: partialPayment,
               restaurantAmount: 0,
               barAmount: 0,
               otherServicesAmount: 0,
@@ -339,9 +349,9 @@ const RevenuePosting = () => {
       offlineAdvance,
       btcAdvance,
     };
-  }, [bookings, startDate, endDate]);
+  }, [bookings, startDate, endDate, guests]);
 
-  // Calculate summary statistics (including advance payments in collection types)
+  // Summary statistics
   const summaryStats = useMemo(() => {
     const stats = {
       totalCollection: 0,
@@ -357,8 +367,6 @@ const RevenuePosting = () => {
         filteredRevenueData.length + advancePaymentStats.advanceCount,
     };
 
-
-    // Add checkout transactions
     filteredRevenueData.forEach((item) => {
       stats.totalCollection += item.totalAmount;
       stats.hotelRevenue += item.hotelAmount;
@@ -376,7 +384,6 @@ const RevenuePosting = () => {
       }
     });
 
-    // Add advance payments to collection type totals
     stats.totalCollection += advancePaymentStats.totalAdvance;
     stats.onlineCollection += advancePaymentStats.onlineAdvance;
     stats.offlineCollection += advancePaymentStats.offlineAdvance;
@@ -385,43 +392,53 @@ const RevenuePosting = () => {
     return stats;
   }, [filteredRevenueData, advancePaymentStats]);
 
-  // Combine checkout transactions and advance payments for table
+  // Combine checkout transactions and advance payments
   const combinedTransactions = useMemo(() => {
-    // Add transactionType to checkout transactions
     const checkoutTransactions = filteredRevenueData.map((item) => ({
       ...item,
       transactionType: "Checkout",
       date: item.checkoutDate,
     }));
 
-    // Combine with advance payments
     return [...checkoutTransactions, ...advancePaymentStats.advancePayments];
   }, [filteredRevenueData, advancePaymentStats.advancePayments]);
 
-  // Get data filtered by service type for the table
+  // Filter by service type and search
   const tableData = useMemo(() => {
-    if (serviceTypeFilter === "all") return combinedTransactions;
+    let result = combinedTransactions;
 
-    return combinedTransactions.filter((item) => {
-      // Advance payments don't have service breakdown, show them only when "all" is selected
-      if (item.transactionType === "Advance") return false;
+    if (serviceTypeFilter !== "all") {
+      result = result.filter((item) => {
+        if (item.transactionType === "Advance") return false;
+        switch (serviceTypeFilter) {
+          case "hotel":
+            return item.hotelAmount > 0;
+          case "restaurant":
+            return item.restaurantAmount > 0;
+          case "bar":
+            return item.barAmount > 0;
+          case "other":
+            return item.otherServicesAmount > 0;
+          default:
+            return true;
+        }
+      });
+    }
 
-      switch (serviceTypeFilter) {
-        case "hotel":
-          return item.hotelAmount > 0;
-        case "restaurant":
-          return item.restaurantAmount > 0;
-        case "bar":
-          return item.barAmount > 0;
-        case "other":
-          return item.otherServicesAmount > 0;
-        default:
-          return true;
-      }
-    });
-  }, [combinedTransactions, serviceTypeFilter]);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(
+        (item) =>
+          (item.bookingId || "").toLowerCase().includes(q) ||
+          (item.guestName || "").toLowerCase().includes(q) ||
+          (item.paymentMode || "").toLowerCase().includes(q)
+      );
+    }
 
-  // Calculate table totals (for filtered data)
+    return result;
+  }, [combinedTransactions, serviceTypeFilter, search]);
+
+  // Totals for table
   const tableTotals = useMemo(() => {
     return tableData.reduce(
       (acc, item) => {
@@ -442,498 +459,415 @@ const RevenuePosting = () => {
     );
   }, [tableData]);
 
-  // Clear all filters
+  // Clear filters
   const clearFilters = () => {
     const today = new Date().toISOString().split("T")[0];
     setStartDate(today);
     setEndDate(today);
     setCollectionTypeFilter("all");
     setServiceTypeFilter("all");
+    setSearch("");
+  };
+
+  // Export to Excel
+  const handleExportExcel = () => {
+    const sheetData = tableData.map((item) => ({
+      Date: formatDate(item.date || item.checkoutDate),
+      "Booking ID": item.bookingId || "-",
+      "Guest Name": item.guestName || "-",
+      "Transaction Type": item.transactionType || "Checkout",
+      "Collection Channel": item.collectionType?.toUpperCase() || "OFFLINE",
+      "Payment Mode": item.paymentMode,
+      "Hotel Lodging ₹": item.hotelAmount || 0,
+      "Restaurant F&B ₹": item.restaurantAmount || 0,
+      "Bar / Minibar ₹": item.barAmount || 0,
+      "Other Services ₹": item.otherServicesAmount || 0,
+      "Total Amount ₹": item.totalAmount || 0,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Revenue Posting");
+    XLSX.writeFile(wb, `Revenue_Posting_${startDate}_to_${endDate}.xlsx`);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-12">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Revenue Posting
-        </h1>
-        <p className="text-gray-600">
-          View payment summaries and collections by date range and categories
-        </p>
-      </div>
-
-      {/* Date & Filters */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Date Selection & Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Start Date */}
-            <div>
-              <Label className="text-sm font-medium text-gray-700">
-                Start Date
-              </Label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
+    <div className="flex flex-col h-full min-h-[92vh] bg-gray-50/60 p-4 sm:p-6 space-y-4">
+      {/* -------------------- TOP SUMMARY METRIC STRIP -------------------- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Total Collection */}
+        <div className="bg-white border border-blue-200/80 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-blue-700 tracking-wide uppercase">
+              Total Inflow Collection
             </div>
-
-            {/* End Date */}
-            <div>
-              <Label className="text-sm font-medium text-gray-700">
-                End Date
-              </Label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+            <div className="text-xl font-bold text-gray-900 mt-0.5">
+              {formatCurrency(summaryStats.totalCollection)}
             </div>
-
-            {/* Collection Type Filter */}
-            <div>
-              <Label className="text-sm font-medium text-gray-700">
-                Collection Type
-              </Label>
-              <Select
-                value={collectionTypeFilter}
-                onValueChange={setCollectionTypeFilter}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Collections" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Collections</SelectItem>
-                  <SelectItem value="online">Online Collection</SelectItem>
-                  <SelectItem value="offline">Offline Collection</SelectItem>
-                  <SelectItem value="btc">BTC (Bill to Company)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Service Type Filter */}
-            <div>
-              <Label className="text-sm font-medium text-gray-700">
-                Service Type
-              </Label>
-              <Select
-                value={serviceTypeFilter}
-                onValueChange={setServiceTypeFilter}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Services" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Services</SelectItem>
-                  <SelectItem value="hotel">Hotel</SelectItem>
-                  <SelectItem value="restaurant">Restaurant</SelectItem>
-                  <SelectItem value="bar">Bar</SelectItem>
-                  <SelectItem value="other">Other Services</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Clear Filters */}
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={clearFilters}
-                className="w-full"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Reset Filters
-              </Button>
+            <div className="text-xs text-gray-500 mt-1">
+              {summaryStats.totalTransactions} transactions in range
             </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
 
-      {/* Collection Type Summary Cards */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">
-          Collection Summary
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {/* Total Collection */}
-          <Card className="border-l-4 border-l-blue-500">
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <TrendingUp className="h-10 w-10 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Total Collection
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.totalCollection)}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {summaryStats.totalTransactions} transactions
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Online Collection */}
+        <div className="bg-white border border-emerald-200/80 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-emerald-700 tracking-wide uppercase">
+              Online / Bank Settlements
+            </div>
+            <div className="text-xl font-bold text-emerald-700 mt-0.5">
+              {formatCurrency(summaryStats.onlineCollection)}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              UPI, POS, Cards & Gateways
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+            <Wifi className="w-5 h-5" />
+          </div>
+        </div>
 
-          {/* Online Collection */}
-          <Card className="border-l-4 border-l-green-500">
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Wifi className="h-10 w-10 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Online Collection
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.onlineCollection)}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    UPI, Card, Net Banking
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Offline / Cash Collection */}
+        <div className="bg-white border border-amber-200/80 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-amber-700 tracking-wide uppercase">
+              Physical Cash Collection
+            </div>
+            <div className="text-xl font-bold text-amber-700 mt-0.5">
+              {formatCurrency(summaryStats.offlineCollection)}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Direct Cash Drawer Deposits
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+            <Banknote className="w-5 h-5" />
+          </div>
+        </div>
 
-          {/* Offline Collection */}
-          <Card className="border-l-4 border-l-yellow-500">
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Banknote className="h-10 w-10 text-yellow-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Offline Collection
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.offlineCollection)}
-                  </p>
-                  <p className="text-xs text-gray-500">Cash</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* BTC Collection */}
-          <Card className="border-l-4 border-l-purple-500">
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Building2 className="h-10 w-10 text-purple-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    BTC Collection
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.btcCollection)}
-                  </p>
-                  <p className="text-xs text-gray-500">Bill to Company</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Advance Payments */}
-          <Card className="border-l-4 border-l-teal-500">
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <IndianRupee className="h-10 w-10 text-teal-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Advance Payments
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(advancePaymentStats.totalAdvance)}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {advancePaymentStats.advanceCount} bookings
-                    {advancePaymentStats.offlineAdvance > 0 &&
-                      ` | Cash: ${formatCurrency(
-                        advancePaymentStats.offlineAdvance
-                      )}`}
-                    {advancePaymentStats.onlineAdvance > 0 &&
-                      ` | Online: ${formatCurrency(
-                        advancePaymentStats.onlineAdvance
-                      )}`}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* BTC / Corporate */}
+        <div className="bg-white border border-purple-200/80 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-purple-700 tracking-wide uppercase">
+              Bill to Company (BTC)
+            </div>
+            <div className="text-xl font-bold text-purple-700 mt-0.5">
+              {formatCurrency(summaryStats.btcCollection)}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Corporate Ledger Receivables
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100">
+            <Building2 className="w-5 h-5" />
+          </div>
         </div>
       </div>
 
-      {/* Service-wise Revenue Cards */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">
-          Service-wise Revenue
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {/* Hotel Revenue */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <Hotel className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Hotel</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.hotelRevenue)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* -------------------- DEPARTMENT REVENUE BREAKDOWN -------------------- */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+        <div className="bg-white border border-gray-200 rounded-lg p-2.5 flex items-center gap-2.5 shadow-2xs">
+          <div className="p-2 rounded-md bg-blue-50 text-blue-600">
+            <Hotel className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-gray-500">Rooms & Lodging</div>
+            <div className="text-xs font-bold text-gray-900">{formatCurrency(summaryStats.hotelRevenue)}</div>
+          </div>
+        </div>
 
-          {/* Restaurant Revenue */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <div className="p-3 bg-orange-100 rounded-lg">
-                  <UtensilsCrossed className="h-6 w-6 text-orange-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Restaurant
-                  </p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.restaurantRevenue)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="bg-white border border-gray-200 rounded-lg p-2.5 flex items-center gap-2.5 shadow-2xs">
+          <div className="p-2 rounded-md bg-amber-50 text-amber-600">
+            <UtensilsCrossed className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-gray-500">Restaurant (F&B)</div>
+            <div className="text-xs font-bold text-gray-900">{formatCurrency(summaryStats.restaurantRevenue)}</div>
+          </div>
+        </div>
 
-          {/* Bar Revenue */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <div className="p-3 bg-purple-100 rounded-lg">
-                  <Wine className="h-6 w-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Bar / Minibar
-                  </p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.barRevenue)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="bg-white border border-gray-200 rounded-lg p-2.5 flex items-center gap-2.5 shadow-2xs">
+          <div className="p-2 rounded-md bg-purple-50 text-purple-600">
+            <Wine className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-gray-500">Bar / Minibar</div>
+            <div className="text-xs font-bold text-gray-900">{formatCurrency(summaryStats.barRevenue)}</div>
+          </div>
+        </div>
 
-          {/* Other Services Revenue */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <div className="p-3 bg-green-100 rounded-lg">
-                  <CreditCard className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Other Services
-                  </p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.otherRevenue)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="bg-white border border-gray-200 rounded-lg p-2.5 flex items-center gap-2.5 shadow-2xs">
+          <div className="p-2 rounded-md bg-teal-50 text-teal-600">
+            <CreditCard className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-gray-500">Laundry & Services</div>
+            <div className="text-xs font-bold text-gray-900">{formatCurrency(summaryStats.otherRevenue)}</div>
+          </div>
+        </div>
 
-          {/* Tax Collection */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <div className="p-3 bg-red-100 rounded-lg">
-                  <TrendingUp className="h-6 w-6 text-red-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Tax (GST)</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(summaryStats.taxCollection)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="bg-white border border-gray-200 rounded-lg p-2.5 flex items-center gap-2.5 shadow-2xs col-span-2 sm:col-span-1">
+          <div className="p-2 rounded-md bg-rose-50 text-rose-600">
+            <Percent className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-gray-500">GST Collected</div>
+            <div className="text-xs font-bold text-gray-900">{formatCurrency(summaryStats.taxCollection)}</div>
+          </div>
         </div>
       </div>
 
-      {/* Detailed Transactions Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Transaction Details
-            </CardTitle>
-            <Badge variant="secondary">{tableData.length} Records</Badge>
+      {/* -------------------- CONTROL BAR (DATE & FILTERS) -------------------- */}
+      <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        {/* Date Pickers */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200">
+            <Calendar className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-[11px] text-gray-500 font-semibold uppercase">From:</span>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="h-7 text-xs border-0 bg-transparent p-0 focus-visible:ring-0 w-28 font-medium text-gray-800"
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            {tableData.length === 0 ? (
-              <div className="p-8 text-center">
-                <TrendingUp className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-800 mb-2">
-                  No Transactions Found
-                </h3>
-                <p className="text-gray-600">
-                  Try adjusting your date range or filters
-                </p>
-              </div>
-            ) : (
-              <table className="min-w-full text-xs md:text-sm border border-gray-200 bg-white rounded-lg">
-                <thead className="bg-blue-50">
-                  <tr>
-                    <th className="px-3 py-3 font-semibold text-left text-gray-700">
-                      Date
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-left text-gray-700">
-                      Booking ID
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-left text-gray-700">
-                      Guest Name
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-left text-gray-700">
-                      Transaction Type
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-left text-gray-700">
-                      Collection Type
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-left text-gray-700">
-                      Payment Mode
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-right text-gray-700">
-                      Hotel
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-right text-gray-700">
-                      Restaurant
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-right text-gray-700">
-                      Bar
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-right text-gray-700">
-                      Other
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-right text-gray-700">
-                      Total
-                    </th>
+
+          <div className="flex items-center gap-1.5 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200">
+            <Calendar className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-[11px] text-gray-500 font-semibold uppercase">To:</span>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="h-7 text-xs border-0 bg-transparent p-0 focus-visible:ring-0 w-28 font-medium text-gray-800"
+            />
+          </div>
+
+          {/* Quick Filter: Collection Channel */}
+          <Select value={collectionTypeFilter} onValueChange={setCollectionTypeFilter}>
+            <SelectTrigger className="h-9 text-xs w-36 bg-gray-50 border-gray-200">
+              <SelectValue placeholder="All Channels" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Channels</SelectItem>
+              <SelectItem value="online">Online / UPI / POS</SelectItem>
+              <SelectItem value="offline">Cash Drawer</SelectItem>
+              <SelectItem value="btc">BTC (Corporate)</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Quick Filter: Department Service */}
+          <Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
+            <SelectTrigger className="h-9 text-xs w-36 bg-gray-50 border-gray-200">
+              <SelectValue placeholder="All Services" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Services</SelectItem>
+              <SelectItem value="hotel">Rooms Only</SelectItem>
+              <SelectItem value="restaurant">Restaurant F&B</SelectItem>
+              <SelectItem value="bar">Bar / Minibar</SelectItem>
+              <SelectItem value="other">Other Services</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearFilters}
+            className="h-9 px-2.5 text-xs text-gray-600 border-gray-200 hover:bg-gray-100"
+            title="Reset Filters"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+
+        {/* Right Search & Export */}
+        <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-end">
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search booking, guest..."
+              className="pl-8 h-9 text-xs bg-gray-50/50 border-gray-200"
+            />
+          </div>
+
+          <Button
+            onClick={handleExportExcel}
+            size="sm"
+            className="h-9 px-3 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export Excel
+          </Button>
+        </div>
+      </div>
+
+      {/* -------------------- REVENUE AUDIT TABLE -------------------- */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden flex-1 flex flex-col">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-gray-50/80 sticky top-0 z-10 border-b border-gray-200">
+              <tr>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5">
+                  Date
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5">
+                  Booking ID
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5">
+                  Guest Name
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5">
+                  Type
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5">
+                  Channel
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5">
+                  Payment Mode
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5 text-right">
+                  Hotel
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5 text-right">
+                  Restaurant
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5 text-right">
+                  Bar
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5 text-right">
+                  Other
+                </th>
+                <th className="text-[11px] font-bold text-gray-700 uppercase tracking-wider px-3.5 py-2.5 text-right">
+                  Total
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
+              {tableData.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="h-32 text-center text-gray-400">
+                    <TrendingUp className="w-6 h-6 text-gray-300 mx-auto mb-1.5" />
+                    No revenue transactions found matching filters.
+                  </td>
+                </tr>
+              ) : (
+                tableData.map((item, index) => (
+                  <tr
+                    key={`${item.bookingId}-${item.transactionType}-${index}`}
+                    className={`hover:bg-blue-50/20 transition-colors ${
+                      item.transactionType === "Advance" ? "bg-teal-50/20" : ""
+                    }`}
+                  >
+                    <td className="px-3.5 py-2.5 text-gray-600 whitespace-nowrap">
+                      {formatDate(item.date || item.checkoutDate)}
+                    </td>
+                    <td className="px-3.5 py-2.5 font-mono text-gray-900 font-semibold whitespace-nowrap">
+                      {item.bookingId || "N/A"}
+                    </td>
+                    <td className="px-3.5 py-2.5 font-medium text-gray-900 max-w-[180px] truncate">
+                      {item.guestName || "N/A"}
+                    </td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          item.transactionType === "Advance"
+                            ? "bg-teal-50 text-teal-700 border border-teal-200"
+                            : "bg-blue-50 text-blue-700 border border-blue-200"
+                        }`}
+                      >
+                        {item.transactionType || "Checkout"}
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          item.collectionType === "online"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : item.collectionType === "btc"
+                            ? "bg-purple-50 text-purple-700 border border-purple-200"
+                            : item.collectionType === "multi"
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                            : "bg-amber-50 text-amber-700 border border-amber-200"
+                        }`}
+                      >
+                        {item.collectionType === "btc"
+                          ? "BTC"
+                          : item.collectionType === "multi"
+                          ? "Split / Multi"
+                          : item.collectionType.charAt(0).toUpperCase() +
+                            item.collectionType.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-2.5 text-gray-700 whitespace-nowrap">
+                      {item.splits && item.splits.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 items-center">
+                          {item.splits.map((s, sIdx) => (
+                            <span
+                              key={sIdx}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-gray-800 text-[10px] font-medium border border-gray-200"
+                            >
+                              <span className="font-semibold">{s.mode || s.paymentMode}:</span>
+                              <span>₹{parseFloat(s.amount || 0).toLocaleString("en-IN")}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        item.paymentMode
+                      )}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right font-medium">
+                      {item.hotelAmount > 0 ? formatCurrency(item.hotelAmount) : "-"}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right font-medium">
+                      {item.restaurantAmount > 0 ? formatCurrency(item.restaurantAmount) : "-"}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right font-medium">
+                      {item.barAmount > 0 ? formatCurrency(item.barAmount) : "-"}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right font-medium">
+                      {item.otherServicesAmount > 0 ? formatCurrency(item.otherServicesAmount) : "-"}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right font-bold text-gray-900 whitespace-nowrap">
+                      {formatCurrency(item.totalAmount)}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {tableData.map((item, index) => (
-                    <tr
-                      key={`${item.bookingId}-${item.transactionType}-${index}`}
-                      className={`border-t border-gray-100 hover:bg-gray-50 ${
-                        item.transactionType === "Advance"
-                          ? "bg-teal-50/50"
-                          : ""
-                      }`}
-                    >
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        {formatDate(item.date || item.checkoutDate)}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-xs font-mono">
-                        {item.bookingId || "N/A"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap max-w-[10rem] truncate">
-                        {item.guestName || "N/A"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <Badge
-                          variant="outline"
-                          className={
-                            item.transactionType === "Advance"
-                              ? "bg-teal-100 text-teal-800 border-teal-200"
-                              : "bg-blue-100 text-blue-800 border-blue-200"
-                          }
-                        >
-                          {item.transactionType || "Checkout"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <Badge
-                          variant="outline"
-                          className={
-                            item.collectionType === "online"
-                              ? "bg-green-100 text-green-800 border-green-200"
-                              : item.collectionType === "btc"
-                              ? "bg-purple-100 text-purple-800 border-purple-200"
-                              : "bg-yellow-100 text-yellow-800 border-yellow-200"
-                          }
-                        >
-                          {item.collectionType === "btc"
-                            ? "BTC"
-                            : item.collectionType.charAt(0).toUpperCase() +
-                              item.collectionType.slice(1)}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <Badge variant="outline" className="text-gray-700">
-                          {item.paymentMode}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right">
-                        {item.hotelAmount > 0
-                          ? formatCurrency(item.hotelAmount)
-                          : "-"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right">
-                        {item.restaurantAmount > 0
-                          ? formatCurrency(item.restaurantAmount)
-                          : "-"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right">
-                        {item.barAmount > 0
-                          ? formatCurrency(item.barAmount)
-                          : "-"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right">
-                        {item.otherServicesAmount > 0
-                          ? formatCurrency(item.otherServicesAmount)
-                          : "-"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right font-semibold">
-                        {formatCurrency(item.totalAmount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-gray-100 font-semibold">
-                  <tr>
-                    <td colSpan="6" className="px-3 py-3 text-right">
-                      Totals:
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {formatCurrency(tableTotals.hotelRevenue)}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {formatCurrency(tableTotals.restaurantRevenue)}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {formatCurrency(tableTotals.barRevenue)}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {formatCurrency(tableTotals.otherRevenue)}
-                    </td>
-                    <td className="px-3 py-3 text-right text-blue-700">
-                      {formatCurrency(tableTotals.totalCollection)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                ))
+              )}
+            </tbody>
+            {tableData.length > 0 && (
+              <tfoot className="bg-gray-50 border-t-2 border-gray-200 text-xs font-bold text-gray-900">
+                <tr>
+                  <td colSpan={6} className="px-3.5 py-2.5 text-right text-gray-500 uppercase tracking-wider">
+                    Total Revenue:
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right">
+                    {formatCurrency(tableTotals.hotelRevenue)}
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right">
+                    {formatCurrency(tableTotals.restaurantRevenue)}
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right">
+                    {formatCurrency(tableTotals.barRevenue)}
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right">
+                    {formatCurrency(tableTotals.otherRevenue)}
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right text-blue-700 font-extrabold">
+                    {formatCurrency(tableTotals.totalCollection)}
+                  </td>
+                </tr>
+              </tfoot>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

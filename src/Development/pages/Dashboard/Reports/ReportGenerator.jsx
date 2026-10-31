@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
 import { useAuthContext } from "../../../context/AuthContext.jsx";
 import { Button } from "../../../components/ui/button.js";
@@ -141,6 +141,7 @@ const ReportGenerator = () => {
   const [stockFilters, setStockFilters] = useState({
     department: "all",
     category: "all",
+    vendor: "all",
   });
 
   // Dedicated backend laundry orders state
@@ -302,7 +303,7 @@ const ReportGenerator = () => {
   // Enforce store-only reports when userType is store, and laundry-only reports when userType is laundry
   useEffect(() => {
     if (userData?.userType === "store") {
-      const storeReports = ["stock_inventory", "stock_issues", "stock_purchases"];
+      const storeReports = ["stock_inventory", "stock_issues", "stock_purchases", "stock_vendor_report"];
       if (!storeReports.includes(selectedReport)) {
         setSelectedReport("stock_inventory");
       }
@@ -574,6 +575,24 @@ const ReportGenerator = () => {
         { key: "total_amount", label: "Total Amount", type: "currency" },
       ],
     },
+    stock_vendor_report: {
+      title: "Store Vendor Wise Report",
+      icon: Building2,
+      description: "Vendor-wise procurement breakdown, invoice numbers, items supplied & total vendor billing",
+      dataSource: "stock",
+      columns: [
+        { key: "vendorName", label: "Vendor", type: "text" },
+        { key: "date", label: "Bill Date", type: "date" },
+        { key: "grnNo", label: "GRN No", type: "text" },
+        { key: "billNo", label: "Bill No", type: "text" },
+        { key: "itemName", label: "Item Sourced", type: "text" },
+        { key: "category", label: "Category", type: "text" },
+        { key: "quantity", label: "Quantity", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "price", label: "Rate", type: "currency" },
+        { key: "total_amount", label: "Total Amount", type: "currency" },
+      ],
+    },
     police: {
       title: "Police Report (C-Form)",
       icon: Shield,
@@ -591,6 +610,22 @@ const ReportGenerator = () => {
         { key: "id_proof_type", label: "ID Type", type: "text" },
         { key: "id_proof_number", label: "ID Number", type: "text" },
         { key: "purpose", label: "Purpose of Visit", type: "text" },
+      ],
+    },
+    gst_report: {
+      title: "GST Report",
+      icon: Receipt,
+      description: "Hotel room bills and restaurant orders with CGST 2.5% + SGST 2.5% tax breakdown",
+      dataSource: "bills",
+      columns: [
+        { key: "date", label: "Date", type: "date" },
+        { key: "bill_no", label: "Bill Number", type: "text" },
+        { key: "section", label: "Section", type: "text" },
+        { key: "total_bill_with_food", label: "Total Bill (incl. Food)", type: "currency" },
+        { key: "total_bill_room_only", label: "Total Bill (Room Only)", type: "currency" },
+        { key: "taxable_amount", label: "Taxable Amount", type: "currency" },
+        { key: "cgst", label: "CGST (2.5%)", type: "currency" },
+        { key: "sgst", label: "SGST (2.5%)", type: "currency" },
       ],
     },
   };
@@ -777,6 +812,26 @@ const ReportGenerator = () => {
       compCandidates.forEach((cand) => {
         if (cand) parseComplementaryStructure(cand, roomFallback, dateFallback);
       });
+
+      // If the entire bill is marked complimentary
+      if (
+        bill?.is_complimentary === true ||
+        bill?.payment_mode === "Complimentary" ||
+        bill?.bill?.payment_mode === "Complimentary"
+      ) {
+        addRow({
+          date: dateFallback,
+          room_number: roomFallback,
+          complementary_name: "Complimentary Stay (Room Charges)",
+          amount:
+            Number(
+              bill?.bill?.billingSummary?.totalRoomServices ||
+                bill?.room_charges ||
+                bill?.bill?.grandTotal ||
+                0
+            ),
+        });
+      }
 
       const lineItems = [
         bill?.bill?.items,
@@ -1087,6 +1142,100 @@ const ReportGenerator = () => {
     );
   };
 
+  // ─── GST Report processor ────────────────────────────────────────────────────
+  const processGstReportData = () => {
+    const rows = [];
+
+    // ── Hotel section (from bills) ──────────────────────────────────────────────
+    (bills || []).forEach((bill) => {
+      const b = bill.bill || bill;
+      const bookingDetails = b.bookingDetails || bill.bookingDetails || {};
+
+      // Date
+      const rawDate = b.checkout_date || b.checkoutDate || b.date || bill.date || bill.checkout_date || bookingDetails.checkOut || "";
+      const dateObj = rawDate ? new Date(rawDate) : null;
+      const dateStr = dateObj && !isNaN(dateObj) ? dateObj.toLocaleDateString("en-IN") : "—";
+
+      // Bill number
+      const billNo = b.billNumber || bill.billNumber || b.bill_number || bill.bill_number || b.id || bill.id || "—";
+
+      // Room charges (sum of room_charges object values)
+      const roomChargesObj = b.room_charges || bill.room_charges || bookingDetails.room_charges || {};
+      let totalRoomCharges = 0;
+      if (typeof roomChargesObj === "object" && roomChargesObj !== null) {
+        Object.values(roomChargesObj).forEach((v) => {
+          totalRoomCharges += parseFloat(v) || 0;
+        });
+      }
+      if (totalRoomCharges === 0) {
+        totalRoomCharges = parseFloat(b.roomCharges || bill.roomCharges || bookingDetails.roomCharges || 0);
+      }
+
+      // Grand total (includes food/extras)
+      const grandTotal = parseFloat(
+        b.grandTotal || bill.grandTotal || b.total_amount || bill.total_amount || b.totalAmount || bill.totalAmount || 0
+      );
+
+      // Discount
+      const discount = parseFloat(
+        b.discount_amount || bill.discount_amount || bookingDetails.discountAmount || bookingDetails.discount_amount || b.discountAmount || 0
+      );
+
+      // Taxable = room charges - discount
+      const taxableAmount = Math.max(0, totalRoomCharges - discount);
+
+      // CGST & SGST at 2.5% each
+      const cgst = Math.round((taxableAmount * 2.5) / 100);
+      const sgst = Math.round((taxableAmount * 2.5) / 100);
+
+      rows.push({
+        date: dateStr,
+        bill_no: String(billNo),
+        section: "Hotel",
+        total_bill_with_food: grandTotal,
+        total_bill_room_only: totalRoomCharges,
+        taxable_amount: taxableAmount,
+        cgst,
+        sgst,
+        _rawDate: dateObj,
+      });
+    });
+
+    // ── Restaurant section (from restaurantOrders) ──────────────────────────────
+    (restaurantOrders || []).forEach((order) => {
+      if (order.cancel === true || order.cancelled === true) return;
+
+      const rawDate = order.date || order.createdAt || order.created_at || order.orderDate || "";
+      const dateObj = rawDate ? new Date(rawDate) : null;
+      const dateStr = dateObj && !isNaN(dateObj) ? dateObj.toLocaleDateString("en-IN") : "—";
+
+      const billNo = order.billNo || order.bill_no || order.orderNumber || order.order_number || order.id || "—";
+      const subtotal = parseFloat(order.subtotal || order.subTotal || order.sub_total || 0);
+      const totalAmount = parseFloat(order.totalAmount || order.total_amount || order.grandTotal || subtotal || 0);
+
+      // CGST & SGST
+      const cgst = order.cgst != null ? parseFloat(order.cgst) : Math.round((subtotal * 2.5) / 100);
+      const sgst = order.sgst != null ? parseFloat(order.sgst) : Math.round((subtotal * 2.5) / 100);
+
+      rows.push({
+        date: dateStr,
+        bill_no: String(billNo),
+        section: "Restaurant",
+        total_bill_with_food: totalAmount,
+        total_bill_room_only: 0,
+        taxable_amount: subtotal,
+        cgst,
+        sgst,
+        _rawDate: dateObj,
+      });
+    });
+
+    // Sort by date descending
+    rows.sort((a, b) => ((b._rawDate || 0) - (a._rawDate || 0)));
+
+    return rows;
+  };
+
   const processOccupancyData = () => {
     const totalRooms =
       Array.isArray(rooms) && rooms.length > 0 ? rooms.length : 18;
@@ -1097,53 +1246,86 @@ const ReportGenerator = () => {
     const todayMs = today.getTime();
     const todayKey = toYMD(today);
 
-    // 1. Process from saved Day End reports ONLY for past days (strictly before today)
+    // Current live room counts from rooms array
+    const liveDirtyCount = (rooms || []).filter((rm) => {
+      const st = String(rm.status || "").toLowerCase().trim();
+      return st === "dirty" || st.includes("dirty");
+    }).length;
+
+    const liveUnderMaintCount = (rooms || []).filter((rm) => {
+      const st = String(rm.status || "").toLowerCase().trim();
+      return (
+        st === "under maintenance" ||
+        st === "undermaintenance" ||
+        st === "maintenance" ||
+        st.includes("maintenance")
+      );
+    }).length;
+
+    // Helper to extract status counts from a report record safely
+    const extractReportStatusCounts = (r) => {
+      const rsc = r.summary?.roomStatusCounts || r.roomStatusCounts || {};
+      const roomData = r.roomData || {};
+
+      let occ = 0;
+      let dirty = 0;
+      let maint = 0;
+      let vac = 0;
+
+      // Check all possible key casing in roomStatusCounts map
+      Object.entries(rsc).forEach(([k, val]) => {
+        const key = String(k).toLowerCase().trim().replace(/\s+|_|-/g, "");
+        const num = Number(val) || 0;
+        if (key === "occupied") occ += num;
+        else if (key === "dirty") dirty += num;
+        else if (key === "undermaintenance" || key === "maintenance") maint += num;
+        else if (key === "vacant" || key === "available") vac += num;
+      });
+
+      // Check roomData arrays if counts were 0
+      if (dirty === 0 && Array.isArray(roomData.dirty)) dirty = roomData.dirty.length;
+      if (maint === 0) {
+        if (Array.isArray(roomData.under_maintenance)) maint = roomData.under_maintenance.length;
+        else if (Array.isArray(roomData.undermaintenance)) maint = roomData.undermaintenance.length;
+        else if (Array.isArray(roomData.maintenance)) maint = roomData.maintenance.length;
+      }
+      if (occ === 0 && Array.isArray(roomData.occupied)) occ = roomData.occupied.length;
+      if (vac === 0 && Array.isArray(roomData.vacant)) vac = roomData.vacant.length;
+
+      return { occ, dirty, maint, vac };
+    };
+
+    // 1. Process from saved Day End / daily reports ONLY for past days (strictly before today)
     (reports || []).forEach((r) => {
       if (!r || !r.date) return;
       const dObj = toDateObj(r.date);
       if (!dObj) return;
       dObj.setHours(0, 0, 0, 0);
-      // Skip if report date is today or in the future
+
+      // STRICTLY skip today or future saved reports so today is always computed live from current state
       if (dObj.getTime() >= todayMs) return;
 
       const dKey = toYMD(dObj);
-      const roomStatusCounts =
-        r.summary?.roomStatusCounts || r.roomStatusCounts || {};
-      const occupied = Number(
-        roomStatusCounts["occupied"] ?? r.roomData?.occupied?.length ?? 0
-      );
-      const dirty = Number(
-        roomStatusCounts["dirty"] ?? r.roomData?.dirty?.length ?? 0
-      );
-      const underMaintenance = Number(
-        roomStatusCounts["undermaintenance"] ??
-        roomStatusCounts["maintenance"] ??
-        r.roomData?.under_maintenance?.length ??
-        0
-      );
-      const vacant = Number(
-        roomStatusCounts["vacant"] ?? r.roomData?.vacant?.length ?? 0
-      );
-      const calcTotal = occupied + dirty + underMaintenance + vacant;
-      const effectiveTotal = calcTotal > 0 ? calcTotal : totalRooms;
-      const rate =
-        effectiveTotal > 0 ? (occupied / effectiveTotal) * 100 : 0;
+      const { occ, dirty, maint, vac } = extractReportStatusCounts(r);
+
+      const effectiveTotal = totalRooms > 0 ? totalRooms : Math.max(1, occ + dirty + maint + vac);
+      const vacant = vac > 0
+        ? vac
+        : Math.max(0, effectiveTotal - occ - dirty - maint);
+      const rate = effectiveTotal > 0 ? (occ / effectiveTotal) * 100 : 0;
 
       occupancyByDate.set(dKey, {
         date: dKey,
         total_rooms: effectiveTotal,
-        occupied,
-        vacant:
-          vacant > 0
-            ? vacant
-            : Math.max(0, effectiveTotal - occupied - dirty - underMaintenance),
+        occupied: occ,
+        vacant,
         dirty,
-        under_maintenance: underMaintenance,
+        under_maintenance: maint,
         occupancy_rate: rate.toFixed(2) + "%",
       });
     });
 
-    // 2. Compute dynamic occupancy for candidate dates (including today, past 30 days, future booking dates)
+    // 2. Compute dynamic occupancy for candidate dates (including today, dateRange, bookings)
     const candidateDates = new Set();
     candidateDates.add(todayKey);
 
@@ -1158,24 +1340,20 @@ const ReportGenerator = () => {
         curr.setDate(curr.getDate() + 1);
       }
     } else {
-      // Default: past 14 days and next 7 days for visibility into tomorrow/upcoming
-      for (let i = -7; i <= 14; i++) {
+      // Default: past 30 days up to today
+      for (let i = 0; i <= 30; i++) {
         const d = new Date(today);
         d.setDate(d.getDate() - i);
         candidateDates.add(toYMD(d));
       }
     }
 
-    // Also collect dates from any bookings (check-in to check-out)
-    (bookings || []).forEach((b) => {
-      const cin = toDateObj(b.checkin_date || b.checkIn);
-      const cout = toDateObj(b.checkout_date || b.checkOut);
-      if (cin) candidateDates.add(toYMD(cin));
-      if (cout) candidateDates.add(toYMD(cout));
-    });
+    // Helper: Extract check-in / check-out robustly
+    const getCI = (b) => toDateObj(b?.checkin_date || b?.checkIn || b?.check_in || b?.dates?.checkIn || b?.dates?.checkin || b?.stay?.checkIn);
+    const getCO = (b) => toDateObj(b?.checkout_date || b?.checkOut || b?.check_out || b?.dates?.checkOut || b?.dates?.checkout || b?.stay?.checkOut);
 
     candidateDates.forEach((dateStr) => {
-      // Only skip if already calculated from verified past Day End report
+      // Skip if already computed from saved report (past days)
       if (occupancyByDate.has(dateStr)) return;
 
       const targetDate = toDateObj(dateStr);
@@ -1184,103 +1362,100 @@ const ReportGenerator = () => {
       const targetTime = targetDate.getTime();
       const isToday = dateStr === todayKey;
 
-      if (isToday) {
-        // TODAY: Calculate real-time occupancy from active rooms and checked-in/in-house bookings
-        const occupiedRoomsCount = (rooms || []).filter((rm) => {
-          const st = String(rm.status || "").toLowerCase();
-          return st === "occupied";
-        }).length;
+      // Status counters from live rooms
+      const dirtyCount = isToday ? liveDirtyCount : 0;
+      const underMaintCount = isToday ? liveUnderMaintCount : 0;
 
-        const dirtyCount = (rooms || []).filter((rm) => {
-          const st = String(rm.status || "").toLowerCase();
-          return st.includes("dirty");
-        }).length;
+      // Count occupied rooms from live rooms directly if today
+      const liveOccupiedRoomCount = (rooms || []).filter((rm) => {
+        const st = String(rm.status || "").toLowerCase().trim();
+        return st === "occupied";
+      }).length;
 
-        const underMaintCount = (rooms || []).filter((rm) => {
-          const st = String(rm.status || "").toLowerCase();
-          return st.includes("maintenance");
-        }).length;
+      // Count active bookings covering targetDate
+      let activeBookingsRoomCount = 0;
+      (bookings || []).forEach((b) => {
+        const st = String(b.status || "").toLowerCase().trim();
+        if (st === "cancelled" || st === "rejected" || st === "no-show" || st === "noshow") return;
+        if (!isToday && (st === "checked-out" || st === "checkedout")) return;
 
-        // Count active checked-in bookings that have not yet checked out
-        const activeBookingsCount = (bookings || []).filter((b) => {
-          const st = String(b.status || "").toLowerCase();
-          if (st === "cancelled" || st === "rejected" || st === "checked-out" || st === "checkedout") {
-            return false;
-          }
-          const cin = toDateObj(b.checkin_date || b.checkIn);
-          const cout = toDateObj(b.checkout_date || b.checkOut);
-          const cinMs = cin ? new Date(cin).setHours(0,0,0,0) : null;
-          const coutMs = cout ? new Date(cout).setHours(23,59,59,999) : null;
+        const cin = getCI(b);
+        const cout = getCO(b);
+        const cinMs = cin ? new Date(cin).setHours(0, 0, 0, 0) : null;
+        const coutMs = cout ? new Date(cout).setHours(23, 59, 59, 999) : null;
 
-          // If checked in or in-house, consider occupied
+        const numRooms = Number(
+          b.no_of_rooms ||
+          b.numberOfRooms ||
+          b.number_of_rooms ||
+          (Array.isArray(b.room_id) ? b.room_id.length : (b.room_id ? 1 : 0)) ||
+          (Array.isArray(b.rooms) ? b.rooms.length : 0) ||
+          1
+        );
+
+        // Check active in-house or confirmed stay
+        const isActiveStatus = (
+          st === "checked-in" ||
+          st === "checkedin" ||
+          st === "in-house" ||
+          st === "inhouse" ||
+          st === "occupied" ||
+          st === "confirmed" ||
+          st === "booked" ||
+          st === "reserved"
+        );
+
+        if (isToday && isActiveStatus) {
+          // If status is checked-in or in-house, it is occupied today even if checkout is today
           if (st === "checked-in" || st === "checkedin" || st === "in-house" || st === "inhouse" || st === "occupied") {
-            return true;
+            activeBookingsRoomCount += numRooms;
+            return;
           }
-          // Reserved/confirmed booking covering today
+          // Reserved/confirmed covering today
           if (cinMs && coutMs && targetTime >= cinMs && targetTime <= coutMs) {
-            return true;
+            activeBookingsRoomCount += numRooms;
+            return;
           }
-          return false;
-        }).length;
+        }
 
-        const finalOccupied = Math.max(occupiedRoomsCount, activeBookingsCount);
-        const effectiveTotal = Math.max(totalRooms, finalOccupied);
-        const vacantCount = Math.max(0, effectiveTotal - finalOccupied - dirtyCount - underMaintCount);
-        const rate = effectiveTotal > 0 ? (finalOccupied / effectiveTotal) * 100 : 0;
+        // Generic date match
+        if (cinMs && coutMs && targetTime >= cinMs && targetTime <= coutMs) {
+          activeBookingsRoomCount += numRooms;
+        }
+      });
 
-        occupancyByDate.set(dateStr, {
-          date: dateStr,
-          total_rooms: effectiveTotal,
-          occupied: finalOccupied,
-          vacant: vacantCount,
-          dirty: dirtyCount,
-          under_maintenance: underMaintCount,
-          occupancy_rate: rate.toFixed(2) + "%",
-        });
-      } else {
-        // Any other date (historical or future): count bookings active on targetDate
-        let occupiedCount = 0;
-        (bookings || []).forEach((b) => {
-          const st = String(b.status || "").toLowerCase();
-          if (st === "cancelled" || st === "rejected" || st === "no-show" || st === "noshow") return;
+      const finalOccupied = isToday
+        ? Math.max(liveOccupiedRoomCount, activeBookingsRoomCount)
+        : activeBookingsRoomCount;
 
-          const cin = toDateObj(b.checkin_date || b.checkIn);
-          const cout = toDateObj(b.checkout_date || b.checkOut);
-          if (!cin) return;
-          const cinD = new Date(cin);
-          cinD.setHours(0, 0, 0, 0);
-          const coutD = cout ? new Date(cout) : new Date(cinD);
-          coutD.setHours(23, 59, 59, 999);
+      const effectiveTotal = totalRooms > 0 ? totalRooms : Math.max(finalOccupied, 1);
+      const vacantCount = Math.max(0, effectiveTotal - finalOccupied - dirtyCount - underMaintCount);
+      const rate = effectiveTotal > 0 ? (finalOccupied / effectiveTotal) * 100 : 0;
 
-          if (targetTime >= cinD.getTime() && targetTime <= coutD.getTime()) {
-            const numRooms = Number(b.no_of_rooms || b.number_of_rooms || (Array.isArray(b.room_id) ? b.room_id.length : 1)) || 1;
-            occupiedCount += numRooms;
-          }
-        });
-
-        const effectiveTotal = totalRooms > 0 ? totalRooms : Math.max(occupiedCount, 1);
-        const finalOccupied = Math.min(occupiedCount, effectiveTotal);
-        const vacantCount = Math.max(0, effectiveTotal - finalOccupied);
-        const rate = effectiveTotal > 0 ? (finalOccupied / effectiveTotal) * 100 : 0;
-
-        occupancyByDate.set(dateStr, {
-          date: dateStr,
-          total_rooms: effectiveTotal,
-          occupied: finalOccupied,
-          vacant: vacantCount,
-          dirty: 0,
-          under_maintenance: 0,
-          occupancy_rate: rate.toFixed(2) + "%",
-        });
-      }
+      occupancyByDate.set(dateStr, {
+        date: dateStr,
+        total_rooms: effectiveTotal,
+        occupied: finalOccupied,
+        vacant: vacantCount,
+        dirty: dirtyCount,
+        under_maintenance: underMaintCount,
+        occupancy_rate: rate.toFixed(2) + "%",
+      });
     });
 
-    return Array.from(occupancyByDate.values()).sort(
+    let results = Array.from(occupancyByDate.values());
+    if (!dateRange?.from) {
+      results = results.filter((r) => {
+        const d = toDateObj(r.date);
+        return d && d.getTime() <= (todayMs + 86400000 - 1);
+      });
+    }
+    return results.sort(
       (a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0)
     );
   };
 
-    // Helper to process restaurant order data
+      // Helper to process restaurant order data
   const processRestaurantData = (ordersList) => {
     const rows = [];
 
@@ -1672,7 +1847,13 @@ const ReportGenerator = () => {
     }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
   };
 
-  // Helper to process stock purchase register
+  const stockVendorOptions = useMemo(() => {
+    return Array.isArray(stockHistory)
+      ? [...new Set(stockHistory.map((l) => l.vendorName).filter(Boolean))].sort()
+      : [];
+  }, [stockHistory]);
+
+  // Helper to process stock purchase register and vendor-wise report
   const processStockPurchasesData = () => {
     const purchaseLogs = (stockHistory || []).filter((log) => log.actionType === "purchase-entry");
 
@@ -1686,12 +1867,19 @@ const ReportGenerator = () => {
         billNo: log.billNo || "—",
         vendorName: log.vendorName || "—",
         itemName: log.itemName || "—",
+        category: log.category || "—",
         quantity: q,
         unit: log.unit || "pcs",
         price: p,
         total_amount: Number((q * p).toFixed(2)),
       };
-    }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
+    }).sort((a, b) => {
+      if (selectedReport === "stock_vendor_report") {
+        const vComp = (a.vendorName || "").localeCompare(b.vendorName || "");
+        if (vComp !== 0) return vComp;
+      }
+      return (new Date(b.date) || 0) - (new Date(a.date) || 0);
+    });
   };
 
   // Fetch data based on selected report
@@ -1700,7 +1888,7 @@ const ReportGenerator = () => {
       if (!selectedReport) return;
 
       try {
-        if (selectedReport === "stock_inventory" || selectedReport === "stock_issues" || selectedReport === "stock_purchases") {
+        if (selectedReport === "stock_inventory" || selectedReport === "stock_issues" || selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") {
           const instId = institutionData?.institutionId || defaultInstitutionId;
           let allStock = [];
           let lastEvaluatedKey = null;
@@ -1759,6 +1947,9 @@ const ReportGenerator = () => {
             break;
 
           case "night":
+            if (typeof listTotalBill === "function") {
+              await listTotalBill();
+            }
           case "occupancy":
             if (typeof fetchReports === "function") {
               await fetchReports();
@@ -1804,6 +1995,10 @@ const ReportGenerator = () => {
             if (typeof fetchGuests === "function") {
               await fetchGuests();
             }
+            break;
+          case "gst_report":
+            await listTotalBill();
+            await fetchRestaurantOrders();
             break;
           default:
             break;
@@ -2011,13 +2206,26 @@ const ReportGenerator = () => {
                   bd.totalAmount ||
                   0
               );
-            const paymentMode =
+            let paymentMode =
               bd.paymentMode ||
               bd.payment_mode ||
               bill?.payment_mode ||
               bill?.bill?.paymentMode ||
               bh.paymentMode ||
               "N/A";
+
+            const multiSplits =
+              bill?.multi_payments ||
+              bill?.bill?.multi_payments ||
+              bd?.multi_payments;
+
+            if (
+              (paymentMode === "Multi-Payment" || paymentMode === "Multiple") &&
+              Array.isArray(multiSplits) &&
+              multiSplits.length > 0
+            ) {
+              paymentMode = "Multi (" + multiSplits.map((s) => s.mode + ": ₹" + s.amount).join(", ") + ")";
+            }
             const gstNumber =
               bd.gstNumber ||
               bd.gst_number ||
@@ -2146,12 +2354,25 @@ const ReportGenerator = () => {
               booking.bill_no_sequence ||
               "";
 
-            const paymentMode =
+            let paymentMode =
               booking.payment_mode ||
               booking.paymentMode ||
               booking.settlement_payment_mode ||
               booking.advance_payment_mode ||
               "N/A";
+
+            const bookingMultiSplits =
+              booking.multi_payments ||
+              booking.breakdown?.booking?.multi_payments ||
+              booking.breakdown?.bookingDetails?.multi_payments;
+
+            if (
+              (paymentMode === "Multi-Payment" || paymentMode === "Multiple") &&
+              Array.isArray(bookingMultiSplits) &&
+              bookingMultiSplits.length > 0
+            ) {
+              paymentMode = "Multi (" + bookingMultiSplits.map((s) => s.mode + ": ₹" + s.amount).join(", ") + ")";
+            }
 
             const remarks =
               booking.notes ||
@@ -2183,10 +2404,14 @@ const ReportGenerator = () => {
           data = processStockIssuesData();
           break;
         case "stock_purchases":
+        case "stock_vendor_report":
           data = processStockPurchasesData();
           break;
         case "police":
           data = processPoliceReportData();
+          break;
+        case "gst_report":
+          data = processGstReportData();
           break;
         default:
           data = [];
@@ -2199,7 +2424,8 @@ const ReportGenerator = () => {
       selectedReport !== "rooms" &&
       selectedReport !== "companies" &&
       selectedReport !== "stock_inventory" &&
-      selectedReport !== "settlement"
+      selectedReport !== "settlement" &&
+      selectedReport !== "gst_report"
     ) {
       const fromDate = new Date(
         dateRange.from.getFullYear(),
@@ -2715,40 +2941,120 @@ const ReportGenerator = () => {
       const rowsMap = new Map();
       const totalInventoryRooms = (rooms || []).length || 20;
 
-      const dayEndData = data.filter((r) => r && r.dayEndStatus);
-
-      // Group restaurant orders by date string (YYYY-MM-DD)
+      // Group restaurant orders by normalized date string (YYYY-MM-DD)
       const restOrdersByDate = new Map();
       (restaurantOrders || []).forEach((ord) => {
-        const orderDateStr = ord.orderDate
-          ? new Date(ord.orderDate).toISOString().split("T")[0]
-          : ord.createdAt
-          ? new Date(Number(ord.createdAt)).toISOString().split("T")[0]
-          : null;
-        if (!orderDateStr) return;
-        if (!restOrdersByDate.has(orderDateStr)) {
-          restOrdersByDate.set(orderDateStr, []);
+        if (ord.cancel === true || ord.cancelled === true) return;
+        const dObj = toDateObj(ord.orderDate || ord.date || ord.createdAt || ord.created_at);
+        if (!dObj) return;
+        const ymd = toYMD(dObj);
+        if (!restOrdersByDate.has(ymd)) {
+          restOrdersByDate.set(ymd, []);
         }
-        restOrdersByDate.get(orderDateStr).push(ord);
+        restOrdersByDate.get(ymd).push(ord);
       });
 
-      // Build daily night audit metrics
-      (dayEndData || []).forEach((r) => {
-        const dKey = r.date;
-        if (!dKey) return;
+      // Group bills by checkout/bill date string (YYYY-MM-DD) as fallback for room revenue
+      const billsByDate = new Map();
+      (bills || []).forEach((bill) => {
+        const b = bill.bill || bill;
+        const rawDate = b.checkout_date || b.checkoutDate || b.date || bill.date || bill.checkout_date || b.bookingDetails?.checkOut;
+        const dObj = toDateObj(rawDate);
+        if (!dObj) return;
+        const ymd = toYMD(dObj);
+        if (!billsByDate.has(ymd)) {
+          billsByDate.set(ymd, []);
+        }
+        billsByDate.get(ymd).push(b);
+      });
 
-        const occupiedRoomsCount = r.summary?.roomStatusCounts?.occupied || r.occupied_rooms || 0;
+      // Consider all reports or those with dayEndStatus/summary/date
+      const nightReports = (data || []).filter((r) => r && (r.dayEndStatus || r.reportType === "daily_end" || r.date));
+
+      (nightReports || []).forEach((r) => {
+        const dObj = toDateObj(r.date);
+        if (!dObj) return;
+        const ymdKey = toYMD(dObj);
+        const displayDate = dObj.toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        });
+
+        const occupiedRoomsCount = Number(
+          r.summary?.roomStatusCounts?.occupied ??
+          r.roomStatusCounts?.Occupied ??
+          r.roomStatusCounts?.occupied ??
+          r.occupiedRoomCount ??
+          r.occupied_rooms ??
+          0
+        );
         const totalRoomsAvailable = totalInventoryRooms;
         const roomNightsSold = occupiedRoomsCount;
 
-        // Room revenue for the day from day-end summary or collections
-        const roomRev = Number(
+        // Fallback 1: settled bills on this date
+        const dateBills = billsByDate.get(ymdKey) || [];
+        const fallbackBillRoomRev = dateBills.reduce((acc, b) => {
+          const roomChargesObj = b.room_charges || b.bookingDetails?.room_charges || {};
+          let rc = 0;
+          if (typeof roomChargesObj === "object" && roomChargesObj !== null) {
+            Object.values(roomChargesObj).forEach((v) => { rc += parseFloat(v) || 0; });
+          }
+          if (rc === 0) rc = parseFloat(b.roomCharges || b.room_revenue || 0);
+          return acc + rc;
+        }, 0);
+
+        // Fallback 2: checkinData or checkoutData embedded inside dailyEnd report itself
+        const reportCheckouts = r.checkoutData || [];
+        const reportCheckoutRev = reportCheckouts.reduce((acc, c) => {
+          return acc + Number(c.roomRevenue || c.room_revenue || c.totalAmount || 0);
+        }, 0);
+
+        // Fallback 3: checkinBookings / occupied rooms active charges for this date
+        let inHouseNightRev = 0;
+        if (Array.isArray(bookings)) {
+          bookings.forEach((bk) => {
+            const st = String(bk.status || "").toLowerCase();
+            if (st === "cancelled" || st === "rejected") return;
+            const cin = toDateObj(bk.checkin_date || bk.checkIn);
+            const cout = toDateObj(bk.checkout_date || bk.checkOut);
+            if (!cin || !cout) return;
+            const t = dObj.getTime();
+            const cinT = new Date(cin.getFullYear(), cin.getMonth(), cin.getDate()).getTime();
+            const coutT = new Date(cout.getFullYear(), cout.getMonth(), cout.getDate()).getTime();
+            // In-house on that night
+            if (t >= cinT && t < coutT) {
+              const charges = bk.room_charges || {};
+              let dayCharge = charges[ymdKey] || charges[displayDate] || charges[r.date];
+              if (!dayCharge && typeof charges === "object") {
+                const vals = Object.values(charges).map(Number).filter((v) => !isNaN(v) && v > 0);
+                if (vals.length > 0) dayCharge = vals[0];
+              }
+              inHouseNightRev += Number(dayCharge || bk.price_per_night || bk.rate || 0);
+            }
+          });
+        }
+
+        // Room revenue for the day from all possible structures
+        let roomRev = Number(
+          r.financialSummary?.revenueBreakdown?.totalRoomRevenue ??
           r.financialSummary?.roomRevenue ??
-          r.room_revenue ??
-          r.summary?.roomRevenue ??
           r.financialSummary?.totalCollection ??
+          r.room_revenue ??
+          r.roomRevenue ??
+          r.summary?.roomRevenue ??
           0
         );
+
+        if (roomRev === 0 && fallbackBillRoomRev > 0) {
+          roomRev = fallbackBillRoomRev;
+        }
+        if (roomRev === 0 && reportCheckoutRev > 0) {
+          roomRev = reportCheckoutRev;
+        }
+        if (roomRev === 0 && inHouseNightRev > 0) {
+          roomRev = inHouseNightRev;
+        }
 
         // ARR = Room Revenue / Total Room Nights Sold
         const arr = roomNightsSold > 0 ? Math.round((roomRev / roomNightsSold) * 100) / 100 : 0;
@@ -2758,40 +3064,73 @@ const ReportGenerator = () => {
           ? `${((roomNightsSold / totalRoomsAvailable) * 100).toFixed(1)}%`
           : "0.0%";
 
-        // Restaurant channel breakdown from restaurantOrders for this date
-        const dayRestOrders = restOrdersByDate.get(dKey) || [];
-        let restDineInRev = 0;
-        let roomServiceRev = 0;
-        let zomatoRev = 0;
-        let swiggyRev = 0;
-        let banquetRev = 0;
-        let boardRoomRev = 0;
+        // Restaurant channel breakdown: Check backend financialSummary first, else compute from restaurantOrders
+        const revBreakdown = r.financialSummary?.revenueBreakdown || {};
+        const restChannelSummary = r.summary?.restaurantChannels || {};
 
-        dayRestOrders.forEach((o) => {
-          const amt = Number(o.totalAmount || o.finalTotal || o.total || 0);
-          const tbl = String(o.tableName || "").toLowerCase();
-          const src = String(o.orderSource || "").toLowerCase();
+        let restDineInRev = Number(
+          revBreakdown.restaurantRevenue ??
+          restChannelSummary.restaurant?.revenue ??
+          0
+        );
+        let roomServiceRev = Number(
+          revBreakdown.roomServiceRevenue ??
+          restChannelSummary.roomService?.revenue ??
+          0
+        );
+        let zomatoRev = Number(
+          revBreakdown.zomatoRevenue ??
+          restChannelSummary.zomato?.revenue ??
+          0
+        );
+        let swiggyRev = Number(
+          revBreakdown.swiggyRevenue ??
+          restChannelSummary.swiggy?.revenue ??
+          0
+        );
+        let banquetRev = Number(
+          revBreakdown.banquetRevenue ??
+          restChannelSummary.banquet?.revenue ??
+          0
+        );
+        let boardRoomRev = Number(
+          revBreakdown.boardRoomRevenue ??
+          restChannelSummary.boardRoom?.revenue ??
+          0
+        );
 
-          if (tbl.includes("room") || tbl.includes("hotel") || src.includes("room")) {
-            roomServiceRev += amt;
-          } else if (tbl.startsWith("zomato") || src.includes("zomato")) {
-            zomatoRev += amt;
-          } else if (tbl.startsWith("swiggy") || src.includes("swiggy")) {
-            swiggyRev += amt;
-          } else if (tbl.includes("banquet") || src.includes("banquet")) {
-            banquetRev += amt;
-          } else if (tbl.includes("board") || src.includes("board")) {
-            boardRoomRev += amt;
-          } else {
-            restDineInRev += amt;
-          }
-        });
+        // If backend channels are all 0, compute from matched restaurant orders for this date
+        const hasBackendFB = (restDineInRev + roomServiceRev + zomatoRev + swiggyRev + banquetRev + boardRoomRev) > 0;
+        if (!hasBackendFB) {
+          const dayRestOrders = restOrdersByDate.get(ymdKey) || [];
+          dayRestOrders.forEach((o) => {
+            const amt = Number(o.totalAmount || o.finalTotal || o.total || o.subtotal || 0);
+            const tbl = String(o.tableName || "").toLowerCase();
+            const src = String(o.orderSource || "").toLowerCase();
+
+            if (tbl.includes("room") || tbl.includes("hotel") || src.includes("room")) {
+              roomServiceRev += amt;
+            } else if (tbl.startsWith("zomato") || src.includes("zomato")) {
+              zomatoRev += amt;
+            } else if (tbl.startsWith("swiggy") || src.includes("swiggy")) {
+              swiggyRev += amt;
+            } else if (tbl.includes("banquet") || src.includes("banquet")) {
+              banquetRev += amt;
+            } else if (tbl.includes("board") || src.includes("board")) {
+              boardRoomRev += amt;
+            } else {
+              restDineInRev += amt;
+            }
+          });
+        }
 
         const dayTotalFB = restDineInRev + roomServiceRev + zomatoRev + swiggyRev + banquetRev + boardRoomRev;
         const totalDayRev = roomRev + dayTotalFB;
 
-        rowsMap.set(dKey, {
-          date: dKey,
+        rowsMap.set(ymdKey, {
+          date: displayDate,
+          _sortDate: dObj,
+          _ymd: ymdKey,
           total_rooms_available: totalRoomsAvailable,
           room_nights_sold: roomNightsSold,
           room_revenue: roomRev,
@@ -2804,14 +3143,15 @@ const ReportGenerator = () => {
           banquet_revenue: banquetRev,
           board_room_revenue: boardRoomRev,
           total_revenue: totalDayRev,
-          mtd_room_revenue: 0, // Calculated below after date sorting
+          mtd_room_revenue: 0,
           mtd_fb_revenue: 0,
           mtd_total_revenue: 0,
         });
       });
 
       let rows = Array.from(rowsMap.values());
-      rows.sort((a, b) => new Date(a.date) - new Date(b.date));
+      // Sort chronologically ascending for correct cumulative MTD calculation
+      rows.sort((a, b) => a._sortDate - b._sortDate);
 
       // Compute MTD (Month Till Date) cumulative sums grouped by year-month
       let curMonth = "";
@@ -2820,7 +3160,7 @@ const ReportGenerator = () => {
       let mtdTotal = 0;
 
       rows.forEach((row) => {
-        const rowMonth = String(row.date).slice(0, 7); // YYYY-MM
+        const rowMonth = String(row._ymd).slice(0, 7); // YYYY-MM
         if (rowMonth !== curMonth) {
           curMonth = rowMonth;
           mtdRoom = 0;
@@ -2838,7 +3178,8 @@ const ReportGenerator = () => {
         row.mtd_total_revenue = mtdTotal;
       });
 
-      if (dateRange.from && dateRange.to) {
+      // Filter by user selected date range if provided
+      if (dateRange?.from && dateRange?.to) {
         const fromDate = new Date(
           dateRange.from.getFullYear(),
           dateRange.from.getMonth(),
@@ -2847,20 +3188,21 @@ const ReportGenerator = () => {
         const toDate = new Date(
           dateRange.to.getFullYear(),
           dateRange.to.getMonth(),
-          dateRange.to.getDate()
+          dateRange.to.getDate(),
+          23, 59, 59, 999
         );
         rows = rows.filter((r) => {
-          const d = toDateObj(r.date);
+          const d = r._sortDate;
           if (!d) return false;
-          const dOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-          return dOnly >= fromDate && dOnly <= toDate;
+          return d >= fromDate && d <= toDate;
         });
       }
 
+      // Display latest first
+      rows.sort((a, b) => b._sortDate - a._sortDate);
+
       data = rows;
     }
-
-    // Occupancy report data is already prepared and formatted by processOccupancyData
 
     // Transform data for restaurant report
     if (selectedReport === "restaurant") {
@@ -2918,6 +3260,15 @@ const ReportGenerator = () => {
       }
     }
 
+    // Apply stock purchases specific filters (Vendor filter)
+    if (selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") {
+      if (stockFilters.vendor && stockFilters.vendor !== "all") {
+        data = data.filter(
+          (item) => String(item.vendorName || "").toLowerCase() === String(stockFilters.vendor).toLowerCase()
+        );
+      }
+    }
+
     setReportData(data);
     setCurrentPage(1);
   }, [
@@ -2950,7 +3301,7 @@ const ReportGenerator = () => {
   const paginatedData = reportData.slice(startIndex, endIndex);
 
   // Format data for export
-  const formatDataForExport = (data, columns) => {
+  const formatDataForExport = (data, columns, forPdf = false) => {
     return data.map((item) => {
       const formattedItem = {};
       columns.forEach((column) => {
@@ -3009,7 +3360,46 @@ const ReportGenerator = () => {
         }
       }
 
-      const formattedData = formatDataForExport(reportData, columns);
+      // GST Report: two-sheet Excel export
+      if (selectedReport === "gst_report") {
+        const hotelRows = reportData.filter((r) => r.section === "Hotel");
+        const restRows = reportData.filter((r) => r.section === "Restaurant");
+
+        const hotelCols = [
+          { key: "date", label: "Date" },
+          { key: "bill_no", label: "Bill Number" },
+          { key: "total_bill_with_food", label: "Total Bill (incl. Food)" },
+          { key: "total_bill_room_only", label: "Total Bill (Room Only)" },
+          { key: "taxable_amount", label: "Taxable Amount" },
+          { key: "cgst", label: "CGST (2.5%)" },
+          { key: "sgst", label: "SGST (2.5%)" },
+        ];
+        const restCols = [
+          { key: "date", label: "Date" },
+          { key: "bill_no", label: "Bill No" },
+          { key: "total_bill_with_food", label: "Total Bill Amount" },
+          { key: "taxable_amount", label: "Taxable Amount" },
+          { key: "cgst", label: "CGST (2.5%)" },
+          { key: "sgst", label: "SGST (2.5%)" },
+        ];
+
+        const fmtHotel = formatDataForExport(hotelRows, hotelCols);
+        const fmtRest = formatDataForExport(restRows, restCols);
+
+        const wb = XLSX.utils.book_new();
+        const wsHotel = XLSX.utils.json_to_sheet(fmtHotel);
+        XLSX.utils.book_append_sheet(wb, wsHotel, "Hotel GST");
+        const wsRest = XLSX.utils.json_to_sheet(fmtRest);
+        XLSX.utils.book_append_sheet(wb, wsRest, "Restaurant GST");
+
+        const fileName = `GST_Report_${new Date().toISOString().split("T")[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        toast.success("GST Report Excel downloaded successfully");
+        setIsGenerating(false);
+        return;
+      }
+
+      const formattedData = formatDataForExport(reportData, columns, true);
 
       const ws = XLSX.utils.json_to_sheet(formattedData);
       const wb = XLSX.utils.book_new();
@@ -3038,6 +3428,57 @@ const ReportGenerator = () => {
 
     setIsGenerating(true);
     try {
+      // GST Report: two-section landscape PDF
+      if (selectedReport === "gst_report") {
+        const doc = new jsPDF({ orientation: "landscape" });
+        const hotelRows = reportData.filter((r) => r.section === "Hotel");
+        const restRows = reportData.filter((r) => r.section === "Restaurant");
+
+        // Title
+        doc.setFontSize(16);
+        doc.text("GST Report", 14, 15);
+        doc.setFontSize(10);
+        if (dateRange?.from && dateRange?.to) {
+          doc.text(`Period: ${dateRange.from.toLocaleDateString("en-IN")} - ${dateRange.to.toLocaleDateString("en-IN")}`, 14, 22);
+        }
+
+        // Hotel Section
+        doc.setFontSize(12);
+        doc.text("Hotel Room Bills", 14, 32);
+        const hotelHead = [["Date", "Bill No", "Total Bill (incl. Food)", "Total Bill (Room Only)", "Taxable Amount", "CGST (2.5%)", "SGST (2.5%)"]];
+        const hotelBody = hotelRows.map((r) => [r.date, r.bill_no, String(r.total_bill_with_food || "").replace(/^Rs\.\s*/, ""), String(r.total_bill_room_only || "").replace(/^Rs\.\s*/, ""), String(r.taxable_amount || "").replace(/^Rs\.\s*/, ""), String(r.cgst || "").replace(/^Rs\.\s*/, ""), String(r.sgst || "").replace(/^Rs\.\s*/, "")]);
+        const hotelTotals = hotelRows.reduce((acc, r) => ({ twf: acc.twf + (r.total_bill_with_food || 0), tro: acc.tro + (r.total_bill_room_only || 0), ta: acc.ta + (r.taxable_amount || 0), c: acc.c + (r.cgst || 0), s: acc.s + (r.sgst || 0) }), { twf: 0, tro: 0, ta: 0, c: 0, s: 0 });
+        hotelBody.push(["TOTAL", "", hotelTotals.twf, hotelTotals.tro, hotelTotals.ta, hotelTotals.c, hotelTotals.s]);
+
+        autoTable(doc, { head: hotelHead, body: hotelBody, startY: 35, theme: "grid", styles: { fontSize: 8 } });
+
+        // Restaurant Section
+        const restStartY = doc.lastAutoTable.finalY + 15;
+        doc.setFontSize(12);
+        doc.text("Restaurant Orders", 14, restStartY);
+        const restHead = [["Date", "Bill No", "Total Bill Amount", "Taxable Amount", "CGST (2.5%)", "SGST (2.5%)"]];
+        const restBody = restRows.map((r) => [r.date, r.bill_no, String(r.total_bill_with_food || "").replace(/^Rs\.\s*/, ""), String(r.taxable_amount || "").replace(/^Rs\.\s*/, ""), String(r.cgst || "").replace(/^Rs\.\s*/, ""), String(r.sgst || "").replace(/^Rs\.\s*/, "")]);
+        const restTotals = restRows.reduce((acc, r) => ({ twf: acc.twf + (r.total_bill_with_food || 0), ta: acc.ta + (r.taxable_amount || 0), c: acc.c + (r.cgst || 0), s: acc.s + (r.sgst || 0) }), { twf: 0, ta: 0, c: 0, s: 0 });
+        restBody.push(["TOTAL", "", restTotals.twf, restTotals.ta, restTotals.c, restTotals.s]);
+
+        autoTable(doc, { head: restHead, body: restBody, startY: restStartY + 3, theme: "grid", styles: { fontSize: 8 } });
+
+        // Grand Total Summary
+        const grandY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(11);
+        doc.setFont(undefined, "bold");
+        const grandTaxable = hotelTotals.ta + restTotals.ta;
+        const grandCgst = hotelTotals.c + restTotals.c;
+        const grandSgst = hotelTotals.s + restTotals.s;
+        doc.text(`Grand Total — Taxable: ${grandTaxable} | CGST: ${grandCgst} | SGST: ${grandSgst} | Total Tax: ${grandCgst + grandSgst}`, 14, grandY);
+
+        const fileName = `GST_Report_${new Date().toISOString().split("T")[0]}.pdf`;
+        doc.save(fileName);
+        toast.success("GST Report PDF downloaded successfully");
+        setIsGenerating(false);
+        return;
+      }
+
       let config = reportConfigs[selectedReport];
       let columns = config.columns;
 
@@ -3479,6 +3920,7 @@ const ReportGenerator = () => {
     setStockFilters({
       department: "all",
       category: "all",
+      vendor: "all",
     });
   };
 
@@ -3570,10 +4012,13 @@ const ReportGenerator = () => {
                       {Object.entries(reportConfigs)
                         .filter(([key]) => {
                           if (userData?.userType === "store") {
-                            return ["stock_inventory", "stock_issues", "stock_purchases"].includes(key);
+                            return ["stock_inventory", "stock_issues", "stock_purchases", "stock_vendor_report"].includes(key);
                           }
                           if (userData?.userType === "laundry") {
                             return key === "laundry";
+                          }
+                          if (userData?.userType === "housekeeping") {
+                            return !["gst_report"].includes(key);
                           }
                           return true;
                         })
@@ -4041,6 +4486,38 @@ const ReportGenerator = () => {
                       </div>
                     )}
 
+                    {/* Store Purchases Report Filters (Vendor Filter) */}
+                    {(selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-sm text-gray-700 mb-3">
+                          Vendor Filter
+                        </h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Filter by Vendor</Label>
+                            <Select
+                              value={stockFilters.vendor || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, vendor: val }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All Vendors" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Vendors</SelectItem>
+                                {stockVendorOptions.map((v) => (
+                                  <SelectItem key={v} value={v}>
+                                    {v}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <Button
                         onClick={clearFilters}
@@ -4133,6 +4610,35 @@ const ReportGenerator = () => {
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {(selectedReport === "stock_vendor_report" || selectedReport === "stock_purchases") && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-blue-50/70 border border-blue-200 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs font-bold text-blue-900 whitespace-nowrap">Vendor Dropdown:</Label>
+                            <Select
+                              value={stockFilters.vendor || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, vendor: val }))
+                              }
+                            >
+                              <SelectTrigger className="w-[220px] bg-white h-8 text-xs font-semibold border-blue-300">
+                                <SelectValue placeholder="All Vendors" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Vendors ({stockVendorOptions.length})</SelectItem>
+                                {stockVendorOptions.map((v) => (
+                                  <SelectItem key={v} value={v}>
+                                    {v}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs font-medium text-blue-950">
+                            <span>Total Quantity: <strong className="text-emerald-700 text-sm font-bold">{reportData.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0).toLocaleString("en-IN")}</strong></span>
+                            <span>Total Expenditure: <strong className="text-blue-900 text-sm font-extrabold">₹{reportData.reduce((sum, r) => sum + (Number(r.total_amount) || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-600">
                           Showing {startIndex + 1}-
@@ -4491,7 +4997,7 @@ const ReportGenerator = () => {
                                     }
                                   }
 
-                                  if (selectedReport === "stock_purchases") {
+                                  if (selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") {
                                     if (column.key === "grnNo") {
                                       return (
                                         <td key={column.key} className="px-3 py-4 text-sm truncate">
@@ -4561,6 +5067,40 @@ const ReportGenerator = () => {
                                 })}
                               </tr>
                             ))}
+                          {/* GST Report Totals */}
+                          {selectedReport === "gst_report" && reportData.length > 0 && (() => {
+                            const hotelRows = reportData.filter((r) => r.section === "Hotel");
+                            const restRows = reportData.filter((r) => r.section === "Restaurant");
+                            const sumField = (arr, field) => arr.reduce((s, r) => s + (parseFloat(r[field]) || 0), 0);
+                            return (
+                              <>
+                                <tr className="bg-blue-50 font-semibold border-t-2 border-blue-300">
+                                  <td className="px-3 py-2 text-sm text-blue-800" colSpan={3}>Hotel Subtotal</td>
+                                  <td className="px-3 py-2 text-sm text-blue-800">{sumField(hotelRows, "total_bill_with_food").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-blue-800">{sumField(hotelRows, "total_bill_room_only").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-blue-800">{sumField(hotelRows, "taxable_amount").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-blue-800">{sumField(hotelRows, "cgst").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-blue-800">{sumField(hotelRows, "sgst").toLocaleString("en-IN")}</td>
+                                </tr>
+                                <tr className="bg-orange-50 font-semibold">
+                                  <td className="px-3 py-2 text-sm text-orange-800" colSpan={3}>Restaurant Subtotal</td>
+                                  <td className="px-3 py-2 text-sm text-orange-800">{sumField(restRows, "total_bill_with_food").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-orange-800">—</td>
+                                  <td className="px-3 py-2 text-sm text-orange-800">{sumField(restRows, "taxable_amount").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-orange-800">{sumField(restRows, "cgst").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-orange-800">{sumField(restRows, "sgst").toLocaleString("en-IN")}</td>
+                                </tr>
+                                <tr className="bg-green-100 font-bold border-t-2 border-green-400">
+                                  <td className="px-3 py-2 text-sm text-green-900" colSpan={3}>Grand Total</td>
+                                  <td className="px-3 py-2 text-sm text-green-900">{sumField(reportData, "total_bill_with_food").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-green-900">{sumField(hotelRows, "total_bill_room_only").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-green-900">{sumField(reportData, "taxable_amount").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-green-900">{sumField(reportData, "cgst").toLocaleString("en-IN")}</td>
+                                  <td className="px-3 py-2 text-sm text-green-900">{sumField(reportData, "sgst").toLocaleString("en-IN")}</td>
+                                </tr>
+                              </>
+                            );
+                          })()}
                           </tbody>
                         </table>
                       </div>

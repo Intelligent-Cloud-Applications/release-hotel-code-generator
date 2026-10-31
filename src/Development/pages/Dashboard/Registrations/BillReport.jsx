@@ -198,6 +198,22 @@ const BillReport = ({ billData: rawBillData }) => {
     let totalExtraPaxCharges = 0;
     let totalRatePlanCharges = 0;
 
+    // Check 24-hour rule: if stay duration is within 24 hours, numberOfNights must be 1 day
+    const rawCin = rawBillData?.bookingDetails?.checkIn || rawBookingData?.checkin_date;
+    const rawCout = rawBillData?.bookingDetails?.checkOut || rawBookingData?.checkout_date;
+    const cinTime = rawCin ? new Date(rawCin).getTime() : 0;
+    const coutTime = rawCout ? new Date(rawCout).getTime() : 0;
+    const isWithin24Hours = cinTime > 0 && coutTime > 0 && (coutTime - cinTime) <= (24 * 60 * 60 * 1000 + 7200000); // 24hr + 2hr grace
+
+    // Determine target total room charges from settled billingSummary first
+    const savedTotalRoomCharges = Number(
+      rawBillData?.billingSummary?.totalRoomServices ||
+      rawBillData?.billingSummary?.roomCharges ||
+      rawBillData?.room_charges ||
+      0
+    );
+
+    let rawBreakdownCharges = 0;
     if (rawBillData?.serviceChargesByDate) {
       rawBillData.serviceChargesByDate.forEach((dayData) => {
         const date = Object.keys(dayData)[0];
@@ -205,7 +221,7 @@ const BillReport = ({ billData: rawBillData }) => {
         roomEntries.forEach((roomEntry) => {
           const charges = roomEntry.charges;
           totalRatePlanCharges += charges.ratePlanCharges || 0;
-          totalRoomCharges += charges.roomCharges || 0;
+          rawBreakdownCharges += charges.roomCharges || 0;
           totalServiceCharges +=
             (charges.foodCharges || 0) +
             (charges.laundryCharges || 0) +
@@ -217,9 +233,12 @@ const BillReport = ({ billData: rawBillData }) => {
       });
     }
 
-    if (totalRoomCharges === 0 && (rawBillData?.billingSummary?.totalRoomServices || rawBillData?.billingSummary?.roomCharges)) {
-      totalRoomCharges = Number(rawBillData.billingSummary.totalRoomServices || rawBillData.billingSummary.roomCharges || 0);
+    if (savedTotalRoomCharges > 0) {
+      totalRoomCharges = savedTotalRoomCharges;
+    } else {
+      totalRoomCharges = rawBreakdownCharges;
     }
+
     if (totalServiceCharges === 0 && (rawBillData?.billingSummary?.totalServiceCharges || rawBillData?.billingSummary?.serviceCharges)) {
       totalServiceCharges = Number(rawBillData.billingSummary.totalServiceCharges || rawBillData.billingSummary.serviceCharges || 0);
     }
@@ -228,6 +247,25 @@ const BillReport = ({ billData: rawBillData }) => {
     }
 
     let finalServiceChargesByDate = rawBillData?.serviceChargesByDate || [];
+
+    // Under the 24-hour check-in rule, if stay is 1 day (or <= 24 hrs), collapse duplicate room charge days into 1 day
+    if (isWithin24Hours && finalServiceChargesByDate.length > 1) {
+      const firstDayKey = Object.keys(finalServiceChargesByDate[0])[0];
+      const mergedDay = { ...finalServiceChargesByDate[0] };
+      // Keep only 1 day room charge matching saved totalRoomCharges
+      if (Array.isArray(mergedDay[firstDayKey])) {
+        mergedDay[firstDayKey] = mergedDay[firstDayKey].map((entry) => ({
+          ...entry,
+          charges: {
+            ...entry.charges,
+            roomCharges: totalRoomCharges,
+            dailyTotal: (entry.charges?.dailyTotal || 0) - (entry.charges?.roomCharges || 0) + totalRoomCharges,
+          },
+        }));
+      }
+      finalServiceChargesByDate = [mergedDay];
+    }
+
     const hasAnyChargesInBreakdown = finalServiceChargesByDate.some((dayData) => {
       const date = Object.keys(dayData)[0];
       return (dayData[date] || []).some(
@@ -237,7 +275,7 @@ const BillReport = ({ billData: rawBillData }) => {
 
     if (!hasAnyChargesInBreakdown && totalRoomCharges > 0) {
       const checkinDateVal = rawBillData?.bookingDetails?.checkIn || rawBookingData?.checkin_date || Date.now();
-      const numNights = Math.max(1, rawBillData?.bookingDetails?.numberOfNights || 1);
+      const numNights = isWithin24Hours ? 1 : Math.max(1, rawBillData?.bookingDetails?.numberOfNights || 1);
       const dailyTariff = totalRoomCharges / numNights;
       const roomNum = resolvedRoomNumber || "---";
       const roomTyp = resolvedRoomType || "Standard";
