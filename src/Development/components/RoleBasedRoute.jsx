@@ -28,7 +28,7 @@ const RoleBasedRoute = ({ children, allowedRoles = [] }) => {
       admin: "/dashboard/admin/room_list",
       frontdesk: "/dashboard/frontdesk",
       housekeeping: "/dashboard/housekeeping/room_status_list",
-      accountant: "/dashboard/accounting/bill-posting",
+      accountant: "/dashboard/accounting/cash-entry",
       laundry: "/dashboard/laundry",
       store: "/dashboard/store",
     };

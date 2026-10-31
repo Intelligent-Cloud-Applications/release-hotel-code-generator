@@ -36,6 +36,8 @@ const DashboardNavbar = () => {
 
     if (navPath === "laundry") {
       setActiveTab(tabParam ? `laundry_${tabParam}` : "laundry_new_order");
+    } else if (navPath === "accounting") {
+      setActiveTab(navItemPath ? `acc_${navItemPath}` : "acc_cash-entry");
     } else {
       setActiveTab(navPath);
     }
@@ -102,6 +104,15 @@ const DashboardNavbar = () => {
         { id: "reports", label: "Reports", hasDropdown: false },
       ];
     }
+    if (userData?.userType == 'accountant') {
+      return [
+        { id: "acc_cash-entry", route: "/dashboard/accounting/cash-entry", label: "Cash Audit & Entry", hasDropdown: false },
+        { id: "acc_revenue-posting", route: "/dashboard/accounting/revenue-posting", label: "Revenue Posting", hasDropdown: false },
+        { id: "acc_bill-posting", route: "/dashboard/accounting/bill-posting", label: "Bill Posting", hasDropdown: false },
+        { id: "acc_daily-revenue", route: "/dashboard/accounting/daily-revenue", label: "Daily Revenue Report", hasDropdown: false },
+        { id: "reports", route: "/dashboard/reports", label: "Reports", hasDropdown: false },
+      ];
+    }
     // Return empty array for housekeeping and admin users
     return [];
   };
@@ -133,7 +144,7 @@ const DashboardNavbar = () => {
                 if (val === 'housekeeping') route = '/dashboard/housekeeping/room_status_list';
                 if (val === 'frontdesk') route = '/dashboard/frontdesk';
                 if (val === 'admin') route = '/dashboard/admin/room_list';
-                if (val === 'accountant') route = '/dashboard/accounting/bill-posting';
+                if (val === 'accountant') route = '/dashboard/accounting/cash-entry';
                 if (val === 'laundry') route = '/dashboard/laundry';
                 if (val === 'store') route = '/dashboard/store';
                 setActiveTab('');
@@ -234,7 +245,10 @@ const DashboardNavbar = () => {
                         : "text-gray-700 hover:bg-gray-400 hover:text-white"
                       }`}
                     onClick={() => {
-                      if (item.tab) {
+                      if (item.route) {
+                        setActiveTab(item.id);
+                        navigate(item.route);
+                      } else if (item.tab) {
                         setActiveTab(item.id);
                         navigate(`/dashboard/laundry?tab=${item.tab}`);
                       } else {
@@ -425,7 +439,10 @@ const DashboardNavbar = () => {
                         : "text-gray-700 hover:bg-gray-400 hover:text-white"
                       }`}
                     onClick={() => {
-                      if (item.tab) {
+                      if (item.route) {
+                        setActiveTab(item.id);
+                        navigate(item.route);
+                      } else if (item.tab) {
                         setActiveTab(item.id);
                         navigate(`/dashboard/laundry?tab=${item.tab}`);
                       } else {

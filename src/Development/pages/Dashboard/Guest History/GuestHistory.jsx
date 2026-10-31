@@ -149,8 +149,22 @@ const GuestHistory = () => {
       no_of_adults: bookingDetails?.no_of_adults || 1,
       no_of_children: bookingDetails?.no_of_children || 0,
       payment_mode: bill?.payment_mode || "N/A",
+      dayCalculation: bill?.dayCalculation || billData?.dayCalculation || bookingDetails?.dayCalculation || matchedBooking?.dayCalculation || "night_wise",
+      multi_payments:
+        bill?.multi_payments ||
+        billData?.multi_payments ||
+        bookingDetails?.multi_payments ||
+        matchedBooking?.multi_payments ||
+        null,
       bill: {
         ...billData,
+        dayCalculation: bill?.dayCalculation || billData?.dayCalculation || bookingDetails?.dayCalculation || matchedBooking?.dayCalculation || "night_wise",
+        multi_payments:
+          bill?.multi_payments ||
+          billData?.multi_payments ||
+          bookingDetails?.multi_payments ||
+          matchedBooking?.multi_payments ||
+          null,
         room_ids: bill?.room_ids,
         bill_id: bill?.bill_id,
       },
@@ -667,9 +681,34 @@ const GuestHistory = () => {
                       )}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
-                      <Badge variant="outline" className="text-gray-700">
-                        {guest.payment_mode}
-                      </Badge>
+                      {guest.payment_mode === "Multi-Payment" || guest.payment_mode === "Multiple" ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-semibold">
+                            Multi-Payment
+                          </Badge>
+                          {Array.isArray(guest.multi_payments) && guest.multi_payments.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {guest.multi_payments
+                                .filter((p) => p && p.amount && parseFloat(p.amount) > 0)
+                                .map((p, pIdx) => (
+                                  <span
+                                    key={pIdx}
+                                    className="inline-flex items-center text-[10px] bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded border border-gray-200"
+                                  >
+                                    <span className="font-medium mr-1">{p.mode}:</span>
+                                    <span className="font-semibold text-gray-900">₹{p.amount}</span>
+                                  </span>
+                                ))}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-gray-400 italic">No breakdown stored</span>
+                          )}
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-gray-700">
+                          {guest.payment_mode}
+                        </Badge>
+                      )}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap flex items-center gap-2">
                       <Button
