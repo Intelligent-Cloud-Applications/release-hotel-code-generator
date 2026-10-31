@@ -91,6 +91,7 @@ import { template } from "../Operation/data.json";
 import Accounting from "./pages/Dashboard/Accounting/Accounting.jsx";
 import AccountingLayout from "./layouts/AccountingLayout.jsx";
 import BillPosting from "./pages/Dashboard/Accounting/BillPosting.jsx";
+import CashEntry from "./pages/Dashboard/Accounting/CashEntry.jsx";
 import RevenuePosting from "./pages/Dashboard/Accounting/RevenuePosting.jsx";
 import DailyRevenue from "./pages/Dashboard/Accounting/DailyRevenue.jsx";
 import LaundryPage from "./pages/Dashboard/Laundry/index.jsx";
@@ -103,7 +104,7 @@ const DashboardIndexRedirect = () => {
     admin: "/dashboard/admin/room_list",
     frontdesk: "/dashboard/frontdesk",
     housekeeping: "/dashboard/housekeeping/room_status_list",
-    accountant: "/dashboard/accounting/bill-posting",
+    accountant: "/dashboard/accounting/cash-entry",
     laundry: "/dashboard/laundry",
     store: "/dashboard/store",
   };
@@ -262,6 +263,7 @@ const AppRoutes = () => {
           }
         >
           <Route index element={<Accounting />} />
+          <Route path="cash-entry" element={<CashEntry />} />
           <Route path="revenue-posting" element={<RevenuePosting />} />
           <Route path="bill-posting" element={<BillPosting />} />
 

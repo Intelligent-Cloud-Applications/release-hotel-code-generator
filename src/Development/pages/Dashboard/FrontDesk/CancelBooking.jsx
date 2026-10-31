@@ -435,7 +435,9 @@ const CancelBooking = () => {
       editingBooking?.room_type,
       editFormData?.room_category,
       ...(editingBooking?.rooms_config?.map((rc) => rc.room_category || rc.room_type) || []),
-    ].filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0));
+    ]
+      .filter((t) => Boolean(t && typeof t === "string" && t.trim().length > 0))
+      .flatMap((t) => t.split(",").map((s) => s.trim()).filter(Boolean));
     const standardCategories = [
       "Standard",
       "Deluxe",
@@ -735,12 +737,19 @@ const CancelBooking = () => {
   // Open edit dialog
   const openEditDialog = (booking) => {
     const guest = getGuestDetails(booking);
-    const category =
+    const rawCategory =
       booking.room_category ||
       booking.room_type ||
       booking?.rooms_config?.[0]?.room_category ||
       booking?.rooms_config?.[0]?.room_type ||
       "";
+
+    // Deduplicate in case rawCategory is a comma-separated repeated string (e.g. "Royal Deluxe(Single), Royal Deluxe(Single), ...")
+    const splitCats = String(rawCategory)
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    const category = splitCats[0] || rawCategory || "";
 
     // Extract assigned room ids or numbers
     const assignedIds = (
@@ -1307,24 +1316,53 @@ const CancelBooking = () => {
                 </div>
 
                 {/* Room Requirement & Allocation Details */}
-                <div className="hidden md:flex flex-col text-right justify-center px-2 gap-1">
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      {booking.room_category || booking.room_type || "Standard"}
-                    </span>
+                <div className="hidden md:flex flex-col text-right justify-center px-2 gap-1 max-w-[420px] shrink-0">
+                  <div className="flex items-center justify-end gap-1.5 flex-nowrap">
+                    {(() => {
+                      const rawCat = booking.room_category || booking.room_type || "Standard";
+                      const categories = String(rawCat)
+                        .split(",")
+                        .map((c) => c.trim())
+                        .filter(Boolean);
+                      const uniqueCats = Array.from(new Set(categories));
+                      const displayCat = uniqueCats.slice(0, 2).join(", ");
+                      const extraCount = uniqueCats.length - 2;
+
+                      return (
+                        <span
+                          className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 max-w-[180px] truncate shrink-0"
+                          title={rawCat}
+                        >
+                          {displayCat || "Standard"}
+                          {extraCount > 0 ? ` +${extraCount} more` : ""}
+                        </span>
+                      );
+                    })()}
                     {(() => {
                       const assignedNums = getBookingAssignedRoomNumbers(booking);
 
                       if (assignedNums.length > 0) {
+                        const maxPreview = 3;
+                        const displayNums = assignedNums.slice(0, maxPreview).join(", ");
+                        const remainingCount = assignedNums.length - maxPreview;
+
                         return (
-                          <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
-                            <Bed className="h-3 w-3 text-emerald-600" />
-                            Room {assignedNums.join(", ")}
+                          <span
+                            className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1 max-w-[190px] shrink-0"
+                            title={`Room(s): ${assignedNums.join(", ")}`}
+                          >
+                            <Bed className="h-3 w-3 text-emerald-600 shrink-0" />
+                            <span className="truncate">Room {displayNums}</span>
+                            {remainingCount > 0 && (
+                              <span className="text-[10px] text-emerald-700 font-bold shrink-0">
+                                +{remainingCount} more
+                              </span>
+                            )}
                           </span>
                         );
                       }
                       return (
-                        <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 shrink-0">
                           Unassigned
                         </span>
                       );
@@ -1336,7 +1374,7 @@ const CancelBooking = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="ml-3 flex-shrink-0 flex gap-2">
+                <div className="ml-3 flex-shrink-0 flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -1347,134 +1385,149 @@ const CancelBooking = () => {
                     Assign / Edit
                   </Button>
                   
-                  <Dialog
-                    open={
-                      showCancelDialog &&
-                      selectedBooking?.booking_id === booking.booking_id
-                    }
-                    onOpenChange={setShowCancelDialog}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => openCancelDialog(booking)}
+                    className="h-7 px-3 text-xs"
                   >
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => openCancelDialog(booking)}
-                        className="h-7 px-3 text-xs"
-                      >
-                        <X className="h-3 w-3 mr-1" />
-                        Cancel
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                          <AlertTriangle className="h-5 w-5 text-red-600" />
-                          Cancel Booking
-                        </DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        {/* Booking Summary */}
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <h4 className="font-medium text-gray-900 mb-2">
-                            Booking Summary
-                          </h4>
-                          <div className="space-y-1 text-sm">
-                            <p>
-                              <span className="font-medium">
-                                Booking ID:
-                              </span>{" "}
-                              {booking.booking_id}
-                            </p>
-                            <p>
-                              <span className="font-medium">Guest:</span>{" "}
-                              {guest.full_name || guest.name || "Guest"}
-                            </p>
-                            <p>
-                              <span className="font-medium">
-                                Total Value:
-                              </span>{" "}
-                              {formatCurrency(bookingValue)}
-                            </p>
-                            {(() => {
-                              const assigned = getBookingAssignedRoomNumbers(booking);
-                              return assigned.length > 0 ? (
-                                <p>
-                                  <span className="font-medium">Room:</span> Room {assigned.join(", ")}
-                                </p>
-                              ) : null;
-                            })()}
-                            {(booking.booked_by || guest.booked_by) && (
-                              <p>
-                                <span className="font-medium">Booked By:</span>{" "}
-                                {booking.booked_by || guest.booked_by}
-                              </p>
-                            )}
-                            {(booking.pickup_details || guest.pickup_details) && (
-                              <p>
-                                <span className="font-medium">Pickup:</span>{" "}
-                                {booking.pickup_details || guest.pickup_details}
-                              </p>
-                            )}
-                            {(booking.dropoff_details || guest.dropoff_details) && (
-                              <p>
-                                <span className="font-medium">Drop-off:</span>{" "}
-                                {booking.dropoff_details || guest.dropoff_details}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Cancellation Details */}
-                        <div>
-                          <Label>Cancellation Reason *</Label>
-                          <Textarea
-                            value={cancellationReason}
-                            onChange={(e) =>
-                              setCancellationReason(e.target.value)
-                            }
-                            placeholder="Please provide reason for cancellation..."
-                            className="mt-1"
-                          />
-                        </div>
-
-
-                        {/* Warning */}
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                          <div className="flex items-start gap-2">
-                            <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5" />
-                            <div className="text-sm text-red-800">
-                              <p className="font-medium">Warning</p>
-                              <p>
-                                This action cannot be undone. The booking
-                                will be permanently cancelled.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowCancelDialog(false)}
-                          disabled={loading}
-                        >
-                          Keep Booking
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          onClick={cancelBooking}
-                          disabled={loading || !cancellationReason.trim()}
-                        >
-                          {loading ? "Cancelling..." : "Cancel Booking"}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
+                    <X className="h-3 w-3 mr-1" />
+                    Cancel
+                  </Button>
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* Cancel Booking Dialog */}
+        <Dialog
+          open={showCancelDialog && !!selectedBooking}
+          onOpenChange={(open) => {
+            setShowCancelDialog(open);
+            if (!open) setSelectedBooking(null);
+          }}
+        >
+          <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+                Cancel Booking
+              </DialogTitle>
+            </DialogHeader>
+            {selectedBooking && (() => {
+              const booking = selectedBooking;
+              const guest = getGuestDetails(booking);
+              const bookingValue = calculateBookingValue(booking);
+              const assigned = getBookingAssignedRoomNumbers(booking);
+
+              return (
+                <div className="space-y-4">
+                  {/* Booking Summary */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-900 mb-2">
+                      Booking Summary
+                    </h4>
+                    <div className="space-y-1 text-sm">
+                      <p>
+                        <span className="font-medium">
+                          Booking ID:
+                        </span>{" "}
+                        {booking.booking_id}
+                      </p>
+                      <p>
+                        <span className="font-medium">Guest:</span>{" "}
+                        {guest.full_name || guest.name || "Guest"}
+                      </p>
+                      <p>
+                        <span className="font-medium">
+                          Total Value:
+                        </span>{" "}
+                        {formatCurrency(bookingValue)}
+                      </p>
+                      <p>
+                        <span className="font-medium">Rooms Booked:</span>{" "}
+                        {booking.no_of_rooms || booking.number_of_rooms || (booking.rooms_config ? booking.rooms_config.length : 1)} Room(s)
+                      </p>
+                      {assigned.length > 0 && (
+                        <div>
+                          <span className="font-medium">Assigned Rooms:</span>{" "}
+                          <span className="text-gray-700 break-words font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded inline-block max-h-24 overflow-y-auto align-top">
+                            {assigned.join(", ")}
+                          </span>
+                        </div>
+                      )}
+                      {(booking.booked_by || guest.booked_by) && (
+                        <p>
+                          <span className="font-medium">Booked By:</span>{" "}
+                          {booking.booked_by || guest.booked_by}
+                        </p>
+                      )}
+                      {(booking.pickup_details || guest.pickup_details) && (
+                        <p>
+                          <span className="font-medium">Pickup:</span>{" "}
+                          {booking.pickup_details || guest.pickup_details}
+                        </p>
+                      )}
+                      {(booking.dropoff_details || guest.dropoff_details) && (
+                        <p>
+                          <span className="font-medium">Drop-off:</span>{" "}
+                          {booking.dropoff_details || guest.dropoff_details}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cancellation Details */}
+                  <div>
+                    <Label>Cancellation Reason *</Label>
+                    <Textarea
+                      value={cancellationReason}
+                      onChange={(e) =>
+                        setCancellationReason(e.target.value)
+                      }
+                      placeholder="Please provide reason for cancellation..."
+                      className="mt-1"
+                    />
+                  </div>
+
+                  {/* Warning */}
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                      <div className="text-sm text-red-800">
+                        <p className="font-medium">Warning</p>
+                        <p>
+                          This action cannot be undone. The booking
+                          will be permanently cancelled.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCancelDialog(false);
+                  setSelectedBooking(null);
+                }}
+                disabled={loading}
+              >
+                Keep Booking
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={cancelBooking}
+                disabled={loading || !cancellationReason.trim()}
+              >
+                {loading ? "Cancelling..." : "Cancel Booking"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Edit Booking Dialog */}
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
@@ -1488,13 +1541,30 @@ const CancelBooking = () => {
             <div className="p-4 pb-12 overflow-y-auto flex-1 space-y-4">
               {/* Booking & Room Summary Banner */}
               <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-lg text-xs space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-blue-900 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="font-bold text-blue-900 text-sm shrink-0">
                     Booking #{editingBooking?.booking_id}
                   </h4>
-                  <Badge className="bg-blue-600 text-white font-semibold text-xs">
-                    {editingBooking?.room_category || editingBooking?.room_type || editFormData.room_category || "N/A"}
-                  </Badge>
+                  {(() => {
+                    const rawCat = editingBooking?.room_category || editingBooking?.room_type || editFormData.room_category || "N/A";
+                    const uniqueCats = Array.from(
+                      new Set(
+                        String(rawCat)
+                          .split(",")
+                          .map((c) => c.trim())
+                          .filter(Boolean)
+                      )
+                    );
+                    const displayCat = uniqueCats.join(", ");
+                    return (
+                      <Badge
+                        className="bg-blue-600 text-white font-semibold text-xs max-w-[260px] truncate"
+                        title={rawCat}
+                      >
+                        {displayCat || "N/A"}
+                      </Badge>
+                    );
+                  })()}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-blue-800">
                   <span>
@@ -1513,7 +1583,7 @@ const CancelBooking = () => {
 
                     if (displayNums.length > 0) {
                       return (
-                        <span>
+                        <span className="break-all">
                           <strong>Assigned Room:</strong> Room {displayNums.join(", ")}
                         </span>
                       );
@@ -1526,7 +1596,7 @@ const CancelBooking = () => {
                   })()}
                 </div>
                 {editingBooking?.rooms_config && editingBooking.rooms_config.length > 0 && (
-                  <div className="pt-1.5 border-t border-blue-200/60 flex flex-wrap gap-1">
+                  <div className="pt-1.5 border-t border-blue-200/60 flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                     {editingBooking.rooms_config.map((r, i) => {
                       const displayNum = getRoomDisplayNumber(r.room_number) || getRoomDisplayNumber(r.room_id);
                       return (
@@ -1716,11 +1786,23 @@ const CancelBooking = () => {
               {editingBooking && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-start gap-2">
-                    <Calendar className="h-4 w-4 text-blue-600 mt-0.5" />
-                    <div className="text-sm text-blue-800">
+                    <Calendar className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                    <div className="text-sm text-blue-800 space-y-0.5 min-w-0">
                       <p className="font-medium">Current Booking Summary</p>
-                      <p>
-                        Category: {editingBooking.room_category || editingBooking.room_type || "N/A"}
+                      <p className="break-words">
+                        Category:{" "}
+                        {(() => {
+                          const rawCat = editingBooking.room_category || editingBooking.room_type || "N/A";
+                          const uniqueCats = Array.from(
+                            new Set(
+                              String(rawCat)
+                                .split(",")
+                                .map((c) => c.trim())
+                                .filter(Boolean)
+                            )
+                          );
+                          return uniqueCats.join(", ") || "N/A";
+                        })()}
                         {(() => {
                           const assigned = getBookingAssignedRoomNumbers(editingBooking);
                           return assigned.length > 0 ? ` | Assigned: Room ${assigned.join(", ")}` : " | Room: Unassigned";

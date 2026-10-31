@@ -71,6 +71,7 @@ const Bill = () => {
     checkoutGuest,
     createCompany,
     listTotalBill,
+    listExpenses,
     updateRoomStatus,
   } = useAppContext();
   const { userData } = useAuthContext();
@@ -200,6 +201,10 @@ const Bill = () => {
     custom_upi_platform: "",
     received_by_staff_id: userData.cognitoId || "",
     notes: "",
+    multi_payments: [
+      { mode: "Cash", amount: "" },
+      { mode: "UPI", amount: "" },
+    ],
   });
   const [validationErrors, setValidationErrors] = useState({
     payment_mode: "",
@@ -250,6 +255,18 @@ const Bill = () => {
 
     if (!checkoutFormData.payment_mode.trim()) {
       errors.payment_mode = "Payment mode is required";
+    }
+
+    if (checkoutFormData.payment_mode === "Multi-Payment") {
+      const splits = checkoutFormData.multi_payments || [];
+      const sum = splits.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
+      const billExtracted = extractBillDataForCheckout();
+      const totalToPay = Math.round(billExtracted ? (billExtracted.balanceDue ?? billExtracted.grandTotal ?? 0) : 0);
+      if (splits.some((s) => !s.mode || !s.amount || parseFloat(s.amount) <= 0)) {
+        errors.payment_mode = "Please enter valid amounts for all payment modes";
+      } else if (totalToPay > 0 && Math.abs(sum - totalToPay) > 1) {
+        errors.payment_mode = "Split total (₹" + sum + ") must equal due total (₹" + totalToPay + ")";
+      }
     }
 
     if (checkoutFormData.payment_mode === "BTC") {
@@ -552,6 +569,7 @@ const Bill = () => {
       room_id: activeCheckoutRooms,
       target_rooms: activeCheckoutRooms,
       payment_mode: checkoutFormData.payment_mode,
+      multi_payments: checkoutFormData.payment_mode === "Multi-Payment" ? checkoutFormData.multi_payments : null,
       dayCalculation: dayCalculation || "night_wise",
       upi_platform:
         checkoutFormData.payment_mode === "UPI" ? finalUpiPlatform : null,
@@ -636,29 +654,39 @@ const Bill = () => {
         }
       }
 
-      if (checkoutFormData.payment_mode === "Cash") {
-        try {
-          // Get guest details for the description
-          const guest = guests?.find(
-            (g) => g.guest_id === booking.breakdown.booking.guest_id,
-          );
+      // Cash Drawer handling for Cash and Multi-Payment split Cash portions
+      const guest = guests?.find(
+        (g) => g.guest_id === booking.breakdown.booking.guest_id,
+      );
 
+      let cashToRecordInDrawer = 0;
+      if (checkoutFormData.payment_mode === "Cash") {
+        cashToRecordInDrawer = checkoutData.total_amount || 0;
+      } else if (checkoutFormData.payment_mode === "Multi-Payment") {
+        const cashSplit = (checkoutFormData.multi_payments || []).find(
+          (s) => s.mode === "Cash"
+        );
+        if (cashSplit && parseFloat(cashSplit.amount) > 0) {
+          cashToRecordInDrawer = parseFloat(cashSplit.amount);
+        }
+      }
+
+      if (cashToRecordInDrawer > 0) {
+        try {
           const cashReceivedData = {
             date: new Date().toLocaleDateString("en-GB"), // DD/MM/YYYY format
             name: `${booking.breakdown.booking.booking_id}`,
             description: `Cash payment received for guest checkout - ${
               guest?.full_name || "Guest"
-            }`,
-            amount: checkoutData.total_amount || 0, // Use total_amount from checkout data
-            bill_id: booking.breakdown.booking.booking_id, // Store bill_id for reference
-            receivedId: Math.random().toString(36).substr(2, 9), // Generate unique ID
+            }${checkoutFormData.payment_mode === "Multi-Payment" ? " (Multi-Payment Split)" : ""}`,
+            amount: cashToRecordInDrawer,
+            bill_id: booking.breakdown.booking.booking_id,
+            receivedId: Math.random().toString(36).substr(2, 9),
           };
 
-          // Add to cash drawer as received amount
           await addExpense({ received: cashReceivedData });
         } catch (error) {
           console.error("Error adding cash received to drawer:", error);
-          // Don't block checkout if cash drawer update fails
         }
       }
 
@@ -758,6 +786,7 @@ const Bill = () => {
         if (typeof fetchBookings === "function") await fetchBookings();
         if (typeof fetchRooms === "function") await fetchRooms();
         if (typeof listTotalBill === "function") await listTotalBill();
+        if (typeof listExpenses === "function") await listExpenses();
         setIsCheckoutModalOpen(false);
         setCheckoutFormData({
           payment_mode: "",
@@ -765,6 +794,10 @@ const Bill = () => {
           custom_upi_platform: "",
           received_by_staff_id: userData.cognitoId || "",
           notes: "",
+          multi_payments: [
+            { mode: "Cash", amount: "" },
+            { mode: "UPI", amount: "" },
+          ],
         });
         setSelectedTargetRooms(remainingRooms.map((r) => r.room_id));
         setForceRefresh((prev) => prev + 1);
@@ -789,6 +822,7 @@ const Bill = () => {
         if (typeof fetchBookings === "function") await fetchBookings();
         if (typeof fetchRooms === "function") await fetchRooms();
         if (typeof listTotalBill === "function") await listTotalBill();
+        if (typeof listExpenses === "function") await listExpenses();
         setIsCheckoutModalOpen(false);
         setCheckoutFormData({
           payment_mode: "",
@@ -796,6 +830,10 @@ const Bill = () => {
           custom_upi_platform: "",
           received_by_staff_id: userData.cognitoId || "",
           notes: "",
+          multi_payments: [
+            { mode: "Cash", amount: "" },
+            { mode: "UPI", amount: "" },
+          ],
         });
         navigate("/dashboard/frontdesk/check_out");
       }
@@ -3224,7 +3262,7 @@ const Bill = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Checkout Modal */}
       <Dialog open={isCheckoutModalOpen} onOpenChange={setIsCheckoutModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-5 overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LogOut className="h-5 w-5 text-green-600" />
@@ -3235,7 +3273,7 @@ const Bill = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-3 overflow-y-auto pr-1 text-xs max-h-[calc(85vh-120px)]">
             {/* Payment Mode */}
             <div className="space-y-2">
               <Label htmlFor="payment_mode">
@@ -3266,6 +3304,9 @@ const Bill = () => {
                   <SelectItem value="Credit Card">Credit Card</SelectItem>
                   <SelectItem value="Debit Card">Debit Card</SelectItem>
                   <SelectItem value="BTC">BTC</SelectItem>
+                  <SelectItem value="Multi-Payment">Multi-Payment</SelectItem>
+                  <SelectItem value="Complimentary">Complimentary</SelectItem>
+                  <SelectItem value="Void">Void</SelectItem>
                 </SelectContent>
               </Select>
               {validationErrors.payment_mode && (
@@ -3274,6 +3315,101 @@ const Bill = () => {
                 </p>
               )}
             </div>
+
+            {/* Multi-Payment split inputs */}
+            {checkoutFormData.payment_mode === "Multi-Payment" && (
+              <div className="bg-slate-50 p-2.5 rounded-md border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-semibold text-slate-800">
+                    Split Breakdown
+                  </span>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">
+                    Due: ₹{Math.round(billData?.billingSummary?.balanceDue ?? billData?.finalSummary?.totalAmount ?? 0)}
+                  </span>
+                </div>
+                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-0.5">
+                  {(checkoutFormData.multi_payments || []).map((split, idx) => (
+                    <div key={idx} className="flex gap-1.5 items-center">
+                      <Select
+                        value={split.mode}
+                        onValueChange={(val) => {
+                          const next = [...(checkoutFormData.multi_payments || [])];
+                          next[idx].mode = val;
+                          setCheckoutFormData((prev) => ({ ...prev, multi_payments: next }));
+                        }}
+                      >
+                        <SelectTrigger className="w-[50%] h-7 text-xs bg-white border-slate-200">
+                          <SelectValue placeholder="Mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Cash">Cash</SelectItem>
+                          <SelectItem value="UPI">UPI</SelectItem>
+                          <SelectItem value="Credit Card">Credit Card</SelectItem>
+                          <SelectItem value="Debit Card">Debit Card</SelectItem>
+                          <SelectItem value="QR">QR</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        placeholder="Amount (₹)"
+                        className="w-[42%] h-7 text-xs bg-white border-slate-200"
+                        value={split.amount}
+                        onChange={(e) => {
+                          const next = [...(checkoutFormData.multi_payments || [])];
+                          next[idx].amount = e.target.value;
+                          setCheckoutFormData((prev) => ({ ...prev, multi_payments: next }));
+                        }}
+                      />
+                      {checkoutFormData.multi_payments && checkoutFormData.multi_payments.length > 2 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            const next = checkoutFormData.multi_payments.filter((_, i) => i !== idx);
+                            setCheckoutFormData((prev) => ({ ...prev, multi_payments: next }));
+                          }}
+                        >
+                          ×
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-slate-200">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-[10px] px-2 bg-white hover:bg-slate-100"
+                    onClick={() => {
+                      const next = [...(checkoutFormData.multi_payments || []), { mode: "Cash", amount: "" }];
+                      setCheckoutFormData((prev) => ({ ...prev, multi_payments: next }));
+                    }}
+                  >
+                    + Add Mode
+                  </Button>
+                  <span className="text-xs font-semibold text-gray-700">
+                    Total Split: ₹{(checkoutFormData.multi_payments || []).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Complimentary Notice */}
+            {checkoutFormData.payment_mode === "Complimentary" && (
+              <div className="bg-amber-50 p-2.5 rounded border border-amber-200 text-xs text-amber-800">
+                <strong>Complimentary Stay:</strong> Total room charges and taxes will be marked as ₹0 / 100% complimentary on settlement.
+              </div>
+            )}
+
+            {/* Void Notice */}
+            {checkoutFormData.payment_mode === "Void" && (
+              <div className="bg-red-50 p-2.5 rounded border border-red-200 text-xs text-red-800">
+                <strong>Void Bill:</strong> This bill will be voided/cancelled without collecting payment.
+              </div>
+            )}
 
             {/* UPI Platform */}
             {checkoutFormData.payment_mode === "UPI" && (

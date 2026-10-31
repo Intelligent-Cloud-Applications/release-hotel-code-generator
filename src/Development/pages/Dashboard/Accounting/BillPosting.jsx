@@ -1,16 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { useAuthContext } from "../../../context/AuthContext";
-import { CheckCircle, Clock, CheckCheck, Search, Loader2 } from "lucide-react";
+import {
+  CheckCircle,
+  Clock,
+  CheckCheck,
+  Search,
+  Loader2,
+  Receipt,
+  FileCheck2,
+  FileSpreadsheet,
+  Building2,
+  Calendar,
+  AlertCircle,
+  TrendingUp,
+  RefreshCw,
+  ExternalLink,
+  CreditCard,
+  Banknote,
+  DollarSign,
+} from "lucide-react";
 import { get, post, put } from "aws-amplify/api";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { Badge } from "../../../components/ui/badge";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../../../components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +52,7 @@ const BillPosting = () => {
   const { userData } = useAuthContext();
   const institutionId = userData?.institutionId;
 
-  const [activeTab, setActiveTab] = useState("pending"); // pending, approved, sanctioned
+  const [activeTab, setActiveTab] = useState("pending"); // pending | approved | sanctioned
   const [loading, setLoading] = useState(true);
   const [purchaseEntries, setPurchaseEntries] = useState([]);
   const [accountingBills, setAccountingBills] = useState([]);
@@ -59,14 +71,13 @@ const BillPosting = () => {
   });
 
   const [sanctionForm, setSanctionForm] = useState({
-    paymentDate: "",
+    paymentDate: new Date().toISOString().split("T")[0],
     referenceNo: "",
     paymentMode: "cheque",
     paymentAmount: "",
   });
 
   /* ----------------------- FETCH DATA ------------------------ */
-
   useEffect(() => {
     if (institutionId) {
       fetchData();
@@ -85,7 +96,6 @@ const BillPosting = () => {
 
   const fetchPurchaseEntries = async () => {
     try {
-      setLoading(true);
       const { body } = await get({
         apiName: "frontdesk",
         path: `/stock?institutionId=${institutionId}`,
@@ -95,8 +105,6 @@ const BillPosting = () => {
       const purchaseOnly = Array.isArray(data.stockHistory)
         ? data.stockHistory.filter((e) => e.actionType === "purchase-entry")
         : [];
-
-      console.log(purchaseOnly);
 
       setPurchaseEntries(purchaseOnly);
     } catch (error) {
@@ -113,8 +121,6 @@ const BillPosting = () => {
       }).response;
       const data = await body.json();
 
-      console.log(data.bills);
-
       setAccountingBills(Array.isArray(data.bills) ? data.bills : []);
     } catch (error) {
       console.error("Error fetching accounting bills:", error);
@@ -123,34 +129,31 @@ const BillPosting = () => {
   };
 
   /* ----------------------- DERIVED DATA ------------------------ */
-
-  // Get GRN numbers that are already in accounting bills
   const approvedGRNs = new Set(accountingBills.map((b) => b.grnNo));
 
-  // Pending bills: purchase entries not yet in accounting bills
   const pendingBills = purchaseEntries.filter(
     (entry) => !approvedGRNs.has(entry.grnNo)
   );
 
-  // Approved bills: status = 'approved'
   const approvedBills = accountingBills.filter(
     (bill) => bill.status === "approved"
   );
 
-  // Sanctioned bills: status = 'sanctioned'
   const sanctionedBills = accountingBills.filter(
     (bill) => bill.status === "sanctioned"
   );
 
   /* ----------------------- SEARCH FILTERING ------------------------ */
-
   const filterBySearch = (bills, key = "vendorName") => {
-    if (!search) return bills;
+    if (!search.trim()) return bills;
+    const query = search.toLowerCase();
     return bills.filter(
       (bill) =>
-        (bill[key] || "").toLowerCase().includes(search.toLowerCase()) ||
-        (bill.grnNo || "").toLowerCase().includes(search.toLowerCase()) ||
-        (bill.billNo || "").toLowerCase().includes(search.toLowerCase())
+        (bill[key] || "").toLowerCase().includes(query) ||
+        (bill.grnNo || "").toLowerCase().includes(query) ||
+        (bill.billNo || "").toLowerCase().includes(query) ||
+        (bill.vendorBillNo || "").toLowerCase().includes(query) ||
+        (bill.itemName || "").toLowerCase().includes(query)
     );
   };
 
@@ -158,8 +161,21 @@ const BillPosting = () => {
   const filteredApproved = filterBySearch(approvedBills);
   const filteredSanctioned = filterBySearch(sanctionedBills);
 
-  /* ----------------------- HANDLERS ------------------------ */
+  // Totals calculations
+  const totalPendingAmount = filteredPending.reduce(
+    (sum, b) => sum + (Number(b.price || 0) * Number(b.quantity || 1)),
+    0
+  );
+  const totalApprovedAmount = filteredApproved.reduce(
+    (sum, b) => sum + Number(b.billTotalAmount || 0),
+    0
+  );
+  const totalSanctionedAmount = filteredSanctioned.reduce(
+    (sum, b) => sum + Number(b.paymentAmount || b.billTotalAmount || 0),
+    0
+  );
 
+  /* ----------------------- MODAL HANDLERS ------------------------ */
   const openApprovalModal = (bill) => {
     setSelectedBill(bill);
     setApprovalForm({
@@ -172,7 +188,7 @@ const BillPosting = () => {
   const openSanctionModal = (bill) => {
     setSelectedBill(bill);
     setSanctionForm({
-      paymentDate: "",
+      paymentDate: new Date().toISOString().split("T")[0],
       referenceNo: "",
       paymentMode: "cheque",
       paymentAmount: bill.billTotalAmount || "",
@@ -196,7 +212,7 @@ const BillPosting = () => {
         createdAt: Date.now(),
       };
 
-      const response = await post({
+      await post({
         apiName: "accounting",
         path: `/bill?institutionId=${institutionId}`,
         options: {
@@ -204,13 +220,12 @@ const BillPosting = () => {
         },
       }).response;
 
-      alert("Bill approved successfully!");
       await fetchAccountingBills();
       setShowApprovalModal(false);
       setSelectedBill(null);
     } catch (error) {
       console.error("Error approving bill:", error);
-      
+      alert("Error approving bill. Please try again.");
     }
     setLoadingAction(false);
   };
@@ -223,7 +238,7 @@ const BillPosting = () => {
       !sanctionForm.paymentAmount ||
       (sanctionForm.paymentMode !== "cash" && !sanctionForm.referenceNo)
     ) {
-      alert("Please fill all required fields");
+      alert("Please fill all required payment fields.");
       return;
     }
 
@@ -235,11 +250,11 @@ const BillPosting = () => {
         paymentDate: sanctionForm.paymentDate,
         referenceNo: sanctionForm.referenceNo,
         paymentMode: sanctionForm.paymentMode,
-        paymentAmount: sanctionForm.paymentAmount,
+        paymentAmount: Number(sanctionForm.paymentAmount),
         sanctionedAt: Date.now(),
       };
 
-      const response = await put({
+      await put({
         apiName: "accounting",
         path: `/bill?institutionId=${institutionId}`,
         options: {
@@ -247,308 +262,468 @@ const BillPosting = () => {
         },
       }).response;
 
-      alert("Bill sanctioned successfully!");
       await fetchAccountingBills();
       setShowSanctionModal(false);
       setSelectedBill(null);
     } catch (error) {
       console.error("Error sanctioning bill:", error);
-      alert("Error sanctioning bill");
+      alert("Error sanctioning bill. Please try again.");
     }
     setLoadingAction(false);
   };
 
-  /* ----------------------- UI ------------------------ */
-
-  // if (loading) {
-  //   return (
-  //     <div className="h-[calc(100vh-70px)] bg-[#f7f7f7] flex items-center justify-center">
-  //       <Loader2 className="h-12 w-12 animate-spin text-gray-900" />
-  //     </div>
-  //   );
-  // }
-
   return (
-    <div className="h-[calc(100vh-70px)] bg-[#f7f7f7] p-6 overflow-y-auto">
-      <div className="max-w-7xl mx-auto space-y-4">
-        
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-semibold text-gray-900">Bill Posting</h1>
-            <Button onClick={fetchData} variant="default" disabled={loading}>
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Refresh
-            </Button>
+    <div className="flex flex-col h-full min-h-[92vh] bg-gray-50/60 p-4 sm:p-6 space-y-4">
+      {/* -------------------- METRIC SUMMARY STRIP -------------------- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Pending Card */}
+        <div className="bg-white border border-amber-200/80 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-amber-700 tracking-wide uppercase">
+              Pending Verification
+            </div>
+            <div className="text-xl font-bold text-gray-900 mt-0.5">
+              {pendingBills.length} <span className="text-xs font-normal text-gray-500">bills</span>
+            </div>
+            <div className="text-xs font-semibold text-amber-600 mt-1">
+              ₹{totalPendingAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </div>
           </div>
-
-          {/* Search Bar */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by vendor, GRN, or bill number..."
-            className="pl-10"
-          />
+          <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+            <Clock className="w-5 h-5" />
+          </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
-            <TabsTrigger value="pending" className="gap-2">
-              <Clock className="h-4 w-4" />
-              Pending
-              <Badge variant="secondary" className="ml-1 text-gray-100">
-                {filteredPending.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="approved" className="gap-2">
-              <CheckCircle className="h-4 w-4" />
-              Approved
-              <Badge variant="secondary" className="ml-1 text-gray-100">
-                {filteredApproved.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="sanctioned" className="gap-2">
-              <CheckCheck className="h-4 w-4" />
-              Sanctioned
-              <Badge variant="secondary" className="ml-1 text-gray-100">
-                {filteredSanctioned.length}
-              </Badge>
-            </TabsTrigger>
-          </TabsList>
+        {/* Approved Card */}
+        <div className="bg-white border border-emerald-200/80 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-emerald-700 tracking-wide uppercase">
+              Approved (Waiting Sanction)
+            </div>
+            <div className="text-xl font-bold text-gray-900 mt-0.5">
+              {approvedBills.length} <span className="text-xs font-normal text-gray-500">bills</span>
+            </div>
+            <div className="text-xs font-semibold text-emerald-600 mt-1">
+              ₹{totalApprovedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+            <CheckCircle className="w-5 h-5" />
+          </div>
+        </div>
 
-          <TabsContent value="pending" className="mt-4">
-            <PendingBillsTable
-              bills={filteredPending}
-              onApprove={openApprovalModal}
-            />
-          </TabsContent>
+        {/* Sanctioned Card */}
+        <div className="bg-white border border-blue-200/80 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-blue-700 tracking-wide uppercase">
+              Sanctioned / Settled
+            </div>
+            <div className="text-xl font-bold text-gray-900 mt-0.5">
+              {sanctionedBills.length} <span className="text-xs font-normal text-gray-500">bills</span>
+            </div>
+            <div className="text-xs font-semibold text-blue-600 mt-1">
+              ₹{totalSanctionedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+            <CheckCheck className="w-5 h-5" />
+          </div>
+        </div>
 
-          <TabsContent value="approved" className="mt-4">
-            <ApprovedBillsTable
-              bills={filteredApproved}
-              onSanction={openSanctionModal}
-            />
-          </TabsContent>
-
-          <TabsContent value="sanctioned" className="mt-4">
-            <SanctionedBillsTable bills={filteredSanctioned} />
-          </TabsContent>
-        </Tabs>
+        {/* Total Ledger Impact */}
+        <div className="bg-white border border-gray-200 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-gray-500 tracking-wide uppercase">
+              Total Purchase Ledger
+            </div>
+            <div className="text-xl font-bold text-gray-900 mt-0.5">
+              {purchaseEntries.length + accountingBills.length} <span className="text-xs font-normal text-gray-400">records</span>
+            </div>
+            <div className="text-xs font-semibold text-gray-700 mt-1">
+              ₹{(totalPendingAmount + totalApprovedAmount + totalSanctionedAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-gray-50 text-gray-600 flex items-center justify-center border border-gray-200/80">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
       </div>
 
-      {/* Approval Modal */}
+      {/* -------------------- CONTROL BAR -------------------- */}
+      <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        {/* Left: Tab Segmented Pill */}
+        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200/80">
+          <button
+            onClick={() => setActiveTab("pending")}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeTab === "pending"
+                ? "bg-white text-amber-700 shadow-xs border border-gray-200/70"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            Pending Store Bills
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                activeTab === "pending"
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              {filteredPending.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("approved")}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeTab === "approved"
+                ? "bg-white text-emerald-700 shadow-xs border border-gray-200/70"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            Approved Bills
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                activeTab === "approved"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              {filteredApproved.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("sanctioned")}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeTab === "sanctioned"
+                ? "bg-white text-blue-700 shadow-xs border border-gray-200/70"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <CheckCheck className="w-3.5 h-3.5" />
+            Sanctioned / Settled
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                activeTab === "sanctioned"
+                  ? "bg-blue-100 text-blue-800"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              {filteredSanctioned.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Right: Search & Refresh */}
+        <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-end">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search vendor, GRN, bill #, item..."
+              className="pl-8.5 h-9 text-xs bg-gray-50/50 border-gray-200 focus:bg-white"
+            />
+          </div>
+          <Button
+            onClick={fetchData}
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            className="h-9 px-3 text-xs gap-1.5 border-gray-200 text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* -------------------- MAIN TABULAR VIEWPORT -------------------- */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden flex-1 flex flex-col">
+        {activeTab === "pending" && (
+          <PendingBillsTable
+            bills={filteredPending}
+            onApprove={openApprovalModal}
+            loading={loading}
+          />
+        )}
+
+        {activeTab === "approved" && (
+          <ApprovedBillsTable
+            bills={filteredApproved}
+            onSanction={openSanctionModal}
+            loading={loading}
+          />
+        )}
+
+        {activeTab === "sanctioned" && (
+          <SanctionedBillsTable
+            bills={filteredSanctioned}
+            loading={loading}
+          />
+        )}
+      </div>
+
+      {/* -------------------- APPROVAL MODAL -------------------- */}
       <Dialog open={showApprovalModal} onOpenChange={setShowApprovalModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Approve Bill</DialogTitle>
-            <DialogDescription>
-              Review bill details and approve for payment
+        <DialogContent className="max-w-lg p-0 overflow-hidden rounded-2xl border-gray-200">
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-5 py-4 text-white">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-200" />
+              <DialogTitle className="text-base font-bold text-white">
+                Approve Vendor Purchase Bill
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-emerald-100 mt-0.5">
+              Validate GRN goods receipt and pass bill to accounting ledger
             </DialogDescription>
-          </DialogHeader>
+          </div>
 
           {selectedBill && (
-            <div className="space-y-4">
-              {/* Bill Details */}
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 space-y-2">
-                <DetailRow label="GRN No" value={selectedBill.grnNo} />
-                <DetailRow
-                  label="Vendor Name"
-                  value={selectedBill.vendorName}
-                />
-                <DetailRow label="Bill No" value={selectedBill.billNo} />
-                <DetailRow
-                  label="Bill Date"
-                  value={new Date(selectedBill.billDate).toLocaleDateString(
-                    "en-GB"
-                  )}
-                />
-                <DetailRow label="Item Name" value={selectedBill.itemName} />
-                <DetailRow
-                  label="Quantity"
-                  value={`${selectedBill.quantity} ${selectedBill.unit}`}
-                />
-                <DetailRow
-                  label="Unit Price"
-                  value={`₹${selectedBill.price}`}
-                />
-                <DetailRow
-                  label="Total Amount"
-                  value={`₹${(
-                    selectedBill.price * selectedBill.quantity
-                  ).toFixed(2)}`}
-                  highlight
-                />
+            <div className="p-5 space-y-4">
+              {/* Highlight summary card */}
+              <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
+                  <span className="text-xs text-gray-500 font-medium">Vendor / Supplier</span>
+                  <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-emerald-700" />
+                    {selectedBill.vendorName || "Store Supplier"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-gray-400 block text-[11px]">GRN Reference</span>
+                    <span className="font-semibold text-gray-800">{selectedBill.grnNo}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[11px]">Vendor Bill #</span>
+                    <span className="font-semibold text-gray-800">{selectedBill.billNo || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[11px]">Item / Description</span>
+                    <span className="font-semibold text-gray-800">
+                      {selectedBill.itemName} ({selectedBill.quantity} {selectedBill.unit})
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[11px]">Bill Date</span>
+                    <span className="font-semibold text-gray-800">
+                      {selectedBill.billDate
+                        ? new Date(selectedBill.billDate).toLocaleDateString("en-GB")
+                        : "-"}
+                    </span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-emerald-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-emerald-900">Total Sanction Amount:</span>
+                  <span className="text-base font-bold text-emerald-700">
+                    ₹{(Number(selectedBill.price || 0) * Number(selectedBill.quantity || 1)).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
 
-              {/* Payment Type */}
-              <div className="space-y-2">
-                <Label htmlFor="paymentType">Payment Type *</Label>
-                <Select
-                  value={approvalForm.paymentType}
-                  onValueChange={(value) =>
-                    setApprovalForm({
-                      ...approvalForm,
-                      paymentType: value,
-                    })
-                  }
+              {/* Form Input fields */}
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="paymentType" className="text-xs font-semibold text-gray-700">
+                    Terms / Payment Ledger Type *
+                  </Label>
+                  <Select
+                    value={approvalForm.paymentType}
+                    onValueChange={(val) => setApprovalForm({ ...approvalForm, paymentType: val })}
+                  >
+                    <SelectTrigger id="paymentType" className="h-9 text-xs">
+                      <SelectValue placeholder="Select terms" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="credit">Credit Ledger (Accounts Payable)</SelectItem>
+                      <SelectItem value="cash">Direct Cash</SelectItem>
+                      <SelectItem value="online">Online / Bank Transfer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="remark" className="text-xs font-semibold text-gray-700">
+                    Accountant Remark / Notes
+                  </Label>
+                  <Textarea
+                    id="remark"
+                    value={approvalForm.remark}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, remark: e.target.value })}
+                    placeholder="E.g., Approved after inventory stock count verification..."
+                    rows={2}
+                    className="text-xs resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowApprovalModal(false)}
+                  disabled={loadingAction}
+                  className="text-xs h-9"
                 >
-                  <SelectTrigger id="paymentType" className="w-full">
-                    <SelectValue placeholder="Select payment type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="credit">Credit</SelectItem>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="online">Online</SelectItem>
-                  </SelectContent>
-                </Select>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleApprove}
+                  disabled={loadingAction}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 px-4 gap-1.5 font-semibold"
+                >
+                  {loadingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Approve & Post to Accounting
+                </Button>
               </div>
-
-              {/* Remark */}
-              <div className="space-y-2">
-                <Label htmlFor="remark">Remark</Label>
-                <Textarea
-                  id="remark"
-                  value={approvalForm.remark}
-                  onChange={(e) =>
-                    setApprovalForm({ ...approvalForm, remark: e.target.value })
-                  }
-                  placeholder="Enter any remarks..."
-                  rows={3}
-                />
-              </div>
-
-              {/* Action Button */}
-              <Button
-                onClick={handleApprove}
-                disabled={loadingAction}
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                {loadingAction && <Loader2 className="h-4 w-4 animate-spin" />}
-                <CheckCircle className="h-4 w-4" />
-                Approve Bill
-              </Button>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Sanction Modal */}
+      {/* -------------------- SANCTION MODAL -------------------- */}
       <Dialog open={showSanctionModal} onOpenChange={setShowSanctionModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Sanction Bill</DialogTitle>
-            <DialogDescription>
-              Enter payment details to sanction the bill
+        <DialogContent className="max-w-lg p-0 overflow-hidden rounded-2xl border-gray-200">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-5 py-4 text-white">
+            <div className="flex items-center gap-2">
+              <CheckCheck className="w-5 h-5 text-blue-200" />
+              <DialogTitle className="text-base font-bold text-white">
+                Sanction / Settle Bill Payment
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-blue-100 mt-0.5">
+              Record disbursement reference (Cheque, UTR, Cash) to mark bill settled
             </DialogDescription>
-          </DialogHeader>
+          </div>
 
           {selectedBill && (
-            <div className="space-y-4">
-              {/* Bill Details */}
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200 space-y-2">
-                <DetailRow label="Bill No" value={selectedBill.billNo} />
-                <DetailRow
-                  label="Vendor Name"
-                  value={selectedBill.vendorName}
-                />
-                <DetailRow label="GRN No" value={selectedBill.grnNo} />
-                <DetailRow
-                  label="Bill Total Amount"
-                  value={`₹${selectedBill.billTotalAmount}`}
-                  highlight
-                />
+            <div className="p-5 space-y-4">
+              {/* Highlight summary card */}
+              <div className="bg-blue-50/70 border border-blue-200/70 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between pb-2 border-b border-blue-100">
+                  <span className="text-xs text-gray-500 font-medium">Accounting Bill No</span>
+                  <span className="text-xs font-bold text-blue-900 font-mono">
+                    #{selectedBill.billNo}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-gray-400 block text-[11px]">Vendor Name</span>
+                    <span className="font-semibold text-gray-800">{selectedBill.vendorName}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[11px]">GRN Reference</span>
+                    <span className="font-semibold text-gray-800">{selectedBill.grnNo}</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-blue-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-blue-900">Approved Bill Total:</span>
+                  <span className="text-base font-bold text-blue-700">
+                    ₹{Number(selectedBill.billTotalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
 
-              {/* Payment Date */}
-              <div className="space-y-2">
-                <Label htmlFor="paymentDate">Payment Date *</Label>
-                <Input
-                  id="paymentDate"
-                  type="date"
-                  value={sanctionForm.paymentDate}
-                  onChange={(e) =>
-                    setSanctionForm({
-                      ...sanctionForm,
-                      paymentDate: e.target.value,
-                    })
-                  }
-                />
-              </div>
+              {/* Form Input fields */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="paymentDate" className="text-xs font-semibold text-gray-700">
+                      Disbursement Date *
+                    </Label>
+                    <Input
+                      id="paymentDate"
+                      type="date"
+                      value={sanctionForm.paymentDate}
+                      onChange={(e) =>
+                        setSanctionForm({ ...sanctionForm, paymentDate: e.target.value })
+                      }
+                      className="h-9 text-xs"
+                    />
+                  </div>
 
-              {/* Payment Mode */}
-              <div className="space-y-2">
-                <Label htmlFor="paymentMode">Payment Mode *</Label>
-                <Select
-                  value={sanctionForm.paymentMode}
-                  onValueChange={(value) =>
-                    setSanctionForm({
-                      ...sanctionForm,
-                      paymentMode: value,
-                    })
-                  }
-                >
-                  <SelectTrigger id="paymentMode" className="w-full">
-                    <SelectValue placeholder="Select payment mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                    <SelectItem value="utr">UTR (Bank Transfer)</SelectItem>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="online">Online Payment</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="paymentMode" className="text-xs font-semibold text-gray-700">
+                      Payment Mode *
+                    </Label>
+                    <Select
+                      value={sanctionForm.paymentMode}
+                      onValueChange={(val) =>
+                        setSanctionForm({ ...sanctionForm, paymentMode: val })
+                      }
+                    >
+                      <SelectTrigger id="paymentMode" className="h-9 text-xs">
+                        <SelectValue placeholder="Select mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cheque">Cheque</SelectItem>
+                        <SelectItem value="utr">NEFT / RTGS (UTR)</SelectItem>
+                        <SelectItem value="cash">Cash Outflow</SelectItem>
+                        <SelectItem value="online">Online / UPI</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-              {/* Reference Number - Hidden for Cash */}
-              {sanctionForm.paymentMode !== "cash" && (
-                <div className="space-y-2">
-                  <Label htmlFor="referenceNo">
-                    Reference No. (Cheque No./UTR) *
+                {sanctionForm.paymentMode !== "cash" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="referenceNo" className="text-xs font-semibold text-gray-700">
+                      Payment Reference # (Cheque / UTR / Transaction ID) *
+                    </Label>
+                    <Input
+                      id="referenceNo"
+                      value={sanctionForm.referenceNo}
+                      onChange={(e) =>
+                        setSanctionForm({ ...sanctionForm, referenceNo: e.target.value })
+                      }
+                      placeholder="e.g. CHQ-928172 or UTR-HDFC902187"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="paymentAmount" className="text-xs font-semibold text-gray-700">
+                    Disbursed Amount (₹) *
                   </Label>
                   <Input
-                    id="referenceNo"
-                    type="text"
-                    value={sanctionForm.referenceNo}
+                    id="paymentAmount"
+                    type="number"
+                    step="0.01"
+                    value={sanctionForm.paymentAmount}
                     onChange={(e) =>
-                      setSanctionForm({
-                        ...sanctionForm,
-                        referenceNo: e.target.value,
-                      })
+                      setSanctionForm({ ...sanctionForm, paymentAmount: e.target.value })
                     }
-                    placeholder="Enter cheque number or UTR..."
+                    className="h-9 text-xs font-semibold"
                   />
                 </div>
-              )}
-
-              {/* Payment Amount */}
-              <div className="space-y-2">
-                <Label htmlFor="paymentAmount">Payment Amount *</Label>
-                <Input
-                  id="paymentAmount"
-                  type="number"
-                  step="0.01"
-                  value={sanctionForm.paymentAmount}
-                  onChange={(e) =>
-                    setSanctionForm({
-                      ...sanctionForm,
-                      paymentAmount: e.target.value,
-                    })
-                  }
-                  placeholder="Enter payment amount..."
-                />
               </div>
 
-              {/* Action Button */}
-              <Button
-                onClick={handleSanction}
-                disabled={loadingAction}
-                className="w-full bg-blue-600 hover:bg-blue-700"
-              >
-                {loadingAction && <Loader2 className="h-4 w-4 animate-spin" />}
-                <CheckCheck className="h-4 w-4" />
-                Sanction Bill
-              </Button>
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSanctionModal(false)}
+                  disabled={loadingAction}
+                  className="text-xs h-9"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSanction}
+                  disabled={loadingAction}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 px-4 gap-1.5 font-semibold"
+                >
+                  {loadingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Confirm Sanction & Settle
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
@@ -559,118 +734,208 @@ const BillPosting = () => {
 
 export default BillPosting;
 
-/* ----------------------- PENDING BILLS TABLE ------------------------ */
+/* ------------------------------------------------------------- */
+/*                      TABULAR COMPONENTS                       */
+/* ------------------------------------------------------------- */
 
-const PendingBillsTable = ({ bills, onApprove }) => (
-  <div className="rounded-md border bg-white">
+const PendingBillsTable = ({ bills, onApprove, loading }) => (
+  <div className="overflow-x-auto">
     <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>GRN No</TableHead>
-          <TableHead>Vendor Name</TableHead>
-          <TableHead>Bill No</TableHead>
-          <TableHead>Bill Date</TableHead>
-          <TableHead>Item</TableHead>
-          <TableHead>Quantity</TableHead>
-          <TableHead>Price</TableHead>
-          <TableHead>Total Amount</TableHead>
-          <TableHead>Action</TableHead>
+      <TableHeader className="bg-gray-50/80 sticky top-0 z-10 border-b border-gray-200">
+        <TableRow className="hover:bg-transparent">
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            GRN No
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Vendor / Supplier
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Vendor Bill #
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Bill Date
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Item Details
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-right">
+            Quantity
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-right">
+            Rate
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-right">
+            Total Amount
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-center">
+            Action
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {bills.length === 0 ? (
+        {loading ? (
           <TableRow>
-            <TableCell colSpan={9} className="h-24 text-center">
-              No pending bills found.
+            <TableCell colSpan={9} className="h-32 text-center text-gray-400">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600 mb-2" />
+              Loading pending purchase entries...
+            </TableCell>
+          </TableRow>
+        ) : bills.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={9} className="h-32 text-center text-gray-400 text-xs">
+              No pending purchase bills found.
             </TableCell>
           </TableRow>
         ) : (
-          bills.map((bill, idx) => (
-            <TableRow key={bill.grnNo + idx}>
-              <TableCell>{bill.grnNo}</TableCell>
-              <TableCell>{bill.vendorName}</TableCell>
-              <TableCell>{bill.billNo}</TableCell>
-              <TableCell>
-                {new Date(bill.billDate).toLocaleDateString("en-GB")}
-              </TableCell>
-              <TableCell>{bill.itemName}</TableCell>
-              <TableCell>
-                {bill.quantity} {bill.unit}
-              </TableCell>
-              <TableCell>₹{bill.price}</TableCell>
-              <TableCell>₹{(bill.price * bill.quantity).toFixed(2)}</TableCell>
-              <TableCell>
-                <Button
-                  onClick={() => onApprove(bill)}
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  <CheckCircle className="h-3 w-3" />
-                  Approve
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))
+          bills.map((bill, idx) => {
+            const total = Number(bill.price || 0) * Number(bill.quantity || 1);
+            return (
+              <TableRow
+                key={(bill.grnNo || "") + idx}
+                className="hover:bg-amber-50/30 transition-colors border-b border-gray-100"
+              >
+                <TableCell className="font-mono text-xs font-semibold text-gray-900 py-2.5">
+                  {bill.grnNo}
+                </TableCell>
+                <TableCell className="text-xs font-medium text-gray-900 py-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    {bill.vendorName || "Unknown Vendor"}
+                  </div>
+                </TableCell>
+                <TableCell className="text-xs text-gray-600 font-mono py-2.5">
+                  {bill.billNo || "-"}
+                </TableCell>
+                <TableCell className="text-xs text-gray-600 py-2.5">
+                  {bill.billDate
+                    ? new Date(bill.billDate).toLocaleDateString("en-GB")
+                    : "-"}
+                </TableCell>
+                <TableCell className="text-xs text-gray-800 py-2.5">
+                  {bill.itemName}
+                </TableCell>
+                <TableCell className="text-xs text-gray-700 py-2.5 text-right">
+                  {bill.quantity} {bill.unit || "unit"}
+                </TableCell>
+                <TableCell className="text-xs text-gray-700 py-2.5 text-right">
+                  ₹{Number(bill.price || 0).toFixed(2)}
+                </TableCell>
+                <TableCell className="text-xs font-bold text-gray-900 py-2.5 text-right">
+                  ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </TableCell>
+                <TableCell className="py-2.5 text-center">
+                  <Button
+                    onClick={() => onApprove(bill)}
+                    size="sm"
+                    className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1 shadow-2xs"
+                  >
+                    <CheckCircle className="w-3 h-3" />
+                    Approve
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })
         )}
       </TableBody>
     </Table>
   </div>
 );
 
-/* ----------------------- APPROVED BILLS TABLE ------------------------ */
-
-const ApprovedBillsTable = ({ bills, onSanction }) => (
-  <div className="rounded-md border bg-white">
+const ApprovedBillsTable = ({ bills, onSanction, loading }) => (
+  <div className="overflow-x-auto">
     <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Bill No</TableHead>
-          <TableHead>GRN No</TableHead>
-          <TableHead>Vendor Name</TableHead>
-          <TableHead>Bill Date</TableHead>
-          <TableHead>Total Amount</TableHead>
-          <TableHead>Payment Type</TableHead>
-          <TableHead>Remark</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Action</TableHead>
+      <TableHeader className="bg-gray-50/80 sticky top-0 z-10 border-b border-gray-200">
+        <TableRow className="hover:bg-transparent">
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Bill #
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            GRN No
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Vendor / Supplier
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Bill Date
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-right">
+            Total Amount
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Payment Terms
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Accountant Remark
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-center">
+            Status
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-center">
+            Action
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {bills.length === 0 ? (
+        {loading ? (
           <TableRow>
-            <TableCell colSpan={9} className="h-24 text-center">
-              No approved bills found.
+            <TableCell colSpan={9} className="h-32 text-center text-gray-400">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600 mb-2" />
+              Loading approved bills...
+            </TableCell>
+          </TableRow>
+        ) : bills.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={9} className="h-32 text-center text-gray-400 text-xs">
+              No approved bills pending sanction.
             </TableCell>
           </TableRow>
         ) : (
           bills.map((bill, idx) => (
-            <TableRow key={bill.billNo + idx}>
-              <TableCell>{bill.billNo}</TableCell>
-              <TableCell>{bill.grnNo}</TableCell>
-              <TableCell>{bill.vendorName}</TableCell>
-              <TableCell>
-                {new Date(bill.billDate).toLocaleDateString("en-GB")}
+            <TableRow
+              key={(bill.billNo || "") + idx}
+              className="hover:bg-emerald-50/30 transition-colors border-b border-gray-100"
+            >
+              <TableCell className="font-mono text-xs font-semibold text-gray-900 py-2.5">
+                #{bill.billNo}
               </TableCell>
-              <TableCell>₹{bill.billTotalAmount}</TableCell>
-              <TableCell>
-                <Badge variant="secondary" className="text-white">
-                  {bill.paymentType.charAt(0).toUpperCase() +
-                    bill.paymentType.slice(1)}
+              <TableCell className="text-xs text-gray-600 font-mono py-2.5">
+                {bill.grnNo}
+              </TableCell>
+              <TableCell className="text-xs font-medium text-gray-900 py-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  {bill.vendorName || "Unknown Vendor"}
+                </div>
+              </TableCell>
+              <TableCell className="text-xs text-gray-600 py-2.5">
+                {bill.billDate
+                  ? new Date(bill.billDate).toLocaleDateString("en-GB")
+                  : "-"}
+              </TableCell>
+              <TableCell className="text-xs font-bold text-emerald-700 py-2.5 text-right">
+                ₹{Number(bill.billTotalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              </TableCell>
+              <TableCell className="text-xs py-2.5">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 uppercase">
+                  {bill.paymentType || "Credit"}
+                </span>
+              </TableCell>
+              <TableCell className="text-xs text-gray-600 py-2.5 max-w-[200px] truncate" title={bill.remark || bill.ramark || ""}>
+                {bill.remark || bill.ramark || "-"}
+              </TableCell>
+              <TableCell className="py-2.5 text-center">
+                <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[10px] font-semibold px-2 py-0.5">
+                  Approved
                 </Badge>
               </TableCell>
-              <TableCell>{bill.ramark || "-"}</TableCell>
-              <TableCell>
-                <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                  {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
-                </Badge>
-              </TableCell>
-              <TableCell>
+              <TableCell className="py-2.5 text-center">
                 <Button
                   onClick={() => onSanction(bill)}
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="h-7 px-2.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium gap-1 shadow-2xs"
                 >
-                  <CheckCheck className="h-3 w-3" />
+                  <CheckCheck className="w-3 h-3" />
                   Sanction
                 </Button>
               </TableCell>
@@ -682,57 +947,96 @@ const ApprovedBillsTable = ({ bills, onSanction }) => (
   </div>
 );
 
-/* ----------------------- SANCTIONED BILLS TABLE ------------------------ */
-
-const SanctionedBillsTable = ({ bills }) => (
-  <div className="rounded-md border bg-white">
+const SanctionedBillsTable = ({ bills, loading }) => (
+  <div className="overflow-x-auto">
     <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Bill No</TableHead>
-          <TableHead>GRN No</TableHead>
-          <TableHead>Vendor Name</TableHead>
-          <TableHead>Bill Date</TableHead>
-          <TableHead>Total Amount</TableHead>
-          <TableHead>Payment Date</TableHead>
-          <TableHead>Payment Mode</TableHead>
-          <TableHead>Reference No</TableHead>
-          <TableHead>Payment Amount</TableHead>
-          <TableHead>Status</TableHead>
+      <TableHeader className="bg-gray-50/80 sticky top-0 z-10 border-b border-gray-200">
+        <TableRow className="hover:bg-transparent">
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Bill #
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            GRN No
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Vendor / Supplier
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Bill Date
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Payment Date
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Payment Mode
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5">
+            Reference # / UTR
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-right">
+            Disbursed Amount
+          </TableHead>
+          <TableHead className="text-[11px] font-bold text-gray-700 uppercase tracking-wider py-2.5 text-center">
+            Status
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {bills.length === 0 ? (
+        {loading ? (
           <TableRow>
-            <TableCell colSpan={10} className="h-24 text-center">
-              No sanctioned bills found.
+            <TableCell colSpan={9} className="h-32 text-center text-gray-400">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600 mb-2" />
+              Loading sanctioned records...
+            </TableCell>
+          </TableRow>
+        ) : bills.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={9} className="h-32 text-center text-gray-400 text-xs">
+              No settled or sanctioned records found.
             </TableCell>
           </TableRow>
         ) : (
           bills.map((bill, idx) => (
-            <TableRow key={bill.billNo + idx}>
-              <TableCell>{bill.billNo}</TableCell>
-              <TableCell>{bill.grnNo}</TableCell>
-              <TableCell>{bill.vendorName}</TableCell>
-              <TableCell>
-                {new Date(bill.billDate).toLocaleDateString("en-GB")}
+            <TableRow
+              key={(bill.billNo || "") + idx}
+              className="hover:bg-blue-50/20 transition-colors border-b border-gray-100"
+            >
+              <TableCell className="font-mono text-xs font-semibold text-gray-900 py-2.5">
+                #{bill.billNo}
               </TableCell>
-              <TableCell>₹{bill.billTotalAmount}</TableCell>
-              <TableCell>
+              <TableCell className="text-xs text-gray-600 font-mono py-2.5">
+                {bill.grnNo}
+              </TableCell>
+              <TableCell className="text-xs font-medium text-gray-900 py-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  {bill.vendorName || "Unknown Vendor"}
+                </div>
+              </TableCell>
+              <TableCell className="text-xs text-gray-600 py-2.5">
+                {bill.billDate
+                  ? new Date(bill.billDate).toLocaleDateString("en-GB")
+                  : "-"}
+              </TableCell>
+              <TableCell className="text-xs text-gray-700 py-2.5">
                 {bill.paymentDate
                   ? new Date(bill.paymentDate).toLocaleDateString("en-GB")
                   : "-"}
               </TableCell>
-              <TableCell>
-                <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">
-                  {bill.paymentMode.charAt(0).toUpperCase() + bill.paymentMode.slice(1)}
-                </Badge>
+              <TableCell className="text-xs py-2.5">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 uppercase">
+                  {bill.paymentMode || "Cheque"}
+                </span>
               </TableCell>
-              <TableCell>{bill.referenceNo ? bill.referenceNo : "-"}</TableCell>
-              <TableCell>₹{bill.paymentAmount}</TableCell>
-              <TableCell>
-                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
-                  {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
+              <TableCell className="text-xs text-gray-700 font-mono py-2.5">
+                {bill.referenceNo || "-"}
+              </TableCell>
+              <TableCell className="text-xs font-bold text-gray-900 py-2.5 text-right">
+                ₹{Number(bill.paymentAmount || bill.billTotalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              </TableCell>
+              <TableCell className="py-2.5 text-center">
+                <Badge className="bg-blue-50 text-blue-700 border border-blue-200/80 text-[10px] font-semibold px-2 py-0.5">
+                  Sanctioned
                 </Badge>
               </TableCell>
             </TableRow>
@@ -740,20 +1044,5 @@ const SanctionedBillsTable = ({ bills }) => (
         )}
       </TableBody>
     </Table>
-  </div>
-);
-
-/* ----------------------- DETAIL ROW ------------------------ */
-
-const DetailRow = ({ label, value, highlight }) => (
-  <div className="flex justify-between items-center">
-    <span className="text-sm text-gray-600 font-medium">{label}:</span>
-    <span
-      className={`text-sm ${
-        highlight ? "font-bold text-gray-900" : "text-gray-800"
-      }`}
-    >
-      {value}
-    </span>
   </div>
 );

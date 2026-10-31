@@ -794,6 +794,26 @@ const ReportGenerator = () => {
         if (cand) parseComplementaryStructure(cand, roomFallback, dateFallback);
       });
 
+      // If the entire bill is marked complimentary
+      if (
+        bill?.is_complimentary === true ||
+        bill?.payment_mode === "Complimentary" ||
+        bill?.bill?.payment_mode === "Complimentary"
+      ) {
+        addRow({
+          date: dateFallback,
+          room_number: roomFallback,
+          complementary_name: "Complimentary Stay (Room Charges)",
+          amount:
+            Number(
+              bill?.bill?.billingSummary?.totalRoomServices ||
+                bill?.room_charges ||
+                bill?.bill?.grandTotal ||
+                0
+            ),
+        });
+      }
+
       const lineItems = [
         bill?.bill?.items,
         bill?.bill?.lineItems,
@@ -2154,13 +2174,26 @@ const ReportGenerator = () => {
                   bd.totalAmount ||
                   0
               );
-            const paymentMode =
+            let paymentMode =
               bd.paymentMode ||
               bd.payment_mode ||
               bill?.payment_mode ||
               bill?.bill?.paymentMode ||
               bh.paymentMode ||
               "N/A";
+
+            const multiSplits =
+              bill?.multi_payments ||
+              bill?.bill?.multi_payments ||
+              bd?.multi_payments;
+
+            if (
+              (paymentMode === "Multi-Payment" || paymentMode === "Multiple") &&
+              Array.isArray(multiSplits) &&
+              multiSplits.length > 0
+            ) {
+              paymentMode = "Multi (" + multiSplits.map((s) => s.mode + ": ₹" + s.amount).join(", ") + ")";
+            }
             const gstNumber =
               bd.gstNumber ||
               bd.gst_number ||
@@ -2289,12 +2322,25 @@ const ReportGenerator = () => {
               booking.bill_no_sequence ||
               "";
 
-            const paymentMode =
+            let paymentMode =
               booking.payment_mode ||
               booking.paymentMode ||
               booking.settlement_payment_mode ||
               booking.advance_payment_mode ||
               "N/A";
+
+            const bookingMultiSplits =
+              booking.multi_payments ||
+              booking.breakdown?.booking?.multi_payments ||
+              booking.breakdown?.bookingDetails?.multi_payments;
+
+            if (
+              (paymentMode === "Multi-Payment" || paymentMode === "Multiple") &&
+              Array.isArray(bookingMultiSplits) &&
+              bookingMultiSplits.length > 0
+            ) {
+              paymentMode = "Multi (" + bookingMultiSplits.map((s) => s.mode + ": ₹" + s.amount).join(", ") + ")";
+            }
 
             const remarks =
               booking.notes ||
