@@ -67,6 +67,7 @@ const AccountingSidebar = () => {
         //   icon: FileCheck,
         // },
         { id: "daily-revenue", label: "Daily Revenue Report", icon: Receipt },
+        { id: "reports", label: "GST & Tax Reports", icon: Receipt, route: "/dashboard/reports" },
         // { id: "audit-trail", label: "Audit Trail", icon: Clock },
       ],
     },
@@ -137,7 +138,7 @@ const AccountingSidebar = () => {
                   >
                     <item.icon className="w-4 h-4" />
                     <Link
-                      to={`/dashboard/accounting/${item.id}`}
+                      to={item.route || `/dashboard/accounting/${item.id}`}
                       className="flex-1 text-left"
                     >
                       {item.label}

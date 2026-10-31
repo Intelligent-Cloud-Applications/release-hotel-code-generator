@@ -119,6 +119,53 @@ const RevenuePosting = () => {
     };
   };
 
+  // Helper to extract and format payment mode / multi-payment breakdown
+  const parsePaymentModeAndSplits = (record, defaultMode = "Cash") => {
+    // Check possible locations for multi-payments
+    const splits =
+      record?.multi_payments ||
+      record?.bill?.multi_payments ||
+      record?.bookingDetails?.multi_payments ||
+      record?.breakdown?.booking?.multi_payments ||
+      record?.payment_history ||
+      [];
+
+    const rawMode =
+      record?.payment_mode ||
+      record?.advance_payment_mode ||
+      record?.bill?.payment_mode ||
+      defaultMode ||
+      "N/A";
+
+    const validSplits = Array.isArray(splits)
+      ? splits.filter((s) => s && (s.mode || s.paymentMode) && parseFloat(s.amount || 0) > 0)
+      : [];
+
+    if (validSplits.length > 0) {
+      const splitText = validSplits
+        .map((s) => `${s.mode || s.paymentMode}: ₹${parseFloat(s.amount).toLocaleString("en-IN")}`)
+        .join(", ");
+      return {
+        paymentMode: `Multi (${splitText})`,
+        isMultiPayment: true,
+        splits: validSplits,
+        displayMode: "Multi-Payment",
+        collectionType: validSplits.some((s) => (s.mode || s.paymentMode).toLowerCase() === "cash") &&
+          validSplits.some((s) => (s.mode || s.paymentMode).toLowerCase() !== "cash")
+          ? "multi"
+          : getCollectionType(validSplits[0]?.mode || validSplits[0]?.paymentMode),
+      };
+    }
+
+    return {
+      paymentMode: rawMode,
+      isMultiPayment: false,
+      splits: [],
+      displayMode: rawMode,
+      collectionType: getCollectionType(rawMode),
+    };
+  };
+
   // Process bills data to get revenue summary
   const revenueData = useMemo(() => {
     if (!bills || bills.length === 0) return [];
@@ -153,12 +200,20 @@ const RevenuePosting = () => {
           billingSummary?.totalAmount ||
           0) - (billingSummary?.partialPayment || 0);
 
+      const paymentInfo = parsePaymentModeAndSplits(
+        { ...bill, ...billData, bookingDetails },
+        bill?.payment_mode || "N/A"
+      );
+
       return {
         bookingId: bookingDetails?.bookingId || bill?.bill_id,
         guestName: guestDetails?.guestName,
         checkoutDate: bookingDetails?.checkOut,
-        paymentMode: bill?.payment_mode || "N/A",
-        collectionType: getCollectionType(bill?.payment_mode),
+        paymentMode: paymentInfo.paymentMode,
+        isMultiPayment: paymentInfo.isMultiPayment,
+        splits: paymentInfo.splits,
+        displayMode: paymentInfo.displayMode,
+        collectionType: paymentInfo.collectionType,
         totalAmount,
         hotelAmount,
         restaurantAmount,
@@ -243,9 +298,12 @@ const RevenuePosting = () => {
           endDateObj.setHours(23, 59, 59, 999);
 
           if (bookingDateObj >= startDateObj && bookingDateObj <= endDateObj) {
-            const advancePaymentMode =
-              booking?.advance_payment_mode || booking?.payment_mode || "Cash";
-            const collectionType = getCollectionType(advancePaymentMode);
+            const paymentInfo = parsePaymentModeAndSplits(
+              booking,
+              booking?.advance_payment_mode || booking?.payment_mode || "Cash"
+            );
+            const advancePaymentMode = paymentInfo.paymentMode;
+            const collectionType = paymentInfo.collectionType;
 
             totalAdvance += partialPayment;
 
@@ -267,6 +325,9 @@ const RevenuePosting = () => {
               amount: partialPayment,
               date: bookingDate,
               paymentMode: advancePaymentMode,
+              isMultiPayment: paymentInfo.isMultiPayment,
+              splits: paymentInfo.splits,
+              displayMode: paymentInfo.displayMode,
               collectionType: collectionType,
               transactionType: "Advance",
               hotelAmount: partialPayment,
@@ -731,17 +792,35 @@ const RevenuePosting = () => {
                             ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                             : item.collectionType === "btc"
                             ? "bg-purple-50 text-purple-700 border border-purple-200"
+                            : item.collectionType === "multi"
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
                             : "bg-amber-50 text-amber-700 border border-amber-200"
                         }`}
                       >
                         {item.collectionType === "btc"
                           ? "BTC"
+                          : item.collectionType === "multi"
+                          ? "Split / Multi"
                           : item.collectionType.charAt(0).toUpperCase() +
                             item.collectionType.slice(1)}
                       </span>
                     </td>
-                    <td className="px-3.5 py-2.5 text-gray-600 whitespace-nowrap">
-                      {item.paymentMode}
+                    <td className="px-3.5 py-2.5 text-gray-700 whitespace-nowrap">
+                      {item.splits && item.splits.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 items-center">
+                          {item.splits.map((s, sIdx) => (
+                            <span
+                              key={sIdx}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-gray-800 text-[10px] font-medium border border-gray-200"
+                            >
+                              <span className="font-semibold">{s.mode || s.paymentMode}:</span>
+                              <span>₹{parseFloat(s.amount || 0).toLocaleString("en-IN")}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        item.paymentMode
+                      )}
                     </td>
                     <td className="px-3.5 py-2.5 text-right font-medium">
                       {item.hotelAmount > 0 ? formatCurrency(item.hotelAmount) : "-"}

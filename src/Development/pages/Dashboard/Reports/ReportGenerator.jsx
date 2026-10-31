@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAppContext } from "../../../context/AppContext.jsx";
 import { useAuthContext } from "../../../context/AuthContext.jsx";
 import { Button } from "../../../components/ui/button.js";
@@ -141,6 +141,7 @@ const ReportGenerator = () => {
   const [stockFilters, setStockFilters] = useState({
     department: "all",
     category: "all",
+    vendor: "all",
   });
 
   // Dedicated backend laundry orders state
@@ -302,7 +303,7 @@ const ReportGenerator = () => {
   // Enforce store-only reports when userType is store, and laundry-only reports when userType is laundry
   useEffect(() => {
     if (userData?.userType === "store") {
-      const storeReports = ["stock_inventory", "stock_issues", "stock_purchases"];
+      const storeReports = ["stock_inventory", "stock_issues", "stock_purchases", "stock_vendor_report"];
       if (!storeReports.includes(selectedReport)) {
         setSelectedReport("stock_inventory");
       }
@@ -568,6 +569,24 @@ const ReportGenerator = () => {
         { key: "billNo", label: "Bill No", type: "text" },
         { key: "vendorName", label: "Vendor", type: "text" },
         { key: "itemName", label: "Item", type: "text" },
+        { key: "quantity", label: "Quantity", type: "number" },
+        { key: "unit", label: "Unit", type: "text" },
+        { key: "price", label: "Rate", type: "currency" },
+        { key: "total_amount", label: "Total Amount", type: "currency" },
+      ],
+    },
+    stock_vendor_report: {
+      title: "Store Vendor Wise Report",
+      icon: Building2,
+      description: "Vendor-wise procurement breakdown, invoice numbers, items supplied & total vendor billing",
+      dataSource: "stock",
+      columns: [
+        { key: "vendorName", label: "Vendor", type: "text" },
+        { key: "date", label: "Bill Date", type: "date" },
+        { key: "grnNo", label: "GRN No", type: "text" },
+        { key: "billNo", label: "Bill No", type: "text" },
+        { key: "itemName", label: "Item Sourced", type: "text" },
+        { key: "category", label: "Category", type: "text" },
         { key: "quantity", label: "Quantity", type: "number" },
         { key: "unit", label: "Unit", type: "text" },
         { key: "price", label: "Rate", type: "currency" },
@@ -1828,7 +1847,13 @@ const ReportGenerator = () => {
     }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
   };
 
-  // Helper to process stock purchase register
+  const stockVendorOptions = useMemo(() => {
+    return Array.isArray(stockHistory)
+      ? [...new Set(stockHistory.map((l) => l.vendorName).filter(Boolean))].sort()
+      : [];
+  }, [stockHistory]);
+
+  // Helper to process stock purchase register and vendor-wise report
   const processStockPurchasesData = () => {
     const purchaseLogs = (stockHistory || []).filter((log) => log.actionType === "purchase-entry");
 
@@ -1842,12 +1867,19 @@ const ReportGenerator = () => {
         billNo: log.billNo || "—",
         vendorName: log.vendorName || "—",
         itemName: log.itemName || "—",
+        category: log.category || "—",
         quantity: q,
         unit: log.unit || "pcs",
         price: p,
         total_amount: Number((q * p).toFixed(2)),
       };
-    }).sort((a, b) => (new Date(b.date) || 0) - (new Date(a.date) || 0));
+    }).sort((a, b) => {
+      if (selectedReport === "stock_vendor_report") {
+        const vComp = (a.vendorName || "").localeCompare(b.vendorName || "");
+        if (vComp !== 0) return vComp;
+      }
+      return (new Date(b.date) || 0) - (new Date(a.date) || 0);
+    });
   };
 
   // Fetch data based on selected report
@@ -1856,7 +1888,7 @@ const ReportGenerator = () => {
       if (!selectedReport) return;
 
       try {
-        if (selectedReport === "stock_inventory" || selectedReport === "stock_issues" || selectedReport === "stock_purchases") {
+        if (selectedReport === "stock_inventory" || selectedReport === "stock_issues" || selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") {
           const instId = institutionData?.institutionId || defaultInstitutionId;
           let allStock = [];
           let lastEvaluatedKey = null;
@@ -2372,6 +2404,7 @@ const ReportGenerator = () => {
           data = processStockIssuesData();
           break;
         case "stock_purchases":
+        case "stock_vendor_report":
           data = processStockPurchasesData();
           break;
         case "police":
@@ -3227,6 +3260,15 @@ const ReportGenerator = () => {
       }
     }
 
+    // Apply stock purchases specific filters (Vendor filter)
+    if (selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") {
+      if (stockFilters.vendor && stockFilters.vendor !== "all") {
+        data = data.filter(
+          (item) => String(item.vendorName || "").toLowerCase() === String(stockFilters.vendor).toLowerCase()
+        );
+      }
+    }
+
     setReportData(data);
     setCurrentPage(1);
   }, [
@@ -3259,7 +3301,7 @@ const ReportGenerator = () => {
   const paginatedData = reportData.slice(startIndex, endIndex);
 
   // Format data for export
-  const formatDataForExport = (data, columns) => {
+  const formatDataForExport = (data, columns, forPdf = false) => {
     return data.map((item) => {
       const formattedItem = {};
       columns.forEach((column) => {
@@ -3357,7 +3399,7 @@ const ReportGenerator = () => {
         return;
       }
 
-      const formattedData = formatDataForExport(reportData, columns);
+      const formattedData = formatDataForExport(reportData, columns, true);
 
       const ws = XLSX.utils.json_to_sheet(formattedData);
       const wb = XLSX.utils.book_new();
@@ -3404,7 +3446,7 @@ const ReportGenerator = () => {
         doc.setFontSize(12);
         doc.text("Hotel Room Bills", 14, 32);
         const hotelHead = [["Date", "Bill No", "Total Bill (incl. Food)", "Total Bill (Room Only)", "Taxable Amount", "CGST (2.5%)", "SGST (2.5%)"]];
-        const hotelBody = hotelRows.map((r) => [r.date, r.bill_no, r.total_bill_with_food, r.total_bill_room_only, r.taxable_amount, r.cgst, r.sgst]);
+        const hotelBody = hotelRows.map((r) => [r.date, r.bill_no, String(r.total_bill_with_food || "").replace(/^Rs\.\s*/, ""), String(r.total_bill_room_only || "").replace(/^Rs\.\s*/, ""), String(r.taxable_amount || "").replace(/^Rs\.\s*/, ""), String(r.cgst || "").replace(/^Rs\.\s*/, ""), String(r.sgst || "").replace(/^Rs\.\s*/, "")]);
         const hotelTotals = hotelRows.reduce((acc, r) => ({ twf: acc.twf + (r.total_bill_with_food || 0), tro: acc.tro + (r.total_bill_room_only || 0), ta: acc.ta + (r.taxable_amount || 0), c: acc.c + (r.cgst || 0), s: acc.s + (r.sgst || 0) }), { twf: 0, tro: 0, ta: 0, c: 0, s: 0 });
         hotelBody.push(["TOTAL", "", hotelTotals.twf, hotelTotals.tro, hotelTotals.ta, hotelTotals.c, hotelTotals.s]);
 
@@ -3415,7 +3457,7 @@ const ReportGenerator = () => {
         doc.setFontSize(12);
         doc.text("Restaurant Orders", 14, restStartY);
         const restHead = [["Date", "Bill No", "Total Bill Amount", "Taxable Amount", "CGST (2.5%)", "SGST (2.5%)"]];
-        const restBody = restRows.map((r) => [r.date, r.bill_no, r.total_bill_with_food, r.taxable_amount, r.cgst, r.sgst]);
+        const restBody = restRows.map((r) => [r.date, r.bill_no, String(r.total_bill_with_food || "").replace(/^Rs\.\s*/, ""), String(r.taxable_amount || "").replace(/^Rs\.\s*/, ""), String(r.cgst || "").replace(/^Rs\.\s*/, ""), String(r.sgst || "").replace(/^Rs\.\s*/, "")]);
         const restTotals = restRows.reduce((acc, r) => ({ twf: acc.twf + (r.total_bill_with_food || 0), ta: acc.ta + (r.taxable_amount || 0), c: acc.c + (r.cgst || 0), s: acc.s + (r.sgst || 0) }), { twf: 0, ta: 0, c: 0, s: 0 });
         restBody.push(["TOTAL", "", restTotals.twf, restTotals.ta, restTotals.c, restTotals.s]);
 
@@ -3878,6 +3920,7 @@ const ReportGenerator = () => {
     setStockFilters({
       department: "all",
       category: "all",
+      vendor: "all",
     });
   };
 
@@ -3969,7 +4012,7 @@ const ReportGenerator = () => {
                       {Object.entries(reportConfigs)
                         .filter(([key]) => {
                           if (userData?.userType === "store") {
-                            return ["stock_inventory", "stock_issues", "stock_purchases"].includes(key);
+                            return ["stock_inventory", "stock_issues", "stock_purchases", "stock_vendor_report"].includes(key);
                           }
                           if (userData?.userType === "laundry") {
                             return key === "laundry";
@@ -4443,6 +4486,38 @@ const ReportGenerator = () => {
                       </div>
                     )}
 
+                    {/* Store Purchases Report Filters (Vendor Filter) */}
+                    {(selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-sm text-gray-700 mb-3">
+                          Vendor Filter
+                        </h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Filter by Vendor</Label>
+                            <Select
+                              value={stockFilters.vendor || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, vendor: val }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All Vendors" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Vendors</SelectItem>
+                                {stockVendorOptions.map((v) => (
+                                  <SelectItem key={v} value={v}>
+                                    {v}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <Button
                         onClick={clearFilters}
@@ -4535,6 +4610,35 @@ const ReportGenerator = () => {
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {(selectedReport === "stock_vendor_report" || selectedReport === "stock_purchases") && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-blue-50/70 border border-blue-200 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs font-bold text-blue-900 whitespace-nowrap">Vendor Dropdown:</Label>
+                            <Select
+                              value={stockFilters.vendor || "all"}
+                              onValueChange={(val) =>
+                                setStockFilters((prev) => ({ ...prev, vendor: val }))
+                              }
+                            >
+                              <SelectTrigger className="w-[220px] bg-white h-8 text-xs font-semibold border-blue-300">
+                                <SelectValue placeholder="All Vendors" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Vendors ({stockVendorOptions.length})</SelectItem>
+                                {stockVendorOptions.map((v) => (
+                                  <SelectItem key={v} value={v}>
+                                    {v}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs font-medium text-blue-950">
+                            <span>Total Quantity: <strong className="text-emerald-700 text-sm font-bold">{reportData.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0).toLocaleString("en-IN")}</strong></span>
+                            <span>Total Expenditure: <strong className="text-blue-900 text-sm font-extrabold">₹{reportData.reduce((sum, r) => sum + (Number(r.total_amount) || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-600">
                           Showing {startIndex + 1}-
@@ -4893,7 +4997,7 @@ const ReportGenerator = () => {
                                     }
                                   }
 
-                                  if (selectedReport === "stock_purchases") {
+                                  if (selectedReport === "stock_purchases" || selectedReport === "stock_vendor_report") {
                                     if (column.key === "grnNo") {
                                       return (
                                         <td key={column.key} className="px-3 py-4 text-sm truncate">
